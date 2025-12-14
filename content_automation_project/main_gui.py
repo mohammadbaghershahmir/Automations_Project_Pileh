@@ -9,7 +9,9 @@ import customtkinter as ctk
 import os
 import logging
 import threading
-from typing import Optional
+import csv
+import io
+from typing import Optional, List
 
 from api_layer import APIConfig, APIKeyManager, GeminiAPIClient
 from pdf_processor import PDFProcessor
@@ -391,6 +393,74 @@ class ContentAutomationGUI:
         from datetime import datetime
         return datetime.now().strftime("%H:%M:%S")
     
+    def is_csv_format(self, text: str) -> bool:
+        """
+        Check if the response text is in CSV format
+        
+        Args:
+            text: Response text to check
+            
+        Returns:
+            True if text appears to be CSV format
+        """
+        if not text or not text.strip():
+            return False
+        
+        # Try to parse as CSV
+        try:
+            # Check if text contains comma-separated values or semicolon-separated
+            lines = text.strip().split('\n')
+            if len(lines) < 1:
+                return False
+            
+            # Try to detect delimiter (comma or semicolon)
+            first_line = lines[0]
+            comma_count = first_line.count(',')
+            semicolon_count = first_line.count(';')
+            
+            # If there are multiple delimiters, likely CSV
+            if comma_count > 2 or semicolon_count > 2:
+                delimiter = ',' if comma_count >= semicolon_count else ';'
+                # Try to parse with csv module
+                reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+                rows = list(reader)
+                # If we can parse multiple rows with consistent column count, it's CSV
+                if len(rows) > 0:
+                    first_row_cols = len(rows[0])
+                    if first_row_cols > 1:  # At least 2 columns
+                        # Check if most rows have similar column count
+                        consistent_rows = sum(1 for row in rows if len(row) == first_row_cols)
+                        if consistent_rows >= len(rows) * 0.8:  # 80% consistency
+                            return True
+        except Exception:
+            pass
+        
+        return False
+    
+    def parse_csv(self, text: str) -> Optional[List[List[str]]]:
+        """
+        Parse CSV text into rows and columns
+        
+        Args:
+            text: CSV text to parse
+            
+        Returns:
+            List of rows (each row is a list of cells) or None if parsing fails
+        """
+        try:
+            # Detect delimiter
+            first_line = text.strip().split('\n')[0]
+            comma_count = first_line.count(',')
+            semicolon_count = first_line.count(';')
+            delimiter = ',' if comma_count >= semicolon_count else ';'
+            
+            reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+            rows = list(reader)
+            return rows if rows else None
+        except Exception as e:
+            self.logger.error(f"Error parsing CSV: {str(e)}")
+            return None
+    
     def process_pdf(self):
         """Process PDF with selected prompt and model"""
         def worker():
@@ -454,13 +524,19 @@ class ContentAutomationGUI:
                     if is_truncated:
                         self.update_status("❌ WARNING: Response was TRUNCATED!")
                         self.update_status("Response is INCOMPLETE due to MAX_TOKENS limit")
+                        current_model = self.model_var.get()
+                        suggestion = ""
+                        if 'flash' in current_model.lower():
+                            suggestion = f"\n\n💡 RECOMMENDATION: Switch to gemini-2.5-pro model for longer responses.\nCurrent model: {current_model}"
                         messagebox.showwarning("Response Truncated", 
                                              "⚠️ IMPORTANT: The response was TRUNCATED due to MAX_TOKENS limit!\n\n"
                                              "The response is INCOMPLETE.\n\n"
                                              "Solutions:\n"
-                                             "1. Use gemini-2.5-pro model (better for long responses)\n"
-                                             "2. Simplify your prompt\n"
-                                             "3. Break the task into smaller parts\n\n"
+                                             "1. Use gemini-2.5-pro model (supports up to 32768 tokens)\n"
+                                             "2. The system now uses streaming and max 32768 tokens\n"
+                                             "3. Simplify your prompt if possible\n"
+                                             "4. Break the task into smaller parts\n\n"
+                                             f"{suggestion}\n\n"
                                              "Check the log file for details.")
                     
                     self.update_status("✓ PDF processed successfully!")
@@ -482,12 +558,15 @@ class ContentAutomationGUI:
                     self.update_status(f"\n📄 Full response ({response_length:,} characters) is being displayed in a new window...")
                     self.update_status(f"Response preview (first 1000 chars):\n{response[:1000]}...")
                     
+                    # Check if response is CSV format
+                    is_csv = self.is_csv_format(response)
+                    
                     # First, show FULL response in a new window (user can see complete response)
-                    self.show_response_window(response, None, is_truncated)
+                    self.show_response_window(response, None, is_truncated, is_csv)
                     
                     # Then automatically save it
                     self.update_status("💾 Saving response to file...")
-                    saved_path = self.save_response(response)
+                    saved_path = self.save_response(response, is_csv)
                     if saved_path:
                         self.update_status(f"✓ Response saved successfully to: {saved_path}")
                         if is_truncated:
@@ -512,12 +591,13 @@ class ContentAutomationGUI:
         # Run in separate thread to prevent UI blocking
         threading.Thread(target=worker, daemon=True).start()
     
-    def save_response(self, response: str) -> Optional[str]:
+    def save_response(self, response: str, is_csv: bool = False) -> Optional[str]:
         """
-        Save response to Word document (.docx)
+        Save response to file (CSV if CSV format, otherwise Word document)
         
         Args:
             response: Response text to save
+            is_csv: Whether the response is in CSV format
             
         Returns:
             Path to saved file or None if failed
@@ -542,11 +622,44 @@ class ContentAutomationGUI:
             
             if self.pdf_path:
                 pdf_name = os.path.splitext(os.path.basename(self.pdf_path))[0]
-                filename = f"{pdf_name}_response_{timestamp}.docx"
+                if is_csv:
+                    filename = f"{pdf_name}_response_{timestamp}.csv"
+                else:
+                    filename = f"{pdf_name}_response_{timestamp}.docx"
             else:
-                filename = f"response_{timestamp}.docx"
+                if is_csv:
+                    filename = f"response_{timestamp}.csv"
+                else:
+                    filename = f"response_{timestamp}.docx"
             
             file_path = os.path.join(output_folder, filename)
+            
+            # Save as CSV if CSV format
+            if is_csv:
+                try:
+                    # Detect delimiter
+                    first_line = response.strip().split('\n')[0]
+                    comma_count = first_line.count(',')
+                    semicolon_count = first_line.count(';')
+                    delimiter = ',' if comma_count >= semicolon_count else ';'
+                    
+                    # Write CSV file
+                    with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                        # Parse and write CSV
+                        reader = csv.reader(io.StringIO(response), delimiter=delimiter)
+                        writer = csv.writer(f, delimiter=delimiter)
+                        for row in reader:
+                            writer.writerow(row)
+                    
+                    self.logger.info(f"Response saved to CSV file: {file_path}")
+                    return file_path
+                except Exception as e:
+                    self.logger.error(f"Error saving CSV: {str(e)}")
+                    # Fallback to text file
+                    txt_file_path = file_path.replace('.csv', '.txt')
+                    with open(txt_file_path, 'w', encoding='utf-8') as f:
+                        f.write(response)
+                    return txt_file_path
             
             # Save as Word document
             try:
@@ -631,15 +744,20 @@ class ContentAutomationGUI:
             self.logger.error(f"Error saving response: {str(e)}")
             return None
     
-    def show_response_window(self, response: str, saved_path: Optional[str] = None, is_truncated: bool = False):
-        """Show full response in a new window"""
+    def show_response_window(self, response: str, saved_path: Optional[str] = None, 
+                            is_truncated: bool = False, is_csv: bool = False):
+        """Show full response in a new window (with CSV table view if CSV format)"""
         response_window = ctk.CTkToplevel(self.root)
-        response_window.title("AI Response - Full Content" + (" [TRUNCATED]" if is_truncated else ""))
+        response_window.title("AI Response - Full Content" + (" [TRUNCATED]" if is_truncated else "") + (" [CSV]" if is_csv else ""))
         # Make window larger for better viewing
-        response_window.geometry("1000x700")
+        response_window.geometry("1200x800" if is_csv else "1000x700")
         
         # Title
-        title_text = "AI Response - Full Content" + (" ⚠️ [TRUNCATED - INCOMPLETE]" if is_truncated else "")
+        title_text = "AI Response - Full Content"
+        if is_csv:
+            title_text += " [CSV Format]"
+        if is_truncated:
+            title_text += " ⚠️ [TRUNCATED - INCOMPLETE]"
         title_color = "red" if is_truncated else "white"
         title = ctk.CTkLabel(response_window, text=title_text, 
                             font=ctk.CTkFont(size=20, weight="bold"),
@@ -649,7 +767,8 @@ class ContentAutomationGUI:
         # Response length info
         response_length = len(response)
         length_label = ctk.CTkLabel(response_window, 
-                                   text=f"Response length: {response_length:,} characters", 
+                                   text=f"Response length: {response_length:,} characters" + 
+                                        (f" | CSV Format: {len(response.split(chr(10)))} rows" if is_csv else ""), 
                                    font=ctk.CTkFont(size=11), 
                                    text_color="gray")
         length_label.pack(pady=2)
@@ -672,23 +791,18 @@ class ContentAutomationGUI:
                                        font=ctk.CTkFont(size=10), text_color="green")
             saved_label.pack(pady=5)
         
-        # Response text - Full content with scrollbar
-        # Use a frame to contain the textbox and scrollbar
-        text_frame = ctk.CTkFrame(response_window)
-        text_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        
-        response_text = ctk.CTkTextbox(text_frame, 
-                                      height=500,
-                                      wrap="word",  # Wrap text at word boundaries
-                                      font=ctk.CTkFont(size=11))
-        response_text.pack(fill="both", expand=True)
-        
-        # Insert full response
-        response_text.insert("1.0", response)
-        response_text.configure(state="normal")  # Allow copying and scrolling
-        
-        # Scroll to top
-        response_text.see("1.0")
+        # Display CSV as table or regular text
+        if is_csv:
+            # Parse CSV and display as table
+            csv_rows = self.parse_csv(response)
+            if csv_rows and len(csv_rows) > 0:
+                self.show_csv_table(response_window, csv_rows)
+            else:
+                # Fallback to text view if parsing fails
+                self.show_text_view(response_window, response)
+        else:
+            # Regular text view
+            self.show_text_view(response_window, response)
         
         # Buttons frame
         buttons_frame = ctk.CTkFrame(response_window)
@@ -701,7 +815,7 @@ class ContentAutomationGUI:
                          width=140).pack(side="left", padx=5)
         else:
             ctk.CTkButton(buttons_frame, text="💾 Save As...", 
-                         command=lambda: self.save_response_as(response, response_window),
+                         command=lambda: self.save_response_as(response, response_window, is_csv),
                          width=140).pack(side="left", padx=5)
         
         # Copy button
@@ -717,6 +831,105 @@ class ContentAutomationGUI:
         response_window._saved_label = saved_label
         response_window._saved_path = saved_path
     
+    def show_csv_table(self, parent_window, csv_rows: List[List[str]]):
+        """Display CSV data as a table using Treeview"""
+        # Create frame for table
+        table_frame = ctk.CTkFrame(parent_window)
+        table_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Create scrollable frame
+        scrollable_frame = ctk.CTkScrollableFrame(table_frame)
+        scrollable_frame.pack(fill="both", expand=True)
+        
+        # Create Treeview for table display
+        # We'll use a regular tkinter Treeview inside CTkFrame
+        tree_frame = tk.Frame(scrollable_frame)
+        tree_frame.pack(fill="both", expand=True)
+        
+        # Determine number of columns
+        if csv_rows:
+            num_columns = len(csv_rows[0])
+            # Limit to reasonable number of columns for display
+            max_columns = 20
+            num_columns = min(num_columns, max_columns)
+        else:
+            num_columns = 1
+        
+        # Create Treeview
+        tree = ttk.Treeview(tree_frame, columns=[f"col{i}" for i in range(num_columns)], 
+                           show="headings", height=20)
+        
+        # Configure columns
+        for i in range(num_columns):
+            tree.heading(f"col{i}", text=f"Column {i+1}")
+            tree.column(f"col{i}", width=150, anchor="w")
+        
+        # If first row looks like headers, use them
+        if csv_rows and len(csv_rows) > 0:
+            first_row = csv_rows[0]
+            # Check if first row looks like headers (non-numeric, descriptive)
+            is_header = any(cell and not cell.replace('.', '').replace('-', '').isdigit() 
+                          for cell in first_row[:num_columns])
+            
+            if is_header and len(csv_rows) > 1:
+                # Use first row as headers
+                for i, header in enumerate(first_row[:num_columns]):
+                    tree.heading(f"col{i}", text=header[:30])  # Limit header length
+                    tree.column(f"col{i}", width=150, anchor="w")
+                # Start data from second row
+                data_start = 1
+            else:
+                data_start = 0
+            
+            # Insert data rows
+            for row_idx, row in enumerate(csv_rows[data_start:], start=data_start):
+                # Truncate row to num_columns
+                display_row = row[:num_columns]
+                # Pad row if needed
+                while len(display_row) < num_columns:
+                    display_row.append("")
+                tree.insert("", "end", values=display_row)
+        
+        # Add scrollbars
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        
+        # Pack tree and scrollbars
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+        
+        # Info label
+        info_text = f"Displaying {len(csv_rows)} rows, {num_columns} columns"
+        if csv_rows and len(csv_rows[0]) > num_columns:
+            info_text += f" (showing first {num_columns} columns)"
+        info_label = ctk.CTkLabel(table_frame, text=info_text, 
+                                 font=ctk.CTkFont(size=10), text_color="gray")
+        info_label.pack(pady=5)
+    
+    def show_text_view(self, parent_window, response: str):
+        """Display response as regular text"""
+        # Response text - Full content with scrollbar
+        # Use a frame to contain the textbox and scrollbar
+        text_frame = ctk.CTkFrame(parent_window)
+        text_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        response_text = ctk.CTkTextbox(text_frame, 
+                                      height=500,
+                                      wrap="word",  # Wrap text at word boundaries
+                                      font=ctk.CTkFont(size=11))
+        response_text.pack(fill="both", expand=True)
+        
+        # Insert full response
+        response_text.insert("1.0", response)
+        response_text.configure(state="normal")  # Allow copying and scrolling
+        
+        # Scroll to top
+        response_text.see("1.0")
+    
     def copy_to_clipboard(self, text: str, parent_window):
         """Copy text to clipboard"""
         try:
@@ -727,16 +940,41 @@ class ContentAutomationGUI:
             self.logger.error(f"Error copying to clipboard: {str(e)}")
             messagebox.showerror("Error", f"Could not copy to clipboard: {str(e)}")
     
-    def save_response_as(self, response: str, parent_window):
+    def save_response_as(self, response: str, parent_window, is_csv: bool = False):
         """Save response to a custom location"""
+        if is_csv:
+            filetypes = [("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")]
+            defaultextension = ".csv"
+        else:
+            filetypes = [("Word documents", "*.docx"), ("Text files", "*.txt"), ("All files", "*.*")]
+            defaultextension = ".docx"
+        
         filename = filedialog.asksaveasfilename(
             title="Save Response As",
-            defaultextension=".docx",
-            filetypes=[("Word documents", "*.docx"), ("Text files", "*.txt"), ("All files", "*.*")]
+            defaultextension=defaultextension,
+            filetypes=filetypes
         )
         if filename:
             try:
-                if filename.lower().endswith('.docx'):
+                if filename.lower().endswith('.csv') or (is_csv and filename.lower().endswith('.txt')):
+                    # Save as CSV
+                    if is_csv:
+                        # Detect delimiter
+                        first_line = response.strip().split('\n')[0]
+                        comma_count = first_line.count(',')
+                        semicolon_count = first_line.count(';')
+                        delimiter = ',' if comma_count >= semicolon_count else ';'
+                        
+                        with open(filename, 'w', encoding='utf-8', newline='') as f:
+                            reader = csv.reader(io.StringIO(response), delimiter=delimiter)
+                            writer = csv.writer(f, delimiter=delimiter)
+                            for row in reader:
+                                writer.writerow(row)
+                    else:
+                        # Save as text file
+                        with open(filename, 'w', encoding='utf-8') as f:
+                            f.write(response)
+                elif filename.lower().endswith('.docx'):
                     # Save as Word document
                     from docx import Document
                     from datetime import datetime
@@ -761,10 +999,22 @@ class ContentAutomationGUI:
                     
                     # Response
                     doc.add_paragraph().add_run('Response').bold = True
-                    response_paragraphs = response.split('\n\n')
-                    for para_text in response_paragraphs:
-                        if para_text.strip():
-                            doc.add_paragraph(para_text.strip())
+                    if is_csv:
+                        # For CSV, add as table or formatted text
+                        csv_rows = self.parse_csv(response)
+                        if csv_rows:
+                            # Add as table
+                            table = doc.add_table(rows=len(csv_rows), cols=len(csv_rows[0]))
+                            for i, row in enumerate(csv_rows):
+                                for j, cell in enumerate(row):
+                                    table.rows[i].cells[j].text = str(cell)
+                        else:
+                            doc.add_paragraph(response)
+                    else:
+                        response_paragraphs = response.split('\n\n')
+                        for para_text in response_paragraphs:
+                            if para_text.strip():
+                                doc.add_paragraph(para_text.strip())
                     
                     doc.save(filename)
                 else:

@@ -59,7 +59,12 @@ class APIConfig:
     DEFAULT_TEXT_MODEL = "gemini-2.5-flash"
     DEFAULT_VOICE = "Kore"
     DEFAULT_TEMPERATURE = 0.7
-    DEFAULT_MAX_TOKENS = 8192  # Increased for full responses (gemini-2.5 models support up to 8192)
+    # Maximum tokens for different models:
+    # gemini-2.5-pro: up to 32768 tokens
+    # gemini-2.5-flash: up to 32768 tokens
+    # gemini-1.5-pro: up to 8192 tokens
+    # gemini-1.5-flash: up to 8192 tokens
+    DEFAULT_MAX_TOKENS = 32768  # Maximum for gemini-2.5 models
 
 
 class APIKeyManager:
@@ -499,18 +504,28 @@ class GeminiAPIClient:
             # Generate content with PDF and prompt
             # Use Part objects to ensure prompt is sent completely
             # Increase max_output_tokens for longer responses
-            # gemini-2.5-flash: max 8192 tokens
-            # gemini-2.5-pro: max 8192 tokens (but better quality)
-            # For very long responses, we need to use the maximum available
-            effective_max_tokens = max(max_tokens, 8192)  # Use at least 8192
+            # Model-specific maximum tokens:
+            # gemini-2.5-pro: up to 32768 tokens
+            # gemini-2.5-flash: up to 32768 tokens
+            # gemini-2.0-flash: up to 32768 tokens
+            # gemini-1.5-pro: up to 8192 tokens
+            # gemini-1.5-flash: up to 8192 tokens
             
-            # Check model and adjust if needed
-            if 'pro' in model_name.lower():
-                # Pro models can handle longer contexts better
-                effective_max_tokens = max(effective_max_tokens, 8192)
+            # Determine maximum tokens based on model
+            if '2.5' in model_name or '2.0' in model_name:
+                # Newer models support up to 32768 tokens
+                model_max_tokens = 32768
+            elif '1.5' in model_name:
+                # Older models support up to 8192 tokens
+                model_max_tokens = 8192
             else:
-                # Flash models also support 8192
-                effective_max_tokens = max(effective_max_tokens, 8192)
+                # Default to maximum for safety
+                model_max_tokens = 32768
+            
+            # Use the maximum available for the model, but respect user's max_tokens if lower
+            effective_max_tokens = min(max(max_tokens, model_max_tokens), model_max_tokens)
+            
+            self.logger.info(f"Model: {model_name}, Max tokens for model: {model_max_tokens}, Using: {effective_max_tokens}")
             
             generation_config = genai.types.GenerationConfig(
                 temperature=temperature,
@@ -532,11 +547,88 @@ class GeminiAPIClient:
                 pdf_file  # PDF file
             ]
             
-            # Generate content with retry logic
-            response = model.generate_content(
-                content_parts,
-                generation_config=generation_config
-            )
+            # Use streaming to get complete responses for long outputs
+            # This helps avoid truncation issues and allows receiving full responses
+            self.logger.info("Generating content with streaming enabled for complete response...")
+            response_text_parts = []
+            last_chunk = None
+            finish_reason = None
+            
+            try:
+                # Generate content with streaming
+                response_stream = model.generate_content(
+                    content_parts,
+                    generation_config=generation_config,
+                    stream=True
+                )
+                
+                # Collect all chunks and track finish reason
+                chunk_count = 0
+                for chunk in response_stream:
+                    last_chunk = chunk
+                    chunk_count += 1
+                    if hasattr(chunk, 'text') and chunk.text:
+                        response_text_parts.append(chunk.text)
+                        if chunk_count % 10 == 0:  # Log every 10 chunks
+                            self.logger.debug(f"Received {chunk_count} chunks, {len(''.join(response_text_parts))} chars so far")
+                    
+                    # Check for finish reason in chunk
+                    if hasattr(chunk, 'candidates') and chunk.candidates:
+                        for candidate in chunk.candidates:
+                            if hasattr(candidate, 'finish_reason') and candidate.finish_reason:
+                                finish_reason = candidate.finish_reason
+                
+                # Combine all chunks
+                if response_text_parts:
+                    full_response_text = ''.join(response_text_parts)
+                    # Create a response-like object for compatibility
+                    class StreamedResponse:
+                        def __init__(self, text, finish_reason=None):
+                            self.text = text
+                            self.candidates = []
+                            self._finish_reason = finish_reason
+                        
+                        def get_finish_reason(self):
+                            return self._finish_reason
+                    
+                    response = StreamedResponse(full_response_text, finish_reason)
+                    self.logger.info(f"Streaming completed: {chunk_count} chunks, {len(full_response_text)} characters received")
+                    
+                    # Check finish reason
+                    if finish_reason:
+                        finish_reason_str = str(finish_reason)
+                        if isinstance(finish_reason, int):
+                            reason_map = {
+                                0: "UNSPECIFIED",
+                                1: "STOP (normal completion)",
+                                2: "MAX_TOKENS (truncated!)",
+                                3: "SAFETY (blocked)",
+                                4: "RECITATION (blocked)",
+                                5: "OTHER"
+                            }
+                            finish_reason_str = reason_map.get(finish_reason, f"UNKNOWN ({finish_reason})")
+                        
+                        self.logger.info(f"Streaming finish reason: {finish_reason_str}")
+                        if finish_reason == 2 or (isinstance(finish_reason, str) and 'MAX_TOKENS' in str(finish_reason).upper()):
+                            self.logger.warning(f"⚠️ Response may be truncated (finish_reason: {finish_reason_str})")
+                            self._response_truncated = True
+                        else:
+                            self.logger.info("✓ Response completed normally via streaming")
+                            self._response_truncated = False
+                else:
+                    # Fallback to non-streaming if streaming fails
+                    self.logger.warning("Streaming returned no chunks, falling back to non-streaming")
+                    response = model.generate_content(
+                        content_parts,
+                        generation_config=generation_config
+                    )
+            except Exception as stream_error:
+                # Fallback to non-streaming if streaming is not supported
+                self.logger.warning(f"Streaming not available or failed: {str(stream_error)}, using non-streaming")
+                response = model.generate_content(
+                    content_parts,
+                    generation_config=generation_config
+                )
             
             # Log response info
             if response:
