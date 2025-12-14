@@ -128,7 +128,7 @@ class ContentAutomationGUI:
         pdf_frame = ctk.CTkFrame(parent)
         pdf_frame.pack(fill="x", pady=(0, 20))
         
-        pdf_label = ctk.CTkLabel(pdf_frame, text="📄 PDF Upload (Max 20 Pages)", 
+        pdf_label = ctk.CTkLabel(pdf_frame, text="📄 PDF Upload", 
                                 font=ctk.CTkFont(size=18, weight="bold"))
         pdf_label.pack(pady=(15, 10))
         
@@ -150,9 +150,6 @@ class ContentAutomationGUI:
         self.pdf_info_label = ctk.CTkLabel(file_frame, text="No PDF selected", 
                                            font=ctk.CTkFont(size=10), text_color="gray")
         self.pdf_info_label.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        ctk.CTkLabel(file_frame, text="Maximum 20 pages allowed", 
-                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_prompt_section(self, parent):
         """Setup prompt selection section"""

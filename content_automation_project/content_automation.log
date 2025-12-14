@@ -343,3 +343,4 @@ You will now receive a PDF, respond in the exact structure described above.
 - **Anti-p200 pemphigoid (anti-laminin $\gamma$1 pemphigoid).** Although patients often have features similar to BP, they tend to be younger and are more likely to have involvement of palmoplantar and cephalic regions
 2025-12-13 14:36:33,560 - WARNING - python-docx not available, saving as text file
 2025-12-13 14:36:33,562 - ERROR - Error saving response: cannot access local variable 'prompt' where it is not associated with a value
+2025-12-14 08:26:11,809 - INFO - Loaded 6 predefined prompts

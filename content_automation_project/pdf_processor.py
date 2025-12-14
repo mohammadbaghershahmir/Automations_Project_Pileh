@@ -25,8 +25,6 @@ except ImportError:
 class PDFProcessor:
     """Handles PDF file operations"""
     
-    MAX_PAGES = 20
-    
     def __init__(self):
         self.logger = logging.getLogger(__name__)
     
@@ -53,9 +51,6 @@ class PDFProcessor:
             
             if page_count == 0:
                 return False, "PDF file is empty or corrupted", 0
-            
-            if page_count > self.MAX_PAGES:
-                return False, f"PDF has {page_count} pages. Maximum allowed is {self.MAX_PAGES} pages.", page_count
             
             return True, None, page_count
             

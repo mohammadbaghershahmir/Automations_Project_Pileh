@@ -19,7 +19,7 @@ content_automation_project/
 ## Features - Part 1
 
 ### PDF Upload
-- Upload PDF files (maximum 20 pages)
+- Upload PDF files (no page limit)
 - Automatic validation and page counting
 - File size and page count display
 
@@ -72,7 +72,7 @@ python run.py
 
 ### Step 2: Upload PDF
 1. Click "Browse" next to "PDF File"
-2. Select a PDF file (max 20 pages)
+2. Select a PDF file (no page limit)
 3. System will validate and show page count
 
 ### Step 3: Select Prompt
@@ -148,5 +148,5 @@ response = client.process_pdf_with_prompt(
 - API layer is separated from business logic
 - Supports both async and sync operations
 - PDF files are uploaded directly to Gemini API
-- Maximum 20 pages per PDF file
+- No page limit for PDF files
 
