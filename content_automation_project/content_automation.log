@@ -1,0 +1,345 @@
+2025-12-13 12:41:09,552 - INFO - Created default predefined prompts
+2025-12-13 12:41:09,552 - INFO - Saved 6 prompts to prompts.json
+2025-12-13 12:53:23,372 - INFO - Loaded 6 predefined prompts
+2025-12-13 13:04:41,379 - INFO - Loaded 6 predefined prompts
+2025-12-13 13:05:33,254 - INFO - Loaded 3 API keys
+2025-12-13 13:09:09,272 - WARNING - Invalid JSON content from response: b'<!DOCTYPE html>\n<html lang=en>\n  <meta charset=utf-8>\n  <meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">\n  <title>Error 403 (Forbidden)!!1</title>\n  <style>\n    *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(//www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%;-moz-border-image:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) 0}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}\n  </style>\n  <a href=//www.google.com/><span id=logo aria-label=Google></span></a>\n  <p><b>403.</b> <ins>That\xe2\x80\x99s an error.</ins>\n  <p>Your client does not have permission to get URL <code>/$discovery/rest</code> from this server.  <ins>That\xe2\x80\x99s all we know.</ins>\n'
+2025-12-13 13:09:09,275 - ERROR - PDF processing failed: <HttpError 403 when requesting https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&key=AIzaSyCB--3e9K9jXd45b8E0gRWj4M-XRS3T28Y returned "Forbidden". Details: "<!DOCTYPE html>
+<html lang=en>
+  <meta charset=utf-8>
+  <meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">
+  <title>Error 403 (Forbidden)!!1</title>
+  <style>
+    *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(//www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%;-moz-border-image:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) 0}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}
+  </style>
+  <a href=//www.google.com/><span id=logo aria-label=Google></span></a>
+  <p><b>403.</b> <ins>That’s an error.</ins>
+  <p>Your client does not have permission to get URL <code>/$discovery/rest</code> from this server.  <ins>That’s all we know.</ins>
+">
+2025-12-13 13:09:17,844 - WARNING - Invalid JSON content from response: b'<!DOCTYPE html>\n<html lang=en>\n  <meta charset=utf-8>\n  <meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">\n  <title>Error 403 (Forbidden)!!1</title>\n  <style>\n    *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(//www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%;-moz-border-image:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) 0}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}\n  </style>\n  <a href=//www.google.com/><span id=logo aria-label=Google></span></a>\n  <p><b>403.</b> <ins>That\xe2\x80\x99s an error.</ins>\n  <p>Your client does not have permission to get URL <code>/$discovery/rest</code> from this server.  <ins>That\xe2\x80\x99s all we know.</ins>\n'
+2025-12-13 13:09:17,845 - ERROR - PDF processing failed: <HttpError 403 when requesting https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&key=AIzaSyAeEYiizFmdY7hB2UmQWDY_NP4Hf4GNAQc returned "Forbidden". Details: "<!DOCTYPE html>
+<html lang=en>
+  <meta charset=utf-8>
+  <meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">
+  <title>Error 403 (Forbidden)!!1</title>
+  <style>
+    *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(//www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%;-moz-border-image:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) 0}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}
+  </style>
+  <a href=//www.google.com/><span id=logo aria-label=Google></span></a>
+  <p><b>403.</b> <ins>That’s an error.</ins>
+  <p>Your client does not have permission to get URL <code>/$discovery/rest</code> from this server.  <ins>That’s all we know.</ins>
+">
+2025-12-13 13:10:02,224 - WARNING - Invalid JSON content from response: b'<!DOCTYPE html>\n<html lang=en>\n  <meta charset=utf-8>\n  <meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">\n  <title>Error 403 (Forbidden)!!1</title>\n  <style>\n    *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(//www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%;-moz-border-image:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) 0}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}\n  </style>\n  <a href=//www.google.com/><span id=logo aria-label=Google></span></a>\n  <p><b>403.</b> <ins>That\xe2\x80\x99s an error.</ins>\n  <p>Your client does not have permission to get URL <code>/$discovery/rest</code> from this server.  <ins>That\xe2\x80\x99s all we know.</ins>\n'
+2025-12-13 13:10:02,227 - ERROR - PDF processing failed: <HttpError 403 when requesting https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta&key=AIzaSyCZSapNa6rwXOE2ezmdo-LRTrHdGJR1y4Y returned "Forbidden". Details: "<!DOCTYPE html>
+<html lang=en>
+  <meta charset=utf-8>
+  <meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">
+  <title>Error 403 (Forbidden)!!1</title>
+  <style>
+    *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(//www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%;-moz-border-image:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) 0}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(//www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}
+  </style>
+  <a href=//www.google.com/><span id=logo aria-label=Google></span></a>
+  <p><b>403.</b> <ins>That’s an error.</ins>
+  <p>Your client does not have permission to get URL <code>/$discovery/rest</code> from this server.  <ins>That’s all we know.</ins>
+">
+2025-12-13 14:11:37,663 - INFO - Loaded 6 predefined prompts
+2025-12-13 14:12:03,002 - INFO - Loaded 3 API keys
+2025-12-13 14:13:11,538 - INFO - Uploaded PDF file: Bolognia 5th Edition 2024 (1)-7-26-46-1-20.pdf
+2025-12-13 14:13:23,759 - INFO - PDF processed successfully with gemini-2.5-flash
+2025-12-13 14:19:19,426 - INFO - Loaded 6 predefined prompts
+2025-12-13 14:19:42,114 - INFO - Loaded 3 API keys
+2025-12-13 14:22:23,626 - INFO - Uploaded PDF file: Bolognia 5th Edition 2024 (1)-7-26-46-1-20.pdf
+2025-12-13 14:22:33,185 - INFO - PDF processed successfully with gemini-2.5-flash
+2025-12-13 14:22:33,190 - INFO - Response saved to: /home/mohammadbagher/Bolognia 5th Edition 2024 (1)-7-26-46-1-20_response_20251213_142233.txt
+2025-12-13 14:26:21,149 - INFO - Loaded 6 predefined prompts
+2025-12-13 14:30:09,395 - INFO - Loaded 3 API keys
+2025-12-13 14:31:15,279 - INFO - Full prompt being sent (4635 chars): You are a meticulous medical OCR & structuring assistant. Your job is to extract **only** what is present on each provided textbook page image/PDF and convert it into clean, AI-ready text with structured sections. You MUST avoid hallucinations and preserve original medical meaning precisely. Follow these global rules:
+
+GLOBAL PRINCIPLES
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write: "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology; do not normalize British↔American spelling.
+- CLEAN OCR: 
+  - Remove page headers/footers, running titles, folios, and footers like “©Publisher 2023”.
+  - Fix broken words at line breaks (e.g., "thera-\npy" → "therapy").
+  - Replace ligatures (ﬁ, ﬂ) with normal letters.
+  - Preserve meaningful capitalization, italics markers (use *italic*), bold (**bold**), and inline sub/superscripts as LaTeX if clearly indicated (e.g., CO$_2$).
+- CITATIONS: Keep in-text citations literally (e.g., “[12]”, “(Smith 2021)”).
+- MATH/CHEM: For formulae, use inline LaTeX: e.g., `pH = -\log_{10} [H^+]`.
+- NO IMAGES: Describe figures/diagrams/charts in text form—succinct but complete. Do not invent unseen labels.
+
+STRUCTURED OUTPUT FORMAT (Markdown with embedded JSON blocks)
+Always produce in this exact order:
+
+1) `# Page Metadata`
+   - Book title (if visible), chapter title (if visible), page number (if visible or inferable), section headings found.
+   - Confidence notes: short bullets where uncertainty exists.
+
+2) `# Body`
+   - Clean, continuous paragraph text. Keep section/subsection headings as `##` and `###`.
+
+3) `# Tables`
+   - For each table found, output a JSON block per table with:
+   ```json
+   {
+     "type": "table",
+     "title": "Table 3.2 Disease-modifying agents",
+     "note": "footnotes or legends if present",
+     "columns": ["Column A", "Column B", "Column C"],
+     "rows": [
+       ["cell(1,1)", "cell(1,2)", "cell(1,3)"],
+       ["cell(2,1)", "cell(2,2)", "cell(2,3)"]
+     ],
+     "uncertain_cells": [{"row":2,"col":3,"reason":"blurry"}]
+   }
+If a table is complex (merged cells), normalize by repeating header labels; if impossible, add "structure_note".
+
+# Algorithms / Clinical Approaches
+
+Convert any flowchart, algorithm box, or approach diagram into BOTH:
+a) Bulleted steps (plain text):
+
+Step 1: …
+
+If lab X > Y → do …
+
+Else → …
+b) Machine-readable pseudo-logic JSON:
+
+json
+Copy code
+{
+  "type": "algorithm",
+  "title": "Approach to suspected DKA",
+  "nodes": [
+    {"id":"start","text":"Patient with hyperglycemia"},
+    {"id":"n1","text":"Check ketones"},
+    {"id":"n2","text":"If ketones positive → start insulin infusion"}
+  ],
+  "edges": [
+    {"from":"start","to":"n1"},
+    {"from":"n1","to":"n2","condition":"ketones positive"}
+  ]
+}
+Use simple IDs; preserve clinical thresholds verbatim.
+
+# Figures / Diagrams / Charts
+
+For each figure, write a compact textual description capturing labels, axes, and key relationships.
+
+If a chart encodes data values, extract the visible numbers as a small table. If not given, describe trends only.
+
+Example JSON:
+
+json
+Copy code
+{
+  "type": "figure",
+  "title": "Figure 5.1 Cardiac cycle",
+  "description": "Schematic phases (isovolumetric contraction, ejection, …); labels: LV pressure, aortic pressure… Trend: LV pressure rises during …",
+  "visible_labels": ["LV", "Aorta", "Mitral"],
+  "data_points": null
+}
+# Lists & Key Points
+
+Convert bullet lists and numbered lists cleanly.
+
+For “pearls”, “high-yield” callouts, prefix with **HIGH-YIELD:**.
+
+# References / Footnotes on Page
+
+Transcribe verbatim; if footnote markers map to table/figure, cross-reference.
+
+# Uncertain / OCR Issues
+
+JSON array, where each item has: location (body/table/figure), snippet (if any), reason (e.g., “scan blur”), and confidence score 0–1.
+
+ADDITIONAL RULES FOR DIFFICULT LAYOUTS
+
+Multi-column pages: Respect reading order left→right, top→bottom per row.
+
+Sidebars/callouts: Place them after the paragraph they visually relate to; prefix with > Note: or > Caution:; also mirror inside # Lists & Key Points if “pearls”.
+
+Units & thresholds: Keep exact units (mg/kg, mmol/L). Do not convert units.
+
+Drug names: Preserve capitalization of brand/generic as shown.
+
+Abbreviations: On first obvious occurrence, if expansion is shown on page, include (abbr: expansion).
+
+OUTPUT VALIDATION
+
+Ensure valid JSON blocks (UTF-8, double quotes).
+
+No trailing commas.
+
+Do not wrap JSON in code fences other than the ones I asked above.
+
+You will now receive a PDF, respond in the exact structure described above.
+2025-12-13 14:31:24,980 - INFO - Uploaded PDF file: Bolognia 5th Edition 2024 (1)-7-26-46-1-20.pdf
+2025-12-13 14:31:24,981 - INFO - Sending prompt (length: 4635 characters)
+2025-12-13 14:31:32,399 - INFO - Response received (length: 101 characters)
+2025-12-13 14:31:33,086 - INFO - PDF processed successfully with gemini-2.5-flash
+2025-12-13 14:31:33,087 - INFO - Response length: 101 characters
+2025-12-13 14:31:33,094 - WARNING - python-docx not available, saving as text file
+2025-12-13 14:31:33,097 - ERROR - Error saving response: cannot access local variable 'prompt' where it is not associated with a value
+2025-12-13 14:34:28,017 - INFO - Loaded 6 predefined prompts
+2025-12-13 14:34:57,989 - INFO - Loaded 3 API keys
+2025-12-13 14:35:49,321 - INFO - === Starting PDF Processing ===
+2025-12-13 14:35:49,323 - INFO - Model: gemini-2.5-flash
+2025-12-13 14:35:49,323 - INFO - PDF: /home/mohammadbagher/Downloads/Bolognia 5th Edition 2024 (1)-7-26-46-1-20.pdf
+2025-12-13 14:35:49,327 - INFO - Full prompt being sent (4635 chars): You are a meticulous medical OCR & structuring assistant. Your job is to extract **only** what is present on each provided textbook page image/PDF and convert it into clean, AI-ready text with structured sections. You MUST avoid hallucinations and preserve original medical meaning precisely. Follow these global rules:
+
+GLOBAL PRINCIPLES
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write: "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology; do not normalize British↔American spelling.
+- CLEAN OCR: 
+  - Remove page headers/footers, running titles, folios, and footers like “©Publisher 2023”.
+  - Fix broken words at line breaks (e.g., "thera-\npy" → "therapy").
+  - Replace ligatures (ﬁ, ﬂ) with normal letters.
+  - Preserve meaningful capitalization, italics markers (use *italic*), bold (**bold**), and inline sub/superscripts as LaTeX if clearly indicated (e.g., CO$_2$).
+- CITATIONS: Keep in-text citations literally (e.g., “[12]”, “(Smith 2021)”).
+- MATH/CHEM: For formulae, use inline LaTeX: e.g., `pH = -\log_{10} [H^+]`.
+- NO IMAGES: Describe figures/diagrams/charts in text form—succinct but complete. Do not invent unseen labels.
+
+STRUCTURED OUTPUT FORMAT (Markdown with embedded JSON blocks)
+Always produce in this exact order:
+
+1) `# Page Metadata`
+   - Book title (if visible), chapter title (if visible), page number (if visible or inferable), section headings found.
+   - Confidence notes: short bullets where uncertainty exists.
+
+2) `# Body`
+   - Clean, continuous paragraph text. Keep section/subsection headings as `##` and `###`.
+
+3) `# Tables`
+   - For each table found, output a JSON block per table with:
+   ```json
+   {
+     "type": "table",
+     "title": "Table 3.2 Disease-modifying agents",
+     "note": "footnotes or legends if present",
+     "columns": ["Column A", "Column B", "Column C"],
+     "rows": [
+       ["cell(1,1)", "cell(1,2)", "cell(1,3)"],
+       ["cell(2,1)", "cell(2,2)", "cell(2,3)"]
+     ],
+     "uncertain_cells": [{"row":2,"col":3,"reason":"blurry"}]
+   }
+If a table is complex (merged cells), normalize by repeating header labels; if impossible, add "structure_note".
+
+# Algorithms / Clinical Approaches
+
+Convert any flowchart, algorithm box, or approach diagram into BOTH:
+a) Bulleted steps (plain text):
+
+Step 1: …
+
+If lab X > Y → do …
+
+Else → …
+b) Machine-readable pseudo-logic JSON:
+
+json
+Copy code
+{
+  "type": "algorithm",
+  "title": "Approach to suspected DKA",
+  "nodes": [
+    {"id":"start","text":"Patient with hyperglycemia"},
+    {"id":"n1","text":"Check ketones"},
+    {"id":"n2","text":"If ketones positive → start insulin infusion"}
+  ],
+  "edges": [
+    {"from":"start","to":"n1"},
+    {"from":"n1","to":"n2","condition":"ketones positive"}
+  ]
+}
+Use simple IDs; preserve clinical thresholds verbatim.
+
+# Figures / Diagrams / Charts
+
+For each figure, write a compact textual description capturing labels, axes, and key relationships.
+
+If a chart encodes data values, extract the visible numbers as a small table. If not given, describe trends only.
+
+Example JSON:
+
+json
+Copy code
+{
+  "type": "figure",
+  "title": "Figure 5.1 Cardiac cycle",
+  "description": "Schematic phases (isovolumetric contraction, ejection, …); labels: LV pressure, aortic pressure… Trend: LV pressure rises during …",
+  "visible_labels": ["LV", "Aorta", "Mitral"],
+  "data_points": null
+}
+# Lists & Key Points
+
+Convert bullet lists and numbered lists cleanly.
+
+For “pearls”, “high-yield” callouts, prefix with **HIGH-YIELD:**.
+
+# References / Footnotes on Page
+
+Transcribe verbatim; if footnote markers map to table/figure, cross-reference.
+
+# Uncertain / OCR Issues
+
+JSON array, where each item has: location (body/table/figure), snippet (if any), reason (e.g., “scan blur”), and confidence score 0–1.
+
+ADDITIONAL RULES FOR DIFFICULT LAYOUTS
+
+Multi-column pages: Respect reading order left→right, top→bottom per row.
+
+Sidebars/callouts: Place them after the paragraph they visually relate to; prefix with > Note: or > Caution:; also mirror inside # Lists & Key Points if “pearls”.
+
+Units & thresholds: Keep exact units (mg/kg, mmol/L). Do not convert units.
+
+Drug names: Preserve capitalization of brand/generic as shown.
+
+Abbreviations: On first obvious occurrence, if expansion is shown on page, include (abbr: expansion).
+
+OUTPUT VALIDATION
+
+Ensure valid JSON blocks (UTF-8, double quotes).
+
+No trailing commas.
+
+Do not wrap JSON in code fences other than the ones I asked above.
+
+You will now receive a PDF, respond in the exact structure described above.
+2025-12-13 14:35:58,770 - INFO - Uploaded PDF file: Bolognia 5th Edition 2024 (1)-7-26-46-1-20.pdf
+2025-12-13 14:35:58,771 - INFO - Using model: gemini-2.5-flash
+2025-12-13 14:35:58,771 - INFO - Sending prompt (length: 4635 characters)
+2025-12-13 14:35:58,772 - INFO - Max output tokens: 8192
+2025-12-13 14:36:32,629 - INFO - Response received (length: 22595 characters)
+2025-12-13 14:36:32,631 - WARNING - Response might be truncated - checking for finish reason
+2025-12-13 14:36:32,632 - INFO - Candidate 0 finish reason: 2
+2025-12-13 14:36:33,514 - INFO - Extracted response from response.text (22595 chars)
+2025-12-13 14:36:33,514 - INFO - PDF processed successfully with gemini-2.5-flash
+2025-12-13 14:36:33,515 - INFO - Full response length: 22595 characters
+2025-12-13 14:36:33,558 - INFO - === Response Received ===
+2025-12-13 14:36:33,558 - INFO - Response length: 22595 characters
+2025-12-13 14:36:33,558 - INFO - Response preview (first 500 chars): # Page Metadata
+- **Book title**: VESICULOBULLOUS DISEASES
+- **Chapter title**: Pemphigoid Group
+- **Page numbers**: 517-533.e3 (inclusive of e-figures)
+- **Section headings found**:
+  - Bullous Pemphigoid
+  - Introduction
+  - History
+  - Epidemiology
+  - Pathogenesis
+  - Humoral and cellular responses
+  - Clinical Features
+  - Non-bullous pemphigoid
+  - Bullous phase
+  - Clinical variants
+  - Associated Diseases
+  - Drug-induced bullous pemphigoid
+  - Diagnosis
+  - Light microscopy
+  - Direct i...
+2025-12-13 14:36:33,558 - INFO - Response preview (last 500 chars): ...in adults, during childhood the condition is frequently associated with annular and polycyclic lesions, often with peripheral blisters, as well as involvement of the genital and perioral region. However, identical features are also observed in childhood BP (see Fig. 30.7B) [18,20].
+- **Anti-p200 pemphigoid (anti-laminin $\gamma$1 pemphigoid).** Although patients often have features similar to BP, they tend to be younger and are more likely to have involvement of palmoplantar and cephalic regions
+2025-12-13 14:36:33,560 - WARNING - python-docx not available, saving as text file
+2025-12-13 14:36:33,562 - ERROR - Error saving response: cannot access local variable 'prompt' where it is not associated with a value

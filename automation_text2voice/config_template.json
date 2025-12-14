@@ -1,0 +1,18 @@
+{
+  "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE",
+  "google_cloud_service_account_path": "/path/to/your/service-account.json",
+  "default_settings": {
+    "model": "gemini-2.5-flash",
+    "voice": "en-US-Neural2-A",
+    "speaking_rate": 1.0,
+    "pitch": 0.0,
+    "temperature": 0.7,
+    "max_tokens": 1000,
+    "use_ai_enhancement": false
+  },
+  "instructions": {
+    "gemini_api_key": "Get your API key from https://ai.google.dev/gemini-api",
+    "google_cloud_service_account_path": "Path to your Google Cloud service account JSON file (optional if using default credentials)",
+    "note": "You can copy this file to 'config.json' and fill in your actual values"
+  }
+} 
