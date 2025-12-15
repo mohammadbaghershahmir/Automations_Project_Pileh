@@ -2,6 +2,10 @@
 
 Automated content processing and generation using Gemini AI.
 
+## 🔒 Security
+
+**IMPORTANT**: Please read [SECURITY_GUIDE.md](SECURITY_GUIDE.md) before using this application to learn how to protect your API keys from being leaked.
+
 ## Project Structure
 
 ```

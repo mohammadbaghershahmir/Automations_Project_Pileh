@@ -11,11 +11,15 @@ import logging
 import threading
 import csv
 import io
-from typing import Optional, List
+import json
+import glob
+from typing import Optional, List, Dict, Any
 
 from api_layer import APIConfig, APIKeyManager, GeminiAPIClient
 from pdf_processor import PDFProcessor
 from prompt_manager import PromptManager
+from multi_part_processor import MultiPartProcessor
+from multi_part_post_processor import MultiPartPostProcessor
 
 
 class ContentAutomationGUI:
@@ -31,6 +35,13 @@ class ContentAutomationGUI:
         self.root.title("Content Automation - Part 1")
         self.root.geometry("1000x800")
         self.root.minsize(900, 700)
+
+        # Common Farsi-friendly font for textboxes
+        try:
+            self.farsi_text_font = ctk.CTkFont(family="Tahoma", size=11)
+        except Exception:
+            # Fallback if Tahoma is not available
+            self.farsi_text_font = ctk.CTkFont(size=11)
         
         # Setup logging
         self.setup_logging()
@@ -40,12 +51,16 @@ class ContentAutomationGUI:
         self.prompt_manager = PromptManager()
         self.api_key_manager = APIKeyManager()
         self.api_client = GeminiAPIClient(self.api_key_manager)
+        self.multi_part_processor = MultiPartProcessor(self.api_client)
+        self.multi_part_post_processor = MultiPartPostProcessor(self.api_client)
         
         # Variables
         self.pdf_path = None
         self.selected_prompt_name = None
         self.custom_prompt = ""
         self.use_custom_prompt = False
+        self.last_final_output_path = None  # Store path to last generated final_output.json
+        self.last_final_output_path = None  # Store path to last generated final_output.json
         
         # Setup UI
         self.setup_ui()
@@ -190,7 +205,7 @@ class ContentAutomationGUI:
         self.prompt_combo.pack(anchor="w", padx=10, pady=(0, 5))
         
         # Prompt preview
-        self.prompt_preview = ctk.CTkTextbox(predefined_frame, height=100)
+        self.prompt_preview = ctk.CTkTextbox(predefined_frame, height=100, font=self.farsi_text_font)
         self.prompt_preview.pack(fill="x", padx=10, pady=(0, 5))
         if prompt_names and default_value:
             preview_text = self.prompt_manager.get_prompt(default_value) or ""
@@ -204,7 +219,7 @@ class ContentAutomationGUI:
         ctk.CTkLabel(self.custom_frame, text="Enter Custom Prompt:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.custom_prompt_text = ctk.CTkTextbox(self.custom_frame, height=120)
+        self.custom_prompt_text = ctk.CTkTextbox(self.custom_frame, height=120, font=self.farsi_text_font)
         self.custom_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
         
         # Update visibility based on initial selection
@@ -273,6 +288,24 @@ class ContentAutomationGUI:
                                         command=self.process_pdf, width=200, height=40,
                                         font=ctk.CTkFont(size=14, weight="bold"))
         self.process_btn.pack(side="left", padx=10)
+        
+        # View CSV button
+        self.view_csv_btn = ctk.CTkButton(buttons_frame, text="📊 View CSV", 
+                                         command=self.view_csv_from_json, width=150, height=40,
+                                         font=ctk.CTkFont(size=14),
+                                         fg_color="green", hover_color="darkgreen")
+        self.view_csv_btn.pack(side="left", padx=10)
+
+        # Next step button - go to second page (post-processing of final JSON by Part)
+        self.next_step_btn = ctk.CTkButton(
+            buttons_frame,
+            text="➡️ Next Step (Part Processing)",
+            command=self.open_part_processing_window,
+            width=220,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        self.next_step_btn.pack(side="left", padx=10)
     
     def setup_status_section(self, parent):
         """Setup status section"""
@@ -282,7 +315,7 @@ class ContentAutomationGUI:
         ctk.CTkLabel(status_frame, text="📊 Status", 
                     font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(15, 10))
         
-        self.status_text = ctk.CTkTextbox(status_frame, height=150)
+        self.status_text = ctk.CTkTextbox(status_frame, height=150, font=self.farsi_text_font)
         self.status_text.pack(fill="x", padx=15, pady=(0, 15))
         
         self.update_status("Ready. Please configure API keys and select a PDF file.")
@@ -392,73 +425,377 @@ class ContentAutomationGUI:
         """Get current timestamp"""
         from datetime import datetime
         return datetime.now().strftime("%H:%M:%S")
-    
-    def is_csv_format(self, text: str) -> bool:
+
+    def open_part_processing_window(self):
         """
-        Check if the response text is in CSV format
+        Open second page for part-by-part processing of an existing final_output.json.
+        """
+        window = ctk.CTkToplevel(self.root)
+        window.title("Part Processing - Second Stage")
+        window.geometry("900x700")
+
+        main_frame = ctk.CTkScrollableFrame(window)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Second Stage - Process JSON by Part",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        )
+        title.pack(pady=(0, 20))
+
+        # Prompt section (similar to first form but simplified)
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=(0, 20))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="💬 Second-Stage Prompt",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Enter the prompt that should be applied separately to each Part.\n"
+                 "The JSON rows for each Part will be sent to the model with this prompt.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        self.second_stage_prompt_text = ctk.CTkTextbox(prompt_frame, height=140, font=self.farsi_text_font)
+        self.second_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+
+        # Pre-fill with current prompt if available
+        current_prompt = self.get_selected_prompt()
+        if current_prompt:
+            self.second_stage_prompt_text.insert("1.0", current_prompt)
+
+        # JSON selection section
+        json_frame = ctk.CTkFrame(main_frame)
+        json_frame.pack(fill="x", pady=(0, 20))
+
+        ctk.CTkLabel(
+            json_frame,
+            text="📄 Input JSON (final_output.json from previous step)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file_frame = ctk.CTkFrame(json_frame)
+        file_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file_frame,
+            text="JSON File:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.second_stage_json_var = ctk.StringVar()
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            self.second_stage_json_var.set(self.last_final_output_path)
+
+        json_entry = ctk.CTkEntry(file_frame, textvariable=self.second_stage_json_var, width=400)
+        json_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_json_file():
+            filename = filedialog.askopenfilename(
+                title="Select final_output.json file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.second_stage_json_var.set(filename)
+
+        ctk.CTkButton(
+            file_frame,
+            text="Browse",
+            command=browse_json_file,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Model selection for second stage
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=(0, 20))
+
+        ctk.CTkLabel(
+            model_frame,
+            text="🤖 Second-Stage Model Selection",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        inner_model_frame = ctk.CTkFrame(model_frame)
+        inner_model_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="Select model for second-stage (per-Part) processing:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        # Default to the model selected in the first page
+        self.second_stage_model_var = ctk.StringVar(value=self.model_var.get())
+        self.second_stage_model_combo = ctk.CTkComboBox(
+            inner_model_frame,
+            values=APIConfig.TEXT_MODELS,
+            variable=self.second_stage_model_var,
+            width=400,
+        )
+        self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="You can use a lighter model (مثل gemini-2.5-flash) برای پردازش سریع‌تر در مرحله دوم.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+
+        # Control buttons in second page
+        controls_frame = ctk.CTkFrame(main_frame)
+        controls_frame.pack(fill="x", pady=(10, 10))
+
+        def start_second_stage():
+            # Disable button to prevent multiple clicks during processing
+            start_button.configure(state="disabled", text="Processing...")
+            threading.Thread(
+                target=self.process_json_by_parts_worker,
+                args=(window, start_button),
+                daemon=True
+            ).start()
+
+        start_button = ctk.CTkButton(
+            controls_frame,
+            text="🚀 Start Part Processing",
+            command=start_second_stage,
+            width=220,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        start_button.pack(side="left", padx=10, pady=10)
+
+        ctk.CTkButton(
+            controls_frame,
+            text="✕ Close",
+            command=window.destroy,
+            width=100,
+            height=40,
+        ).pack(side="left", padx=10, pady=10)
+
+    def process_json_by_parts_worker(self, parent_window, start_button):
+        """
+        Background worker to process an existing final_output.json part-by-part
+        using the second-stage prompt.
+        """
+        try:
+            prompt = self.second_stage_prompt_text.get("1.0", tk.END).strip()
+            if not prompt:
+                messagebox.showerror("Error", "Please enter a prompt for second-stage processing.")
+                return
+
+            json_path = self.second_stage_json_var.get().strip()
+            if not json_path:
+                if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+                    json_path = self.last_final_output_path
+                    self.second_stage_json_var.set(json_path)
+                else:
+                    messagebox.showerror("Error", "Please select the input JSON file.")
+                    return
+
+            if not os.path.exists(json_path):
+                messagebox.showerror("Error", f"JSON file not found:\n{json_path}")
+                return
+
+            # Use selected model for second stage
+            model_name = self.second_stage_model_var.get()
+
+            self.update_status("Starting second-stage part processing...")
+
+            final_path = self.multi_part_post_processor.process_final_json_by_parts(
+                json_path=json_path,
+                user_prompt=prompt,
+                model_name=model_name,
+            )
+
+            if not final_path or not os.path.exists(final_path):
+                self.update_status("❌ Second-stage part processing failed.")
+                messagebox.showerror("Error", "Second-stage part processing failed. Check logs for details.")
+                return
+
+            # Load and display final combined JSON
+            try:
+                with open(final_path, "r", encoding="utf-8") as f:
+                    final_data = json.load(f)
+            except Exception as e:
+                self.update_status(f"Error loading post-processed JSON: {str(e)}")
+                messagebox.showerror("Error", f"Failed to load post-processed JSON:\n{str(e)}")
+                return
+
+            rows = final_data.get("rows", [])
+            total_rows = len(rows)
+            self.update_status(f"✓ Second-stage processing completed. Total rows: {total_rows}")
+
+            # Convert second-stage JSON rows to CSV rows and show as table
+            csv_rows = self.json_rows_to_csv_rows_generic(rows)
+            if csv_rows:
+                csv_window = ctk.CTkToplevel(self.root)
+                base_name = os.path.basename(final_path)
+                csv_window.title(f"Second-Stage CSV View - {base_name}")
+                csv_window.geometry("1200x700")
+                csv_window.minsize(800, 500)
+
+                self.show_csv_table(csv_window, csv_rows)
+
+                info_label = ctk.CTkLabel(
+                    csv_window,
+                    text=f"Displaying {len(csv_rows) - 1} rows from {base_name}",
+                    font=ctk.CTkFont(size=12),
+                )
+                info_label.pack(pady=5)
+            else:
+                # Fallback: show raw JSON if conversion failed
+                response_text = json.dumps(final_data, ensure_ascii=False, indent=2)
+                self.show_response_window(response_text, final_path, False, True)
+
+        except Exception as e:
+            self.logger.error(f"Error in second-stage processing: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"Second-stage processing error:\n{str(e)}")
+        finally:
+            # Re-enable start button on UI thread
+            try:
+                self.root.after(
+                    0,
+                    lambda: start_button.configure(state="normal", text="🚀 Start Part Processing")
+                )
+            except Exception:
+                pass
+    
+    def is_json_format(self, text: str) -> bool:
+        """
+        Check if the response text is in JSON format
         
         Args:
             text: Response text to check
             
         Returns:
-            True if text appears to be CSV format
+            True if text appears to be JSON format
         """
         if not text or not text.strip():
             return False
         
-        # Try to parse as CSV
+        # Try to parse as JSON
         try:
-            # Check if text contains comma-separated values or semicolon-separated
-            lines = text.strip().split('\n')
-            if len(lines) < 1:
-                return False
+            # Remove markdown code blocks if present
+            cleaned_text = text.strip()
+            if cleaned_text.startswith('```'):
+                # Extract content from code block
+                lines = cleaned_text.split('\n')
+                if len(lines) > 1:
+                    # Skip first line (```json or ```)
+                    cleaned_text = '\n'.join(lines[1:])
+                    # Remove last line if it's ```
+                    if cleaned_text.endswith('```'):
+                        cleaned_text = cleaned_text[:-3].strip()
             
-            # Try to detect delimiter (comma or semicolon)
-            first_line = lines[0]
-            comma_count = first_line.count(',')
-            semicolon_count = first_line.count(';')
-            
-            # If there are multiple delimiters, likely CSV
-            if comma_count > 2 or semicolon_count > 2:
-                delimiter = ',' if comma_count >= semicolon_count else ';'
-                # Try to parse with csv module
-                reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-                rows = list(reader)
-                # If we can parse multiple rows with consistent column count, it's CSV
-                if len(rows) > 0:
-                    first_row_cols = len(rows[0])
-                    if first_row_cols > 1:  # At least 2 columns
-                        # Check if most rows have similar column count
-                        consistent_rows = sum(1 for row in rows if len(row) == first_row_cols)
-                        if consistent_rows >= len(rows) * 0.8:  # 80% consistency
-                            return True
-        except Exception:
-            pass
+            # Try to parse as JSON
+            json.loads(cleaned_text)
+            return True
+        except (json.JSONDecodeError, ValueError):
+            # Check if it looks like JSON (starts with [ or {)
+            cleaned_text = text.strip()
+            if cleaned_text.startswith('[') or cleaned_text.startswith('{'):
+                # Try to extract JSON from text
+                try:
+                    # Look for JSON array or object
+                    if cleaned_text.startswith('['):
+                        # Find matching closing bracket
+                        bracket_count = 0
+                        for i, char in enumerate(cleaned_text):
+                            if char == '[':
+                                bracket_count += 1
+                            elif char == ']':
+                                bracket_count -= 1
+                                if bracket_count == 0:
+                                    json_text = cleaned_text[:i+1]
+                                    json.loads(json_text)
+                                    return True
+                    elif cleaned_text.startswith('{'):
+                        # Find matching closing brace
+                        brace_count = 0
+                        for i, char in enumerate(cleaned_text):
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_text = cleaned_text[:i+1]
+                                    json.loads(json_text)
+                                    return True
+                except (json.JSONDecodeError, ValueError):
+                    pass
         
         return False
     
-    def parse_csv(self, text: str) -> Optional[List[List[str]]]:
+    def parse_json_to_table_data(self, text: str) -> Optional[List[List[str]]]:
         """
-        Parse CSV text into rows and columns
+        Parse JSON text into rows and columns for table display
         
         Args:
-            text: CSV text to parse
+            text: JSON text to parse
             
         Returns:
             List of rows (each row is a list of cells) or None if parsing fails
         """
         try:
-            # Detect delimiter
-            first_line = text.strip().split('\n')[0]
-            comma_count = first_line.count(',')
-            semicolon_count = first_line.count(';')
-            delimiter = ',' if comma_count >= semicolon_count else ';'
+            # Remove markdown code blocks if present
+            cleaned_text = text.strip()
+            if cleaned_text.startswith('```'):
+                lines = cleaned_text.split('\n')
+                if len(lines) > 1:
+                    cleaned_text = '\n'.join(lines[1:])
+                    if cleaned_text.endswith('```'):
+                        cleaned_text = cleaned_text[:-3].strip()
             
-            reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-            rows = list(reader)
-            return rows if rows else None
+            # Parse JSON
+            json_data = json.loads(cleaned_text)
+            
+            # Handle list of objects (most common case)
+            if isinstance(json_data, list) and len(json_data) > 0:
+                # Get all unique keys from all objects
+                all_keys = set()
+                for item in json_data:
+                    if isinstance(item, dict):
+                        all_keys.update(item.keys())
+                
+                # Sort keys for consistent column order
+                headers = sorted(list(all_keys))
+                
+                # Create rows: first row is headers, then data rows
+                rows = [headers]  # Header row
+                
+                for item in json_data:
+                    if isinstance(item, dict):
+                        row = [str(item.get(key, "")) for key in headers]
+                        rows.append(row)
+                    else:
+                        # If item is not a dict, convert to string
+                        rows.append([str(item)])
+                
+                return rows if len(rows) > 1 else None  # At least header + one data row
+            
+            # Handle single object
+            elif isinstance(json_data, dict):
+                headers = list(json_data.keys())
+                rows = [headers]  # Header row
+                row = [str(json_data.get(key, "")) for key in headers]
+                rows.append(row)
+                return rows
+            
+            # Handle other types (convert to string)
+            else:
+                return [[str(json_data)]]
+                
+        except (json.JSONDecodeError, ValueError) as e:
+            self.logger.error(f"Error parsing JSON: {str(e)}")
+            return None
         except Exception as e:
-            self.logger.error(f"Error parsing CSV: {str(e)}")
+            self.logger.error(f"Unexpected error parsing JSON: {str(e)}")
             return None
     
     def process_pdf(self):
@@ -508,76 +845,74 @@ class ContentAutomationGUI:
                 self.logger.info(f"PDF: {self.pdf_path}")
                 self.logger.info(f"Full prompt being sent ({len(prompt)} chars): {prompt}")
                 
-                # Process PDF with API (API key will be rotated automatically)
-                response = self.api_client.process_pdf_with_prompt(
+                # Process PDF using multi-part processor
+                # This handles large outputs by splitting into multiple parts
+                self.update_status("Processing PDF with multi-part system...")
+                self.update_status("Large outputs will be split into multiple parts")
+                self.update_status("Only the final combined JSON will be displayed")
+                
+                def progress_callback(message: str):
+                    """Callback for progress updates during multi-part processing"""
+                    self.update_status(message)
+                
+                # Use multi-part processor
+                final_output_path = self.multi_part_processor.process_multi_part(
                     pdf_path=self.pdf_path,
-                    prompt=prompt,
-                    model_name=model_name
+                    base_prompt=prompt,  # User's original prompt (no modifications)
+                    model_name=model_name,
+                    temperature=0.7,
+                    resume=True,  # Enable resume capability
+                    progress_callback=progress_callback
                 )
                 
-                if response:
-                    response_length = len(response)
-                    
-                    # Check if response was truncated
-                    is_truncated = getattr(self.api_client, '_response_truncated', False)
-                    
-                    if is_truncated:
-                        self.update_status("❌ WARNING: Response was TRUNCATED!")
-                        self.update_status("Response is INCOMPLETE due to MAX_TOKENS limit")
-                        current_model = self.model_var.get()
-                        suggestion = ""
-                        if 'flash' in current_model.lower():
-                            suggestion = f"\n\n💡 RECOMMENDATION: Switch to gemini-2.5-pro model for longer responses.\nCurrent model: {current_model}"
-                        messagebox.showwarning("Response Truncated", 
-                                             "⚠️ IMPORTANT: The response was TRUNCATED due to MAX_TOKENS limit!\n\n"
-                                             "The response is INCOMPLETE.\n\n"
-                                             "Solutions:\n"
-                                             "1. Use gemini-2.5-pro model (supports up to 32768 tokens)\n"
-                                             "2. The system now uses streaming and max 32768 tokens\n"
-                                             "3. Simplify your prompt if possible\n"
-                                             "4. Break the task into smaller parts\n\n"
-                                             f"{suggestion}\n\n"
-                                             "Check the log file for details.")
-                    
-                    self.update_status("✓ PDF processed successfully!")
-                    self.update_status(f"Response length: {response_length} characters")
-                    if is_truncated:
-                        self.update_status(f"⚠️ TRUNCATED - Response incomplete!")
-                    
-                    self.logger.info(f"=== Response Received ===")
-                    self.logger.info(f"Response length: {response_length} characters")
-                    self.logger.info(f"Truncated: {is_truncated}")
-                    self.logger.info(f"Response preview (first 500 chars): {response[:500]}...")
-                    self.logger.info(f"Response preview (last 500 chars): ...{response[-500:]}")
-                    
-                    # Check if response seems incomplete
-                    if response_length < 200:
-                        self.update_status("⚠ Warning: Response seems very short!")
-                        self.logger.warning(f"Response is very short ({response_length} chars) - might be incomplete")
-                    
-                    self.update_status(f"\n📄 Full response ({response_length:,} characters) is being displayed in a new window...")
-                    self.update_status(f"Response preview (first 1000 chars):\n{response[:1000]}...")
-                    
-                    # Check if response is CSV format
-                    is_csv = self.is_csv_format(response)
-                    
-                    # First, show FULL response in a new window (user can see complete response)
-                    self.show_response_window(response, None, is_truncated, is_csv)
-                    
-                    # Then automatically save it
-                    self.update_status("💾 Saving response to file...")
-                    saved_path = self.save_response(response, is_csv)
-                    if saved_path:
-                        self.update_status(f"✓ Response saved successfully to: {saved_path}")
-                        if is_truncated:
-                            self.update_status("⚠️ Note: Saved response is INCOMPLETE (truncated)")
-                        self.logger.info(f"Response displayed and saved to: {saved_path}")
-                    else:
-                        self.update_status("⚠️ Warning: Could not save response automatically")
-                        self.logger.warning("Failed to save response automatically")
+                if final_output_path and os.path.exists(final_output_path):
+                    # Load final output JSON
+                    try:
+                        with open(final_output_path, 'r', encoding='utf-8') as f:
+                            final_data = json.load(f)
+                        
+                        # Extract metadata and rows
+                        metadata = final_data.get('metadata', {})
+                        rows = final_data.get('rows', [])
+                        
+                        total_parts = metadata.get('total_parts', 0)
+                        total_rows = metadata.get('total_rows', len(rows))
+                        
+                        self.update_status("✓ Multi-part processing completed successfully!")
+                        self.update_status(f"Total parts processed: {total_parts}")
+                        self.update_status(f"Total rows extracted: {total_rows}")
+                        self.update_status(f"Final output saved to: {final_output_path}")
+                        
+                        # Store final output path for CSV viewing
+                        self.last_final_output_path = final_output_path
+                        
+                        # Display final output (not individual parts)
+                        if rows:
+                            self.update_status(f"\n📄 Displaying final combined output ({total_rows} rows)...")
+                            # Show JSON table
+                            is_json = True
+                            response_text = json.dumps(final_data, ensure_ascii=False, indent=2)
+                            self.show_response_window(response_text, final_output_path, False, is_json)
+                        else:
+                            self.update_status("⚠ Warning: Final output contains no rows!")
+                            messagebox.showwarning("No Data", "The final output file contains no rows. Check the logs for details.")
+                            return
+                        
+                    except json.JSONDecodeError as e:
+                        self.update_status(f"Error: Failed to parse final output JSON: {str(e)}")
+                        self.logger.error(f"Failed to parse final output: {str(e)}")
+                        messagebox.showerror("Error", f"Failed to parse final output JSON: {str(e)}")
+                        return
+                    except Exception as e:
+                        self.update_status(f"Error loading final output: {str(e)}")
+                        self.logger.error(f"Error loading final output: {str(e)}", exc_info=True)
+                        messagebox.showerror("Error", f"Failed to load final output: {str(e)}")
+                        return
                 else:
-                    self.update_status("✗ Failed to process PDF. Check logs for details.")
-                    messagebox.showerror("Error", "Failed to process PDF. Check status and logs.")
+                    self.update_status("❌ Multi-part processing failed or was incomplete")
+                    self.logger.error("Multi-part processing returned no final output file")
+                    messagebox.showerror("Error", "Multi-part processing failed. Check the logs for details.")
+                    return
                 
             except Exception as e:
                 error_msg = f"Error processing PDF: {str(e)}"
@@ -591,18 +926,25 @@ class ContentAutomationGUI:
         # Run in separate thread to prevent UI blocking
         threading.Thread(target=worker, daemon=True).start()
     
-    def save_response(self, response: str, is_csv: bool = False) -> Optional[str]:
+    def save_response(self, response: str, is_json: bool = False) -> Optional[str]:
         """
-        Save response to file (CSV if CSV format, otherwise Word document)
+        Save response to file (JSON if JSON format, otherwise Word document)
         
         Args:
             response: Response text to save
-            is_csv: Whether the response is in CSV format
+            is_json: Whether the response is in JSON format
             
         Returns:
             Path to saved file or None if failed
         """
         try:
+            # JSON is already saved by API layer, just return the path
+            if is_json:
+                # The API layer saves JSON automatically, so we don't need to save again
+                # But we can return a message that it's already saved
+                self.logger.info("JSON response was already saved by API layer")
+                return None
+            
             # Get output folder
             output_folder = self.output_folder_var.get().strip()
             if not output_folder:
@@ -622,46 +964,14 @@ class ContentAutomationGUI:
             
             if self.pdf_path:
                 pdf_name = os.path.splitext(os.path.basename(self.pdf_path))[0]
-                if is_csv:
-                    filename = f"{pdf_name}_response_{timestamp}.csv"
-                else:
-                    filename = f"{pdf_name}_response_{timestamp}.docx"
+                filename = f"{pdf_name}_response_{timestamp}.docx"
             else:
-                if is_csv:
-                    filename = f"response_{timestamp}.csv"
-                else:
-                    filename = f"response_{timestamp}.docx"
+                filename = f"response_{timestamp}.docx"
             
             file_path = os.path.join(output_folder, filename)
             
-            # Save as CSV if CSV format
-            if is_csv:
-                try:
-                    # Detect delimiter
-                    first_line = response.strip().split('\n')[0]
-                    comma_count = first_line.count(',')
-                    semicolon_count = first_line.count(';')
-                    delimiter = ',' if comma_count >= semicolon_count else ';'
-                    
-                    # Write CSV file
-                    with open(file_path, 'w', encoding='utf-8', newline='') as f:
-                        # Parse and write CSV
-                        reader = csv.reader(io.StringIO(response), delimiter=delimiter)
-                        writer = csv.writer(f, delimiter=delimiter)
-                        for row in reader:
-                            writer.writerow(row)
-                    
-                    self.logger.info(f"Response saved to CSV file: {file_path}")
-                    return file_path
-                except Exception as e:
-                    self.logger.error(f"Error saving CSV: {str(e)}")
-                    # Fallback to text file
-                    txt_file_path = file_path.replace('.csv', '.txt')
-                    with open(txt_file_path, 'w', encoding='utf-8') as f:
-                        f.write(response)
-                    return txt_file_path
-            
-            # Save as Word document
+            # Save as Word document (for non-JSON responses)
+            # JSON responses are already saved by API layer, so we only save non-JSON responses here
             try:
                 from docx import Document
                 from docx.shared import Pt, RGBColor
@@ -745,17 +1055,17 @@ class ContentAutomationGUI:
             return None
     
     def show_response_window(self, response: str, saved_path: Optional[str] = None, 
-                            is_truncated: bool = False, is_csv: bool = False):
-        """Show full response in a new window (with CSV table view if CSV format)"""
+                            is_truncated: bool = False, is_json: bool = False):
+        """Show full response in a new window (with JSON table view if JSON format)"""
         response_window = ctk.CTkToplevel(self.root)
-        response_window.title("AI Response - Full Content" + (" [TRUNCATED]" if is_truncated else "") + (" [CSV]" if is_csv else ""))
+        response_window.title("AI Response - Full Content" + (" [TRUNCATED]" if is_truncated else "") + (" [JSON]" if is_json else ""))
         # Make window larger for better viewing
-        response_window.geometry("1200x800" if is_csv else "1000x700")
+        response_window.geometry("1200x800" if is_json else "1000x700")
         
         # Title
         title_text = "AI Response - Full Content"
-        if is_csv:
-            title_text += " [CSV Format]"
+        if is_json:
+            title_text += " [JSON Format]"
         if is_truncated:
             title_text += " ⚠️ [TRUNCATED - INCOMPLETE]"
         title_color = "red" if is_truncated else "white"
@@ -766,11 +1076,30 @@ class ContentAutomationGUI:
         
         # Response length info
         response_length = len(response)
-        length_label = ctk.CTkLabel(response_window, 
-                                   text=f"Response length: {response_length:,} characters" + 
-                                        (f" | CSV Format: {len(response.split(chr(10)))} rows" if is_csv else ""), 
-                                   font=ctk.CTkFont(size=11), 
-                                   text_color="gray")
+        if is_json:
+            try:
+                json_data = json.loads(response)
+                if isinstance(json_data, list):
+                    row_count = len(json_data)
+                    length_label = ctk.CTkLabel(response_window, 
+                                               text=f"Response length: {response_length:,} characters | JSON Format: {row_count} rows", 
+                                               font=ctk.CTkFont(size=11), 
+                                               text_color="gray")
+                else:
+                    length_label = ctk.CTkLabel(response_window, 
+                                               text=f"Response length: {response_length:,} characters | JSON Format", 
+                                               font=ctk.CTkFont(size=11), 
+                                               text_color="gray")
+            except:
+                length_label = ctk.CTkLabel(response_window, 
+                                           text=f"Response length: {response_length:,} characters | JSON Format", 
+                                           font=ctk.CTkFont(size=11), 
+                                           text_color="gray")
+        else:
+            length_label = ctk.CTkLabel(response_window, 
+                                       text=f"Response length: {response_length:,} characters", 
+                                       font=ctk.CTkFont(size=11), 
+                                       text_color="gray")
         length_label.pack(pady=2)
         
         # Warning if truncated
@@ -791,13 +1120,18 @@ class ContentAutomationGUI:
                                        font=ctk.CTkFont(size=10), text_color="green")
             saved_label.pack(pady=5)
         
-        # Display CSV as table or regular text
-        if is_csv:
-            # Parse CSV and display as table
-            csv_rows = self.parse_csv(response)
-            if csv_rows and len(csv_rows) > 0:
-                self.show_csv_table(response_window, csv_rows)
-            else:
+        # Display JSON as table or regular text
+        if is_json:
+            # Parse JSON and display as table
+            try:
+                json_data = json.loads(response)
+                if isinstance(json_data, list) and len(json_data) > 0:
+                    # Convert JSON to table format
+                    self.show_json_table(response_window, json_data)
+                else:
+                    # Fallback to text view if not a list
+                    self.show_text_view(response_window, response)
+            except json.JSONDecodeError:
                 # Fallback to text view if parsing fails
                 self.show_text_view(response_window, response)
         else:
@@ -815,7 +1149,7 @@ class ContentAutomationGUI:
                          width=140).pack(side="left", padx=5)
         else:
             ctk.CTkButton(buttons_frame, text="💾 Save As...", 
-                         command=lambda: self.save_response_as(response, response_window, is_csv),
+                         command=lambda: self.save_response_as(response, response_window, is_json),
                          width=140).pack(side="left", padx=5)
         
         # Copy button
@@ -830,6 +1164,74 @@ class ContentAutomationGUI:
         # Store reference to update saved path later if needed
         response_window._saved_label = saved_label
         response_window._saved_path = saved_path
+    
+    def show_json_table(self, parent_window, json_rows: List[Dict[str, Any]]):
+        """Display JSON data as a table using Treeview"""
+        # Convert JSON to table format
+        if not json_rows:
+            return
+        
+        # Get all unique keys from all rows (columns)
+        all_keys = set()
+        for row in json_rows:
+            if isinstance(row, dict):
+                all_keys.update(row.keys())
+        
+        headers = list(all_keys)
+        if not headers:
+            self.show_text_view(parent_window, json.dumps(json_rows, indent=2, ensure_ascii=False))
+            return
+        
+        # Limit columns for display
+        max_columns = 20
+        headers = headers[:max_columns]
+        
+        # Create frame for table
+        table_frame = ctk.CTkFrame(parent_window)
+        table_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Create scrollable frame
+        scrollable_frame = ctk.CTkScrollableFrame(table_frame)
+        scrollable_frame.pack(fill="both", expand=True)
+        
+        # Create Treeview for table display
+        tree_frame = tk.Frame(scrollable_frame)
+        tree_frame.pack(fill="both", expand=True)
+        
+        # Create Treeview
+        tree = ttk.Treeview(tree_frame, columns=[f"col{i}" for i in range(len(headers))], 
+                           show="headings", height=20)
+        
+        # Configure columns
+        for i, header in enumerate(headers):
+            tree.heading(f"col{i}", text=header[:30])  # Limit header length
+            tree.column(f"col{i}", width=150, anchor="w")
+        
+        # Insert data rows
+        for row in json_rows:
+            if isinstance(row, dict):
+                display_row = [str(row.get(h, ""))[:100] for h in headers]  # Limit cell length
+                tree.insert("", "end", values=display_row)
+        
+        # Add scrollbars
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        
+        # Pack tree and scrollbars
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+        
+        # Info label
+        info_text = f"Displaying {len(json_rows)} rows, {len(headers)} columns"
+        if len(all_keys) > max_columns:
+            info_text += f" (showing first {max_columns} columns)"
+        info_label = ctk.CTkLabel(table_frame, text=info_text, 
+                                 font=ctk.CTkFont(size=10), text_color="gray")
+        info_label.pack(pady=5)
     
     def show_csv_table(self, parent_window, csv_rows: List[List[str]]):
         """Display CSV data as a table using Treeview"""
@@ -917,10 +1319,12 @@ class ContentAutomationGUI:
         text_frame = ctk.CTkFrame(parent_window)
         text_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        response_text = ctk.CTkTextbox(text_frame, 
-                                      height=500,
-                                      wrap="word",  # Wrap text at word boundaries
-                                      font=ctk.CTkFont(size=11))
+        response_text = ctk.CTkTextbox(
+            text_frame,
+            height=500,
+            wrap="word",  # Wrap text at word boundaries
+            font=self.farsi_text_font,
+        )
         response_text.pack(fill="both", expand=True)
         
         # Insert full response
@@ -940,11 +1344,11 @@ class ContentAutomationGUI:
             self.logger.error(f"Error copying to clipboard: {str(e)}")
             messagebox.showerror("Error", f"Could not copy to clipboard: {str(e)}")
     
-    def save_response_as(self, response: str, parent_window, is_csv: bool = False):
+    def save_response_as(self, response: str, parent_window, is_json: bool = False):
         """Save response to a custom location"""
-        if is_csv:
-            filetypes = [("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")]
-            defaultextension = ".csv"
+        if is_json:
+            filetypes = [("JSON files", "*.json"), ("Text files", "*.txt"), ("All files", "*.*")]
+            defaultextension = ".json"
         else:
             filetypes = [("Word documents", "*.docx"), ("Text files", "*.txt"), ("All files", "*.*")]
             defaultextension = ".docx"
@@ -956,20 +1360,18 @@ class ContentAutomationGUI:
         )
         if filename:
             try:
-                if filename.lower().endswith('.csv') or (is_csv and filename.lower().endswith('.txt')):
-                    # Save as CSV
-                    if is_csv:
-                        # Detect delimiter
-                        first_line = response.strip().split('\n')[0]
-                        comma_count = first_line.count(',')
-                        semicolon_count = first_line.count(';')
-                        delimiter = ',' if comma_count >= semicolon_count else ';'
-                        
-                        with open(filename, 'w', encoding='utf-8', newline='') as f:
-                            reader = csv.reader(io.StringIO(response), delimiter=delimiter)
-                            writer = csv.writer(f, delimiter=delimiter)
-                            for row in reader:
-                                writer.writerow(row)
+                if filename.lower().endswith('.json') or (is_json and filename.lower().endswith('.txt')):
+                    # Save as JSON
+                    if is_json:
+                        # Try to format JSON nicely
+                        try:
+                            json_data = json.loads(response)
+                            with open(filename, 'w', encoding='utf-8') as f:
+                                json.dump(json_data, f, ensure_ascii=False, indent=2)
+                        except json.JSONDecodeError:
+                            # If not valid JSON, save as text
+                            with open(filename, 'w', encoding='utf-8') as f:
+                                f.write(response)
                     else:
                         # Save as text file
                         with open(filename, 'w', encoding='utf-8') as f:
@@ -999,10 +1401,10 @@ class ContentAutomationGUI:
                     
                     # Response
                     doc.add_paragraph().add_run('Response').bold = True
-                    if is_csv:
-                        # For CSV, add as table or formatted text
-                        csv_rows = self.parse_csv(response)
-                        if csv_rows:
+                    if is_json:
+                        # For JSON, add as table or formatted text
+                        json_rows = self.parse_json_to_table_data(response)
+                        if json_rows:
                             # Add as table
                             table = doc.add_table(rows=len(csv_rows), cols=len(csv_rows[0]))
                             for i, row in enumerate(csv_rows):
@@ -1041,6 +1443,155 @@ class ContentAutomationGUI:
         except Exception as e:
             self.logger.error(f"Error opening folder: {str(e)}")
             messagebox.showerror("Error", f"Could not open folder: {str(e)}")
+    
+    def json_to_csv_rows(self, json_data: Dict[str, Any]) -> List[List[str]]:
+        """
+        Convert final_output.json structure to CSV rows format.
+        Rows are sorted by page number (Number field).
+        
+        Args:
+            json_data: Dictionary containing 'metadata' and 'rows' keys
+            
+        Returns:
+            List of lists representing CSV rows (first row is headers)
+        """
+        if not json_data or 'rows' not in json_data:
+            return []
+        
+        rows = json_data['rows']
+        if not rows:
+            return []
+        
+        # Sort rows by Part (then by Number for same Part)
+        def sort_key(row):
+            part = row.get('Part', 0)
+            number = row.get('Number', 0)
+            try:
+                part_num = int(part) if part else 0
+            except (ValueError, TypeError):
+                part_num = 0
+            try:
+                number_num = int(number) if number else 0
+            except (ValueError, TypeError):
+                number_num = 0
+            return (part_num, number_num)  # Sort by Part first, then Number
+        
+        sorted_rows = sorted(rows, key=sort_key)
+        
+        # CSV headers
+        headers = ["Type", "Extraction", "Number", "Part"]
+        csv_rows = [headers]
+        
+        # Convert each row to CSV format
+        for row in sorted_rows:
+            csv_row = [
+                str(row.get('Type', '')),
+                str(row.get('Extraction', '')),
+                str(row.get('Number', '')),
+                str(row.get('Part', ''))
+            ]
+            csv_rows.append(csv_row)
+        
+        return csv_rows
+
+    def json_rows_to_csv_rows_generic(self, rows: List[Dict[str, Any]]) -> List[List[str]]:
+        """
+        Convert a list of JSON row dicts (e.g. second-stage output) to CSV rows.
+        Uses all keys as headers (sorted), first row is header.
+        """
+        if not rows:
+            return []
+        
+        all_keys = set()
+        for row in rows:
+            if isinstance(row, dict):
+                all_keys.update(row.keys())
+        
+        if not all_keys:
+            return []
+        
+        headers = sorted(list(all_keys))
+        csv_rows: List[List[str]] = [headers]
+        
+        for row in rows:
+            if isinstance(row, dict):
+                csv_row = [str(row.get(k, "")) for k in headers]
+            else:
+                csv_row = [str(row)]
+            csv_rows.append(csv_row)
+        
+        return csv_rows
+    
+    def view_csv_from_json(self):
+        """Load final_output.json and display as CSV table"""
+        # Try to find final_output.json file
+        json_file_path = None
+        
+        # First, try the stored path
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            json_file_path = self.last_final_output_path
+        else:
+            # Try to find it in current directory
+            current_dir = os.getcwd()
+            
+            # Try exact match first
+            exact_path = os.path.join(current_dir, "final_output.json")
+            if os.path.exists(exact_path):
+                json_file_path = exact_path
+            else:
+                # Try to find with pattern
+                matches = glob.glob(os.path.join(current_dir, "*_final_output.json"))
+                if matches:
+                    # Use the most recent one
+                    json_file_path = max(matches, key=os.path.getmtime)
+        
+        if not json_file_path:
+            # Ask user to select file
+            json_file_path = filedialog.askopenfilename(
+                title="Select final_output.json file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+        
+        if not json_file_path or not os.path.exists(json_file_path):
+            messagebox.showwarning("File Not Found", 
+                                 "Could not find final_output.json file.\n\n"
+                                 "Please process a PDF first, or select the JSON file manually.")
+            return
+        
+        try:
+            # Load JSON file
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            # Convert to CSV rows
+            csv_rows = self.json_to_csv_rows(json_data)
+            
+            if not csv_rows:
+                messagebox.showwarning("Empty Data", "The JSON file contains no rows to display.")
+                return
+            
+            # Create new window for CSV display
+            csv_window = ctk.CTkToplevel(self.root)
+            csv_window.title(f"CSV View - {os.path.basename(json_file_path)}")
+            csv_window.geometry("1200x700")
+            csv_window.minsize(800, 500)
+            
+            # Display CSV table
+            self.show_csv_table(csv_window, csv_rows)
+            
+            # Add info label
+            info_label = ctk.CTkLabel(
+                csv_window,
+                text=f"Displaying {len(csv_rows) - 1} rows from {os.path.basename(json_file_path)}",
+                font=ctk.CTkFont(size=12)
+            )
+            info_label.pack(pady=5)
+            
+        except json.JSONDecodeError as e:
+            messagebox.showerror("JSON Error", f"Failed to parse JSON file:\n{str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load CSV view:\n{str(e)}")
+            self.logger.error(f"Error loading CSV view: {str(e)}", exc_info=True)
     
     def run(self):
         """Run the application"""

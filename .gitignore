@@ -1,0 +1,69 @@
+# API Keys - NEVER commit these files!
+*.csv
+api_keys*.csv
+*_keys.csv
+*_api_keys.csv
+secrets/
+.env
+.env.local
+
+# Logs
+*.log
+content_automation.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PyInstaller
+*.spec.bak
+*.manifest
+*.spec
+
+# Output files
+*_output_*.csv
+*_output_*.json
+*_output_*.txt
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
