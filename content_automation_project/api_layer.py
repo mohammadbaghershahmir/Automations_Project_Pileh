@@ -575,7 +575,7 @@ class GeminiAPIClient:
             progress_callback: Optional callback function for progress updates (takes message string)
             
         Returns:
-            Combined CSV string or None if failed
+            Path to saved JSON file or None if failed
         """
         if not GENERATIVEAI_AVAILABLE:
             self.logger.error("google.generativeai library not available")
@@ -697,7 +697,7 @@ The JSON will be automatically converted to CSV format after processing.
                         progress_callback(f"✓ JSON saved to: {os.path.basename(json_file_path)}")
                 
                 self.logger.info(f"JSON saved to: {json_file_path}")
-                return json_output
+                return json_file_path
             else:
                 self.logger.error("No data extracted from any batch")
                 return None

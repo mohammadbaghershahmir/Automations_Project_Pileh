@@ -31,14 +31,29 @@ class MultiPartPostProcessor:
             return ""
 
         cleaned = text.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            if len(lines) > 1:
-                # drop first line (``` or ```json)
-                cleaned = "\n".join(lines[1:])
-                # drop trailing ``` if present
-                if cleaned.endswith("```"):
-                    cleaned = cleaned[:-3].strip()
+        
+        # Handle markdown code fences: ```json\n{...}\n``` or ```\n{...}\n```
+        if "```" in cleaned:
+            # Find all code fence positions
+            fence_positions = []
+            idx = 0
+            while True:
+                pos = cleaned.find("```", idx)
+                if pos == -1:
+                    break
+                fence_positions.append(pos)
+                idx = pos + 3
+            
+            # If we have at least 2 fences, extract content between first and last
+            if len(fence_positions) >= 2:
+                start_fence = fence_positions[0] + 3  # After first ```
+                end_fence = fence_positions[-1]  # Before last ```
+                cleaned = cleaned[start_fence:end_fence].strip()
+        
+        # Remove leading "json" identifier if present
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+        
         return cleaned
 
     def _parse_json_response(self, response_text: str) -> Optional[List[Dict[str, Any]]]:
@@ -51,12 +66,40 @@ class MultiPartPostProcessor:
             return None
 
         cleaned = self._clean_json_text(response_text)
+        
+        # Try multiple strategies to parse JSON
+        data = None
+        
+        # Strategy 1: Direct JSON parse
         try:
             data = json.loads(cleaned)
-        except json.JSONDecodeError:
-            self.logger.error("Failed to parse JSON response in post-processor")
-            self.logger.debug(f"Response text (first 500 chars): {cleaned[:500]}")
-            return None
+        except json.JSONDecodeError as e1:
+            # Strategy 2: Extract first {...} or [...] block
+            try:
+                # Try to find JSON object
+                start_obj = cleaned.find("{")
+                end_obj = cleaned.rfind("}")
+                # Try to find JSON array
+                start_arr = cleaned.find("[")
+                end_arr = cleaned.rfind("]")
+                
+                # Use whichever is found and valid
+                if start_obj != -1 and end_obj != -1 and end_obj > start_obj:
+                    candidate = cleaned[start_obj:end_obj + 1]
+                    data = json.loads(candidate)
+                elif start_arr != -1 and end_arr != -1 and end_arr > start_arr:
+                    candidate = cleaned[start_arr:end_arr + 1]
+                    data = json.loads(candidate)
+                else:
+                    self.logger.error("Failed to parse JSON response in post-processor")
+                    self.logger.debug(f"Could not find JSON boundaries. Response text (first 500 chars): {cleaned[:500]}")
+                    self.logger.debug(f"Direct parse error: {str(e1)}")
+                    return None
+            except json.JSONDecodeError as e2:
+                self.logger.error("Failed to parse JSON response in post-processor")
+                self.logger.debug(f"Response text (first 500 chars): {cleaned[:500]}")
+                self.logger.debug(f"Direct parse error: {str(e1)}, Extract parse error: {str(e2)}")
+                return None
 
         # Normalize to list of dicts
         if isinstance(data, dict):
@@ -197,5 +240,6 @@ class MultiPartPostProcessor:
         except Exception as e:
             self.logger.error(f"Failed to save post-processed JSON: {e}")
             return None
+
 
 

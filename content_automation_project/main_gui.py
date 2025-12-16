@@ -13,6 +13,7 @@ import csv
 import io
 import json
 import glob
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from api_layer import APIConfig, APIKeyManager, GeminiAPIClient
@@ -59,8 +60,9 @@ class ContentAutomationGUI:
         self.selected_prompt_name = None
         self.custom_prompt = ""
         self.use_custom_prompt = False
-        self.last_final_output_path = None  # Store path to last generated final_output.json
-        self.last_final_output_path = None  # Store path to last generated final_output.json
+        self.last_final_output_path = None       # Stage 1 JSON
+        self.last_post_processed_path = None     # Stage 2 JSON
+        self.last_corrected_path = None          # Stage 3 JSON
         
         # Setup UI
         self.setup_ui()
@@ -296,10 +298,21 @@ class ContentAutomationGUI:
                                          fg_color="green", hover_color="darkgreen")
         self.view_csv_btn.pack(side="left", padx=10)
 
+        # View/Edit Stage 1 JSON button
+        self.view_stage1_json_btn = ctk.CTkButton(
+            buttons_frame,
+            text="📄 View/Edit Stage 1 JSON",
+            command=lambda: self.open_json_editor(self.last_final_output_path),
+            width=220,
+            height=40,
+            font=ctk.CTkFont(size=14),
+        )
+        self.view_stage1_json_btn.pack(side="left", padx=10)
+
         # Next step button - go to second page (post-processing of final JSON by Part)
         self.next_step_btn = ctk.CTkButton(
             buttons_frame,
-            text="➡️ Next Step (Part Processing)",
+            text="Next Step (Part Processing)",
             command=self.open_part_processing_window,
             width=220,
             height=40,
@@ -470,6 +483,31 @@ class ContentAutomationGUI:
         if current_prompt:
             self.second_stage_prompt_text.insert("1.0", current_prompt)
 
+        # Chapter name section (right after prompt)
+        chapter_frame = ctk.CTkFrame(prompt_frame)
+        chapter_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            chapter_frame,
+            text="Chapter Name:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.second_stage_chapter_var = ctk.StringVar(value="درمان با UV")
+        chapter_entry = ctk.CTkEntry(
+            chapter_frame,
+            textvariable=self.second_stage_chapter_var,
+            width=400
+        )
+        chapter_entry.pack(anchor="w", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(
+            chapter_frame,
+            text="This name will automatically replace {CHAPTER_NAME} in your prompt.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
         # JSON selection section
         json_frame = ctk.CTkFrame(main_frame)
         json_frame.pack(fill="x", pady=(0, 20))
@@ -542,7 +580,7 @@ class ContentAutomationGUI:
 
         ctk.CTkLabel(
             inner_model_frame,
-            text="You can use a lighter model (مثل gemini-2.5-flash) برای پردازش سریع‌تر در مرحله دوم.",
+            text="You can use a lighter model (e.g., gemini-2.5-flash) for faster processing in the second stage.",
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 5))
@@ -570,9 +608,34 @@ class ContentAutomationGUI:
         )
         start_button.pack(side="left", padx=10, pady=10)
 
+        # View/Edit Stage 2 JSON button
         ctk.CTkButton(
             controls_frame,
-            text="✕ Close",
+            text="View/Edit Stage 2 JSON",
+            command=lambda: self.open_json_editor(self.last_post_processed_path),
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=13),
+        ).pack(side="left", padx=10, pady=10)
+
+        def open_third_stage():
+            window.destroy()
+            self.show_third_stage_window()
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Text Correction",
+            command=open_third_stage,
+            width=180,
+            height=40,
+            font=ctk.CTkFont(size=13),
+            fg_color="orange",
+            hover_color="darkorange",
+        ).pack(side="left", padx=10, pady=10)
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Close",
             command=window.destroy,
             width=100,
             height=40,
@@ -588,6 +651,11 @@ class ContentAutomationGUI:
             if not prompt:
                 messagebox.showerror("Error", "Please enter a prompt for second-stage processing.")
                 return
+
+            # Get chapter name and replace placeholder in prompt
+            chapter_name = self.second_stage_chapter_var.get().strip()
+            if "{CHAPTER_NAME}" in prompt:
+                prompt = prompt.replace("{CHAPTER_NAME}", chapter_name)
 
             json_path = self.second_stage_json_var.get().strip()
             if not json_path:
@@ -630,6 +698,9 @@ class ContentAutomationGUI:
             rows = final_data.get("rows", [])
             total_rows = len(rows)
             self.update_status(f"✓ Second-stage processing completed. Total rows: {total_rows}")
+            
+            # Store post-processed path for third stage
+            self.last_post_processed_path = final_path
 
             # Convert second-stage JSON rows to CSV rows and show as table
             csv_rows = self.json_rows_to_csv_rows_generic(rows)
@@ -662,6 +733,564 @@ class ContentAutomationGUI:
                 self.root.after(
                     0,
                     lambda: start_button.configure(state="normal", text="🚀 Start Part Processing")
+                )
+            except Exception:
+                pass
+
+    def show_third_stage_window(self):
+        """Show third stage window for text correction"""
+        window = ctk.CTkToplevel(self.root)
+        window.title("Third Stage - Text Correction")
+        window.geometry("900x800")
+        window.minsize(800, 700)
+
+        main_frame = ctk.CTkScrollableFrame(window)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Third Stage - Text Correction",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        )
+        title.pack(pady=(0, 20))
+
+        # First JSON (from stage 1)
+        json1_frame = ctk.CTkFrame(main_frame)
+        json1_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            json1_frame,
+            text="📄 First JSON (from Stage 1)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file1_frame = ctk.CTkFrame(json1_frame)
+        file1_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file1_frame,
+            text="JSON File (Stage 1):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.third_stage_json1_var = ctk.StringVar()
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            self.third_stage_json1_var.set(self.last_final_output_path)
+
+        json1_entry = ctk.CTkEntry(file1_frame, textvariable=self.third_stage_json1_var, width=400)
+        json1_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_json1():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 1 JSON file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.third_stage_json1_var.set(filename)
+
+        ctk.CTkButton(
+            file1_frame,
+            text="Browse",
+            command=browse_json1,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Second JSON (from stage 2)
+        json2_frame = ctk.CTkFrame(main_frame)
+        json2_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            json2_frame,
+            text="📄 Second JSON (from Stage 2)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file2_frame = ctk.CTkFrame(json2_frame)
+        file2_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file2_frame,
+            text="JSON File (Stage 2):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.third_stage_json2_var = ctk.StringVar()
+        if self.last_post_processed_path and os.path.exists(self.last_post_processed_path):
+            self.third_stage_json2_var.set(self.last_post_processed_path)
+
+        json2_entry = ctk.CTkEntry(file2_frame, textvariable=self.third_stage_json2_var, width=400)
+        json2_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_json2():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 2 JSON file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.third_stage_json2_var.set(filename)
+
+        ctk.CTkButton(
+            file2_frame,
+            text="Browse",
+            command=browse_json2,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Prompt section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="💬 Correction Prompt",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Enter the prompt for text correction. Both JSON files will be sent to the model.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        self.third_stage_prompt_text = ctk.CTkTextbox(prompt_frame, height=140)
+        self.third_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+
+        # Chapter name section (right after prompt)
+        chapter_frame = ctk.CTkFrame(prompt_frame)
+        chapter_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            chapter_frame,
+            text="Chapter Name:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.third_stage_chapter_var = ctk.StringVar(value="درمان با UV")
+        chapter_entry = ctk.CTkEntry(
+            chapter_frame,
+            textvariable=self.third_stage_chapter_var,
+            width=400
+        )
+        chapter_entry.pack(anchor="w", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(
+            chapter_frame,
+            text="This name will automatically replace {CHAPTER_NAME} in your prompt.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Start PointId section
+        ctk.CTkLabel(
+            chapter_frame,
+            text="Start PointId (e.g. 1050030000):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+
+        self.third_stage_pointid_var = ctk.StringVar(value="")
+        pointid_entry = ctk.CTkEntry(
+            chapter_frame,
+            textvariable=self.third_stage_pointid_var,
+            width=400
+        )
+        pointid_entry.pack(anchor="w", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(
+            chapter_frame,
+            text="If empty, a default starting PointId will be used.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+
+        # Model selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            model_frame,
+            text="🤖 Model Selection",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        inner_model_frame = ctk.CTkFrame(model_frame)
+        inner_model_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="Select Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.third_stage_model_var = ctk.StringVar(value=self.model_var.get())
+        self.third_stage_model_combo = ctk.CTkComboBox(
+            inner_model_frame,
+            values=APIConfig.TEXT_MODELS,
+            variable=self.third_stage_model_var,
+            width=400,
+        )
+        self.third_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Control buttons
+        controls_frame = ctk.CTkFrame(main_frame)
+        controls_frame.pack(fill="x", pady=(10, 10))
+
+        def start_third_stage():
+            start_button.configure(state="disabled", text="Processing...")
+            threading.Thread(
+                target=self.process_third_stage_worker,
+                args=(window, start_button),
+                daemon=True
+            ).start()
+
+        start_button = ctk.CTkButton(
+            controls_frame,
+            text="Start Text Correction",
+            command=start_third_stage,
+            width=220,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        start_button.pack(side="left", padx=10, pady=10)
+
+        # View/Edit Stage 3 JSON button
+        ctk.CTkButton(
+            controls_frame,
+            text="View/Edit Stage 3 JSON",
+            command=lambda: self.open_json_editor(self.last_corrected_path),
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=13),
+        ).pack(side="left", padx=10, pady=10)
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Close",
+            command=window.destroy,
+            width=100,
+            height=40,
+        ).pack(side="left", padx=10, pady=10)
+
+    def process_third_stage_worker(self, parent_window, start_button):
+        """Background worker for third stage text correction"""
+        try:
+            json1_path = self.third_stage_json1_var.get().strip()
+            json2_path = self.third_stage_json2_var.get().strip()
+            prompt = self.third_stage_prompt_text.get("1.0", tk.END).strip()
+            model_name = self.third_stage_model_var.get()
+
+            # Get chapter name and replace placeholder in prompt
+            chapter_name = self.third_stage_chapter_var.get().strip()
+            if "{CHAPTER_NAME}" in prompt:
+                prompt = prompt.replace("{CHAPTER_NAME}", chapter_name)
+
+            # Get starting PointId from user (optional)
+            start_pointid_str = self.third_stage_pointid_var.get().strip()
+            if not start_pointid_str:
+                # Default for single-chapter mode (can be adjusted)
+                start_pointid_str = "1050030000"
+
+            if not (start_pointid_str.isdigit() and len(start_pointid_str) == 10):
+                messagebox.showerror("Error", "Start PointId must be a 10-digit number, e.g. 1050030000.")
+                return
+
+            try:
+                book_id = int(start_pointid_str[0:3])
+                chapter_id_num = int(start_pointid_str[3:6])
+                start_index = int(start_pointid_str[6:10])
+            except ValueError:
+                messagebox.showerror("Error", "Start PointId format is invalid.")
+                return
+
+            # Validate inputs
+            if not json1_path or not os.path.exists(json1_path):
+                messagebox.showerror("Error", "Please select a valid Stage 1 JSON file.")
+                return
+
+            if not json2_path or not os.path.exists(json2_path):
+                messagebox.showerror("Error", "Please select a valid Stage 2 JSON file.")
+                return
+
+            if not prompt:
+                messagebox.showerror("Error", "Please enter a correction prompt.")
+                return
+
+            self.update_status("Loading JSON files...")
+
+            # Load JSON files
+            try:
+                with open(json1_path, "r", encoding="utf-8") as f:
+                    json1_data = json.load(f)
+                with open(json2_path, "r", encoding="utf-8") as f:
+                    json2_data = json.load(f)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load JSON files:\n{str(e)}")
+                return
+
+            self.update_status("Preparing prompt with JSON data...")
+
+            # Prepare combined prompt
+            json1_str = json.dumps(json1_data, ensure_ascii=False, indent=2)
+            json2_str = json.dumps(json2_data, ensure_ascii=False, indent=2)
+
+            full_prompt = f"""{prompt}
+
+First JSON (from Stage 1):
+{json1_str}
+
+Second JSON (from Stage 2):
+{json2_str}
+
+Please process both JSON files according to the prompt above and return the result as JSON."""
+
+            self.update_status(f"Processing with {model_name}...")
+
+            # Process with model
+            response = self.api_client.process_text(
+                text=full_prompt,
+                model_name=model_name,
+                temperature=0.7,
+                max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+            )
+
+            if not response:
+                self.update_status("❌ Text correction failed.")
+                messagebox.showerror("Error", "Text correction failed. Check logs for details.")
+                return
+
+            self.update_status("Parsing response...")
+
+            # Try to extract JSON from response
+            try:
+                # Clean response
+                cleaned = response.strip()
+                if cleaned.startswith('```'):
+                    end_idx = cleaned.find('```', 3)
+                    if end_idx > 0:
+                        cleaned = cleaned[3:end_idx].strip()
+                        if cleaned.startswith('json'):
+                            cleaned = cleaned[4:].strip()
+
+                result_data = json.loads(cleaned)
+            except json.JSONDecodeError:
+                # If not JSON, wrap in a structure
+                result_data = {
+                    "response": response,
+                    "processed_at": datetime.now().isoformat(),
+                    "model": model_name,
+                }
+
+            # Save raw result (for debugging, not shown to user)
+            base_name1 = os.path.splitext(os.path.basename(json1_path))[0]
+            base_name2 = os.path.splitext(os.path.basename(json2_path))[0]
+            raw_output_filename = f"{base_name1}_{base_name2}_corrected_raw.json"
+            raw_output_path = os.path.join(os.path.dirname(json1_path), raw_output_filename)
+
+            try:
+                with open(raw_output_path, "w", encoding="utf-8") as f:
+                    json.dump(result_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                self.logger.warning(f"Failed to save raw corrected JSON: {str(e)}")
+
+            # Post-process result_data into clean hierarchical structure with PointId
+            self.update_status("Post-processing corrected JSON into final structured output...")
+
+            def clean_label(text: str) -> str:
+                if not isinstance(text, str):
+                    return ""
+                prefixes = ["فصل:", "زیرفصل:", "مبحث:", "عنوان:", "زیرعنوان:"]
+                for pref in prefixes:
+                    if text.startswith(pref):
+                        return text[len(pref):].strip()
+                return text.strip()
+
+            def clean_point_text(text: str) -> str:
+                if not isinstance(text, str):
+                    return ""
+                return text.lstrip("•").strip()
+
+            # Determine inner structured JSON
+            inner = None
+            if isinstance(result_data, dict) and "chapter" in result_data and "content" in result_data:
+                inner = result_data
+            elif isinstance(result_data, dict) and isinstance(result_data.get("response"), str):
+                inner_text = result_data["response"].strip()
+
+                # Remove markdown code fences if present
+                # Handle cases like: ```json\n{...}\n``` or ```\n{...}\n```
+                if "```" in inner_text:
+                    # Find all code fence positions
+                    fence_positions = []
+                    idx = 0
+                    while True:
+                        pos = inner_text.find("```", idx)
+                        if pos == -1:
+                            break
+                        fence_positions.append(pos)
+                        idx = pos + 3
+                    
+                    # If we have at least 2 fences, extract content between first and last
+                    if len(fence_positions) >= 2:
+                        start_fence = fence_positions[0] + 3  # After first ```
+                        end_fence = fence_positions[-1]  # Before last ```
+                        inner_text = inner_text[start_fence:end_fence].strip()
+                
+                # Remove leading "json" identifier if present
+                if inner_text.lower().startswith("json"):
+                    inner_text = inner_text[4:].strip()
+
+                # Try multiple strategies to parse JSON
+                inner = None
+                
+                # Strategy 1: Direct JSON parse
+                try:
+                    inner = json.loads(inner_text)
+                except Exception as e1:
+                    # Strategy 2: Extract first {...} block (most reliable)
+                    try:
+                        start = inner_text.find("{")
+                        end = inner_text.rfind("}")
+                        if start != -1 and end != -1 and end > start:
+                            candidate = inner_text[start:end + 1]
+                            inner = json.loads(candidate)
+                        else:
+                            self.logger.warning(f"Could not find JSON boundaries. Start: {start}, End: {end}")
+                    except Exception as e2:
+                        self.logger.error(f"Failed to parse JSON from response. Direct parse error: {str(e1)}, Extract parse error: {str(e2)}")
+                        inner = None
+
+            if not isinstance(inner, dict) or "content" not in inner:
+                # Fallback: show raw JSON if we cannot interpret structure
+                error_msg = "Could not parse hierarchical structure from model response."
+                if inner is None:
+                    error_msg += "\n\nReason: Failed to extract JSON from response string."
+                elif not isinstance(inner, dict):
+                    error_msg += f"\n\nReason: Extracted data is not a dictionary (type: {type(inner).__name__})."
+                elif "content" not in inner:
+                    error_msg += f"\n\nReason: Missing 'content' field in extracted JSON. Available keys: {list(inner.keys())[:5]}"
+                
+                self.update_status(f"Warning: {error_msg}")
+                self.logger.warning(error_msg)
+                
+                output_filename = f"{base_name1}_{base_name2}_corrected.json"
+                output_path = os.path.join(os.path.dirname(json1_path), output_filename)
+                try:
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(result_data, f, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    self.logger.error(f"Failed to save fallback corrected JSON: {str(e)}")
+
+                self.last_corrected_path = output_path
+                response_text = json.dumps(result_data, ensure_ascii=False, indent=2)
+                self.show_response_window(response_text, output_path, False, True)
+                messagebox.showwarning("Warning", f"{error_msg}\n\nRaw JSON saved to:\n{output_path}")
+                return
+
+            chapter_internal = inner.get("chapter", chapter_name)
+            content = inner.get("content", [])
+
+            flat_rows = []
+
+            def walk(node, lvl1=None, lvl2=None, lvl3=None, lvl4=None):
+                l1 = lvl1
+                l2 = lvl2
+                l3 = lvl3
+                l4 = lvl4
+
+                if "level_1" in node:
+                    l1 = clean_label(node["level_1"])
+                if "level_2" in node:
+                    l2 = clean_label(node["level_2"])
+                if "level_3" in node:
+                    l3 = clean_label(node["level_3"])
+                if "level_4" in node:
+                    l4 = clean_label(node["level_4"])
+
+                if "level_5" in node:
+                    subsub = clean_label(node["level_5"])
+                    for p in node.get("points", []):
+                        flat_rows.append({
+                            "chapter": chapter_internal,
+                            "subchapter": l2 or "",
+                            "topic": l3 or "",
+                            "subtopic": l4 or "",
+                            "subsubtopic": subsub,
+                            "points": clean_point_text(p),
+                        })
+
+                for child in node.get("children", []):
+                    if isinstance(child, dict):
+                        walk(child, l1, l2, l3, l4)
+
+            for item in content:
+                if isinstance(item, dict):
+                    walk(item, None, None, None, None)
+
+            if not flat_rows:
+                self.update_status("Warning: No points extracted from corrected JSON. Showing raw JSON.")
+                output_filename = f"{base_name1}_{base_name2}_corrected.json"
+                output_path = os.path.join(os.path.dirname(json1_path), output_filename)
+                try:
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(result_data, f, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    self.logger.error(f"Failed to save fallback corrected JSON: {str(e)}")
+
+                self.last_corrected_path = output_path
+                response_text = json.dumps(result_data, ensure_ascii=False, indent=2)
+                self.show_response_window(response_text, output_path, False, True)
+                messagebox.showinfo("Warning", f"No structured points found. Raw JSON saved to:\n{output_path}")
+                return
+
+            # Generate PointId for each row
+            current_index = start_index
+            for row in flat_rows:
+                point_id = f"{book_id:03d}{chapter_id_num:03d}{current_index:04d}"
+                row["PointId"] = point_id
+                current_index += 1
+
+            # Build final clean JSON
+            clean_output = {
+                "metadata": {
+                    "chapter": chapter_internal,
+                    "book_id": book_id,
+                    "chapter_id": chapter_id_num,
+                    "start_point_index": start_index,
+                    "total_points": len(flat_rows),
+                    "processed_at": datetime.now().isoformat(),
+                    "source_stage1": os.path.basename(json1_path),
+                    "source_stage2": os.path.basename(json2_path),
+                    "model": model_name,
+                },
+                "points": flat_rows,
+            }
+
+            # Save clean output
+            output_filename = f"{base_name1}_{base_name2}_corrected.json"
+            output_path = os.path.join(os.path.dirname(json1_path), output_filename)
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(clean_output, f, ensure_ascii=False, indent=2)
+
+            self.update_status(f"✓ Text correction completed. Final structured JSON saved to: {output_path}")
+
+            # Store corrected JSON path for later editing
+            self.last_corrected_path = output_path
+
+            # Display clean result
+            response_text = json.dumps(clean_output, ensure_ascii=False, indent=2)
+            self.show_response_window(response_text, output_path, False, True)
+
+            messagebox.showinfo("Success", f"Text correction completed!\n\nFinal JSON saved to:\n{output_path}")
+
+        except Exception as e:
+            self.logger.error(f"Error in third-stage processing: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"Text correction error:\n{str(e)}")
+        finally:
+            try:
+                self.root.after(
+                    0,
+                    lambda: start_button.configure(state="normal", text="🚀 Start Text Correction")
                 )
             except Exception:
                 pass
@@ -1158,12 +1787,133 @@ class ContentAutomationGUI:
                      width=120).pack(side="left", padx=5)
         
         # Close button
-        ctk.CTkButton(buttons_frame, text="✕ Close", command=response_window.destroy,
+        ctk.CTkButton(buttons_frame, text="Close", command=response_window.destroy,
                      width=100).pack(side="left", padx=5)
         
         # Store reference to update saved path later if needed
         response_window._saved_label = saved_label
         response_window._saved_path = saved_path
+
+    def open_json_editor(self, json_path: Optional[str] = None):
+        """
+        Open a JSON editor window for a given JSON file.
+        If json_path is None or invalid, ask user to select a JSON file.
+        """
+        try:
+            if not json_path or not os.path.exists(json_path):
+                json_path = filedialog.askopenfilename(
+                    title="Select JSON file",
+                    filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+                )
+                if not json_path or not os.path.exists(json_path):
+                    messagebox.showwarning("File Not Found", "No valid JSON file selected.")
+                    return
+
+            # Load JSON content
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                json_text = json.dumps(data, ensure_ascii=False, indent=2)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load JSON file:\n{str(e)}")
+                return
+
+            # Create editor window
+            editor = ctk.CTkToplevel(self.root)
+            editor.title(f"JSON Editor - {os.path.basename(json_path)}")
+            editor.geometry("1000x800")
+
+            # Path label
+            path_label = ctk.CTkLabel(
+                editor,
+                text=f"File: {json_path}",
+                font=ctk.CTkFont(size=11),
+                text_color="gray",
+            )
+            path_label.pack(pady=(10, 5))
+
+            # Textbox
+            text_frame = ctk.CTkFrame(editor)
+            text_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+            text_widget = ctk.CTkTextbox(
+                text_frame,
+                height=600,
+                wrap="word",
+                font=self.farsi_text_font,
+            )
+            text_widget.pack(fill="both", expand=True)
+            text_widget.insert("1.0", json_text)
+
+            # Buttons
+            button_frame = ctk.CTkFrame(editor)
+            button_frame.pack(pady=10)
+
+            def save_json():
+                content = text_widget.get("1.0", tk.END).strip()
+                if not content:
+                    messagebox.showerror("Error", "JSON content is empty.")
+                    return
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError as e:
+                    messagebox.showerror("JSON Error", f"Invalid JSON:\n{str(e)}")
+                    return
+                try:
+                    with open(json_path, "w", encoding="utf-8") as f:
+                        json.dump(parsed, f, ensure_ascii=False, indent=2)
+                    messagebox.showinfo("Saved", f"JSON saved to:\n{json_path}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to save JSON:\n{str(e)}")
+
+            def save_as_json():
+                content = text_widget.get("1.0", tk.END).strip()
+                if not content:
+                    messagebox.showerror("Error", "JSON content is empty.")
+                    return
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError as e:
+                    messagebox.showerror("JSON Error", f"Invalid JSON:\n{str(e)}")
+                    return
+                filename = filedialog.asksaveasfilename(
+                    title="Save JSON As",
+                    defaultextension=".json",
+                    filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+                )
+                if not filename:
+                    return
+                try:
+                    with open(filename, "w", encoding="utf-8") as f:
+                        json.dump(parsed, f, ensure_ascii=False, indent=2)
+                    messagebox.showinfo("Saved", f"JSON saved to:\n{filename}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to save JSON:\n{str(e)}")
+
+            ctk.CTkButton(
+                button_frame,
+                text="Save",
+                command=save_json,
+                width=120,
+            ).pack(side="left", padx=5)
+
+            ctk.CTkButton(
+                button_frame,
+                text="Save As...",
+                command=save_as_json,
+                width=120,
+            ).pack(side="left", padx=5)
+
+            ctk.CTkButton(
+                button_frame,
+                text="Close",
+                command=editor.destroy,
+                width=100,
+            ).pack(side="left", padx=5)
+
+        except Exception as e:
+            self.logger.error(f"Error opening JSON editor: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"Could not open JSON editor:\n{str(e)}")
     
     def show_json_table(self, parent_window, json_rows: List[Dict[str, Any]]):
         """Display JSON data as a table using Treeview"""
