@@ -10,7 +10,7 @@ NOTE:
 import json
 import logging
 import os
-from datetime import datetime
+import re
 from typing import Dict, Any, List, Optional
 
 
@@ -25,96 +25,6 @@ class MultiPartPostProcessor:
         self.api_client = api_client
         self.logger = logging.getLogger(__name__)
 
-    def _clean_json_text(self, text: str) -> str:
-        """Remove markdown fences and return raw JSON text candidate."""
-        if not text:
-            return ""
-
-        cleaned = text.strip()
-        
-        # Handle markdown code fences: ```json\n{...}\n``` or ```\n{...}\n```
-        if "```" in cleaned:
-            # Find all code fence positions
-            fence_positions = []
-            idx = 0
-            while True:
-                pos = cleaned.find("```", idx)
-                if pos == -1:
-                    break
-                fence_positions.append(pos)
-                idx = pos + 3
-            
-            # If we have at least 2 fences, extract content between first and last
-            if len(fence_positions) >= 2:
-                start_fence = fence_positions[0] + 3  # After first ```
-                end_fence = fence_positions[-1]  # Before last ```
-                cleaned = cleaned[start_fence:end_fence].strip()
-        
-        # Remove leading "json" identifier if present
-        if cleaned.lower().startswith("json"):
-            cleaned = cleaned[4:].strip()
-        
-        return cleaned
-
-    def _parse_json_response(self, response_text: str) -> Optional[List[Dict[str, Any]]]:
-        """
-        Parse the model response which is expected to be JSON with six columns per row.
-
-        Returns a list of dict rows, or None on failure.
-        """
-        if not response_text:
-            return None
-
-        cleaned = self._clean_json_text(response_text)
-        
-        # Try multiple strategies to parse JSON
-        data = None
-        
-        # Strategy 1: Direct JSON parse
-        try:
-            data = json.loads(cleaned)
-        except json.JSONDecodeError as e1:
-            # Strategy 2: Extract first {...} or [...] block
-            try:
-                # Try to find JSON object
-                start_obj = cleaned.find("{")
-                end_obj = cleaned.rfind("}")
-                # Try to find JSON array
-                start_arr = cleaned.find("[")
-                end_arr = cleaned.rfind("]")
-                
-                # Use whichever is found and valid
-                if start_obj != -1 and end_obj != -1 and end_obj > start_obj:
-                    candidate = cleaned[start_obj:end_obj + 1]
-                    data = json.loads(candidate)
-                elif start_arr != -1 and end_arr != -1 and end_arr > start_arr:
-                    candidate = cleaned[start_arr:end_arr + 1]
-                    data = json.loads(candidate)
-                else:
-                    self.logger.error("Failed to parse JSON response in post-processor")
-                    self.logger.debug(f"Could not find JSON boundaries. Response text (first 500 chars): {cleaned[:500]}")
-                    self.logger.debug(f"Direct parse error: {str(e1)}")
-                    return None
-            except json.JSONDecodeError as e2:
-                self.logger.error("Failed to parse JSON response in post-processor")
-                self.logger.debug(f"Response text (first 500 chars): {cleaned[:500]}")
-                self.logger.debug(f"Direct parse error: {str(e1)}, Extract parse error: {str(e2)}")
-                return None
-
-        # Normalize to list of dicts
-        if isinstance(data, dict):
-            return [data]
-        if isinstance(data, list):
-            rows: List[Dict[str, Any]] = []
-            for item in data:
-                if isinstance(item, dict):
-                    rows.append(item)
-                else:
-                    rows.append({"value": item})
-            return rows
-
-        # Fallback: wrap scalar
-        return [{"value": data}]
 
     def process_final_json_by_parts(
         self,
@@ -139,6 +49,7 @@ class MultiPartPostProcessor:
             self.logger.error(f"JSON file not found: {json_path}")
             return None
 
+        self.logger.info(f"Loading input JSON file: {json_path}")
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -151,6 +62,7 @@ class MultiPartPostProcessor:
             self.logger.error("Input JSON has no rows to process")
             return None
 
+        self.logger.info(f"Found {len(rows)} rows in input JSON. Grouping by Part...")
         # Group rows by Part
         parts: Dict[int, List[Dict[str, Any]]] = {}
         for row in rows:
@@ -169,7 +81,8 @@ class MultiPartPostProcessor:
             return None
 
         sorted_parts = sorted(parts.keys())
-        all_output_rows: List[Dict[str, Any]] = []
+        self.logger.info(f"Processing {len(sorted_parts)} parts: {sorted_parts}")
+        all_responses: List[str] = []
 
         for part_num in sorted_parts:
             part_rows = parts[part_num]
@@ -179,67 +92,168 @@ class MultiPartPostProcessor:
             # Build text payload: just the JSON for this part
             part_json_text = json.dumps(part_rows, ensure_ascii=False, indent=2)
 
-            # System prompt includes user's instructions plus part context
-            system_prompt = (
-                f"{user_prompt}\n\n"
-                f"داده‌های زیر مربوط به Part {part_num} هستند. "
-                f"خروجی را فقط به صورت JSON آرایه‌ای از ردیف‌ها برگردان، "
-                f"شامل شش ستون مورد نظر."
-            )
-
-            self.logger.info(f"Processing Part {part_num} with second-stage prompt...")
+            # Use only user's prompt, no additions
+            self.logger.info(f"Processing Part {part_num} ({len(part_rows)} rows) with second-stage prompt...")
             response_text = self.api_client.process_text(
                 text=part_json_text,
-                system_prompt=system_prompt,
+                system_prompt=user_prompt,
                 model_name=model_name,
             )
 
             if not response_text:
-                self.logger.error(f"No response for Part {part_num}, aborting post-process")
+                self.logger.error(f"No response received for Part {part_num}, aborting post-process")
                 return None
 
-            parsed_rows = self._parse_json_response(response_text)
-            if not parsed_rows:
-                self.logger.error(f"Failed to parse JSON for Part {part_num}, aborting")
-                return None
+            self.logger.info(f"Part {part_num} processed successfully. Response length: {len(response_text)} characters")
+            # Store response as-is (no parsing, no conversion)
+            all_responses.append(response_text)
 
-            # Attach Part info back if not present
-            for r in parsed_rows:
-                if "Part" not in r:
-                    r["Part"] = part_num
-                all_output_rows.append(r)
-
-        if not all_output_rows:
-            self.logger.error("No rows produced by second-stage processing")
+        if not all_responses:
+            self.logger.error("No responses produced by second-stage processing")
             return None
 
-        # Build final combined JSON
-        timestamp = datetime.now().isoformat()
-        input_name = os.path.basename(json_path)
-        final_output: Dict[str, Any] = {
-            "metadata": {
-                "source_json": input_name,
-                "total_parts": len(sorted_parts),
-                "total_rows": len(all_output_rows),
-                "processed_at": timestamp,
-                "model": model_name,
-            },
-            "rows": all_output_rows,
-        }
+        # Combine all responses
+        self.logger.info("Combining responses from all parts...")
+        combined_response = "\n\n".join(all_responses)
 
+        # Extract JSON blocks and convert to JSON
+        self.logger.info("Extracting JSON blocks from responses...")
+        json_data = self._extract_and_combine_json_blocks(combined_response)
+        if not json_data:
+            self.logger.error("Failed to extract JSON from responses")
+            return None
+
+        # Save as JSON
         base_dir = os.path.dirname(json_path) or os.getcwd()
+        input_name = os.path.basename(json_path)
         base_name, _ = os.path.splitext(input_name)
-        final_filename = f"{base_name}_post_processed.json"
-        final_path = os.path.join(base_dir, final_filename)
+        # Stage 2 output naming: append explicit stage suffix
+        json_filename = f"{base_name}_stage2.json"
+        json_path_final = os.path.join(base_dir, json_filename)
 
         try:
-            with open(final_path, "w", encoding="utf-8") as f:
-                json.dump(final_output, f, ensure_ascii=False, indent=2)
-            self.logger.info(f"Post-processed JSON saved to: {final_path}")
-            return final_path
+            self.logger.info(f"Saving post-processed JSON to: {json_path_final}")
+            with open(json_path_final, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Post-processed JSON saved successfully: {json_path_final}")
+            return json_path_final
         except Exception as e:
             self.logger.error(f"Failed to save post-processed JSON: {e}")
             return None
+
+    def _extract_and_combine_json_blocks(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Extract JSON blocks from text (between ```json and ```) and combine them.
+        
+        Returns:
+            Combined JSON structure or None on error
+        """
+        if not text:
+            return None
+
+        json_blocks = []
+        
+        # Find all JSON blocks between ```json and ```
+        pattern = r'```json\s*(.*?)\s*```'
+        matches = re.findall(pattern, text, re.DOTALL)
+        
+        if not matches:
+            # Try without json identifier
+            pattern = r'```\s*(.*?)\s*```'
+            matches = re.findall(pattern, text, re.DOTALL)
+        
+        self.logger.info(f"Found {len(matches)} JSON block(s) in responses")
+        for i, match in enumerate(matches, 1):
+            json_str = match.strip()
+            if not json_str:
+                continue
+            
+            try:
+                json_obj = json.loads(json_str)
+                json_blocks.append(json_obj)
+                self.logger.debug(f"Successfully parsed JSON block {i}/{len(matches)}")
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"Failed to parse JSON block {i}/{len(matches)}: {str(e)}. Attempting fallback extraction...")
+                # Try to find JSON object/array in the text
+                start_obj = json_str.find("{")
+                start_arr = json_str.find("[")
+                
+                if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+                    end_obj = json_str.rfind("}")
+                    if end_obj > start_obj:
+                        try:
+                            candidate = json_str[start_obj:end_obj + 1]
+                            json_obj = json.loads(candidate)
+                            json_blocks.append(json_obj)
+                            self.logger.debug(f"Successfully extracted JSON object from block {i} using fallback method")
+                        except json.JSONDecodeError:
+                            self.logger.warning(f"Fallback extraction failed for block {i}")
+                            pass
+                elif start_arr != -1:
+                    end_arr = json_str.rfind("]")
+                    if end_arr > start_arr:
+                        try:
+                            candidate = json_str[start_arr:end_arr + 1]
+                            json_obj = json.loads(candidate)
+                            json_blocks.append(json_obj)
+                            self.logger.debug(f"Successfully extracted JSON array from block {i} using fallback method")
+                        except json.JSONDecodeError:
+                            self.logger.warning(f"Fallback extraction failed for block {i}")
+                            pass
+        
+        if not json_blocks:
+            self.logger.error("No valid JSON blocks found in responses")
+            return None
+        
+        self.logger.info(f"Successfully extracted {len(json_blocks)} valid JSON block(s)")
+        
+        # Combine all JSON blocks
+        self.logger.info("Combining JSON blocks into final structure...")
+        # If all blocks have the same structure (chapter + content), combine content arrays
+        combined_content = []
+        combined_chapter = None
+        
+        for i, block in enumerate(json_blocks, 1):
+            if isinstance(block, dict):
+                # Check if it has chapter and content structure
+                if "chapter" in block and "content" in block:
+                    block_chapter = block.get("chapter")
+                    if combined_chapter is None:
+                        combined_chapter = block_chapter
+                        self.logger.debug(f"Block {i}: Using chapter '{combined_chapter}'")
+                    elif combined_chapter != block_chapter:
+                        self.logger.warning(f"Block {i}: Different chapter '{block_chapter}' (expected '{combined_chapter}'). Keeping both.")
+                    
+                    content = block.get("content", [])
+                    if isinstance(content, list):
+                        combined_content.extend(content)
+                        self.logger.debug(f"Block {i}: Added {len(content)} content items (total: {len(combined_content)})")
+                else:
+                    # Different structure, add as-is
+                    combined_content.append(block)
+                    self.logger.debug(f"Block {i}: Added as-is (different structure)")
+            else:
+                # Not a dict, add as-is
+                combined_content.append(block)
+                self.logger.debug(f"Block {i}: Added as-is (not a dict)")
+        
+        # Build final JSON structure
+        if combined_chapter:
+            result = {
+                "chapter": combined_chapter,
+                "content": combined_content
+            }
+            self.logger.info(f"Final structure: chapter '{combined_chapter}' with {len(combined_content)} content items")
+        else:
+            # If no chapter structure, return as array or object
+            if len(combined_content) == 1:
+                result = combined_content[0]
+                self.logger.info("Final structure: single object (no chapter structure)")
+            else:
+                result = combined_content
+                self.logger.info(f"Final structure: array with {len(combined_content)} items (no chapter structure)")
+        
+        return result
 
 
 

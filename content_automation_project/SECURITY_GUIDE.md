@@ -132,3 +132,6 @@ export GEMINI_API_KEY_2="your-api-key-2"
 - ❌ فایل CSV را به repository push نکنید
 - ❌ فایل CSV را به کسی ارسال نکنید
 
+
+
+

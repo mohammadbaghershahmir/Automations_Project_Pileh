@@ -62,7 +62,9 @@ class ContentAutomationGUI:
         self.use_custom_prompt = False
         self.last_final_output_path = None       # Stage 1 JSON
         self.last_post_processed_path = None     # Stage 2 JSON
-        self.last_corrected_path = None          # Stage 3 JSON
+        self.last_corrected_path = None          # Stage 3 JSON (with PointId)
+        self.last_stage3_raw_path = None         # Stage 3 raw JSON (new intermediate stage)
+        self.last_stage4_raw_path = None         # Stage 4 raw JSON (chunked model output)
         
         # Setup UI
         self.setup_ui()
@@ -619,12 +621,13 @@ class ContentAutomationGUI:
         ).pack(side="left", padx=10, pady=10)
 
         def open_third_stage():
+            # Go to new Stage 3 form (between Stage 2 and Text Correction)
             window.destroy()
-            self.show_third_stage_window()
+            self.show_third_stage_mid_window()
 
         ctk.CTkButton(
             controls_frame,
-            text="Text Correction",
+            text="Next Stage (Stage 3)",
             command=open_third_stage,
             width=180,
             height=40,
@@ -682,47 +685,41 @@ class ContentAutomationGUI:
             )
 
             if not final_path or not os.path.exists(final_path):
-                self.update_status("❌ Second-stage part processing failed.")
+                self.update_status("Second-stage part processing failed.")
                 messagebox.showerror("Error", "Second-stage part processing failed. Check logs for details.")
                 return
 
-            # Load and display final combined JSON
+            # Load and display final output (JSON if available, otherwise text)
             try:
-                with open(final_path, "r", encoding="utf-8") as f:
-                    final_data = json.load(f)
+                if final_path.endswith('.json'):
+                    # Load JSON and display
+                    with open(final_path, "r", encoding="utf-8") as f:
+                        final_data = json.load(f)
+                    
+                    self.update_status(f"✓ Second-stage processing completed.")
+                    
+                    # Store post-processed path for third stage
+                    self.last_post_processed_path = final_path
+                    
+                    # Display as formatted JSON
+                    response_text = json.dumps(final_data, ensure_ascii=False, indent=2)
+                    self.show_response_window(response_text, final_path, False, True)
+                else:
+                    # Load as text
+                    with open(final_path, "r", encoding="utf-8") as f:
+                        response_text = f.read()
+                    
+                    self.update_status(f"✓ Second-stage processing completed.")
+                    
+                    # Store post-processed path for third stage
+                    self.last_post_processed_path = final_path
+                    
+                    # Show raw response text as-is
+                    self.show_response_window(response_text, final_path, False, False)
             except Exception as e:
-                self.update_status(f"Error loading post-processed JSON: {str(e)}")
-                messagebox.showerror("Error", f"Failed to load post-processed JSON:\n{str(e)}")
+                self.update_status(f"Error loading post-processed output: {str(e)}")
+                messagebox.showerror("Error", f"Failed to load post-processed output:\n{str(e)}")
                 return
-
-            rows = final_data.get("rows", [])
-            total_rows = len(rows)
-            self.update_status(f"✓ Second-stage processing completed. Total rows: {total_rows}")
-            
-            # Store post-processed path for third stage
-            self.last_post_processed_path = final_path
-
-            # Convert second-stage JSON rows to CSV rows and show as table
-            csv_rows = self.json_rows_to_csv_rows_generic(rows)
-            if csv_rows:
-                csv_window = ctk.CTkToplevel(self.root)
-                base_name = os.path.basename(final_path)
-                csv_window.title(f"Second-Stage CSV View - {base_name}")
-                csv_window.geometry("1200x700")
-                csv_window.minsize(800, 500)
-
-                self.show_csv_table(csv_window, csv_rows)
-
-                info_label = ctk.CTkLabel(
-                    csv_window,
-                    text=f"Displaying {len(csv_rows) - 1} rows from {base_name}",
-                    font=ctk.CTkFont(size=12),
-                )
-                info_label.pack(pady=5)
-            else:
-                # Fallback: show raw JSON if conversion failed
-                response_text = json.dumps(final_data, ensure_ascii=False, indent=2)
-                self.show_response_window(response_text, final_path, False, True)
 
         except Exception as e:
             self.logger.error(f"Error in second-stage processing: {str(e)}", exc_info=True)
@@ -737,10 +734,10 @@ class ContentAutomationGUI:
             except Exception:
                 pass
 
-    def show_third_stage_window(self):
-        """Show third stage window for text correction"""
+    def show_third_stage_mid_window(self):
+        """Show new third stage window (between Stage 2 and Text Correction)"""
         window = ctk.CTkToplevel(self.root)
-        window.title("Third Stage - Text Correction")
+        window.title("Third Stage - Pre Text Processing")
         window.geometry("900x800")
         window.minsize(800, 700)
 
@@ -749,7 +746,200 @@ class ContentAutomationGUI:
 
         title = ctk.CTkLabel(
             main_frame,
-            text="Third Stage - Text Correction",
+            text="Third Stage - Pre Text Processing",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        )
+        title.pack(pady=(0, 20))
+
+        # First JSON (from stage 1)
+        json1_frame = ctk.CTkFrame(main_frame)
+        json1_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            json1_frame,
+            text="📄 First JSON (from Stage 1)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file1_frame = ctk.CTkFrame(json1_frame)
+        file1_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file1_frame,
+            text="JSON File (Stage 1):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.stage3_json1_var = ctk.StringVar()
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            self.stage3_json1_var.set(self.last_final_output_path)
+
+        json1_entry = ctk.CTkEntry(file1_frame, textvariable=self.stage3_json1_var, width=400)
+        json1_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_stage3_json1():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 1 JSON file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.stage3_json1_var.set(filename)
+
+        ctk.CTkButton(
+            file1_frame,
+            text="Browse",
+            command=browse_stage3_json1,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Second JSON (from stage 2)
+        json2_frame = ctk.CTkFrame(main_frame)
+        json2_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            json2_frame,
+            text="📄 Second JSON (from Stage 2)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file2_frame = ctk.CTkFrame(json2_frame)
+        file2_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file2_frame,
+            text="JSON File (Stage 2):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.stage3_json2_var = ctk.StringVar()
+        if self.last_post_processed_path and os.path.exists(self.last_post_processed_path):
+            self.stage3_json2_var.set(self.last_post_processed_path)
+
+        json2_entry = ctk.CTkEntry(file2_frame, textvariable=self.stage3_json2_var, width=400)
+        json2_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_stage3_json2():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 2 JSON file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.stage3_json2_var.set(filename)
+
+        ctk.CTkButton(
+            file2_frame,
+            text="Browse",
+            command=browse_stage3_json2,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Prompt section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="💬 Third-Stage Prompt",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Enter the prompt for Stage 3 processing. Both JSON files will be sent to the model.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        self.stage3_prompt_text = ctk.CTkTextbox(prompt_frame, height=160)
+        self.stage3_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+
+        # Model selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            model_frame,
+            text="🤖 Model Selection (Stage 3)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        inner_model_frame = ctk.CTkFrame(model_frame)
+        inner_model_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="Select Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.stage3_model_var = ctk.StringVar(value=self.model_var.get())
+        self.stage3_model_combo = ctk.CTkComboBox(
+            inner_model_frame,
+            values=APIConfig.TEXT_MODELS,
+            variable=self.stage3_model_var,
+            width=400,
+        )
+        self.stage3_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Control buttons
+        controls_frame = ctk.CTkFrame(main_frame)
+        controls_frame.pack(fill="x", pady=(10, 10))
+
+        def start_stage3():
+            start_button.configure(state="disabled", text="Processing...")
+            threading.Thread(
+                target=self.process_third_stage_mid_worker,
+                args=(window, start_button),
+                daemon=True
+            ).start()
+
+        start_button = ctk.CTkButton(
+            controls_frame,
+            text="Run Stage 3 Processing",
+            command=start_stage3,
+            width=240,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        start_button.pack(side="left", padx=10, pady=10)
+
+        # Button to go to Text Correction (Stage 4)
+        def open_stage4():
+            window.destroy()
+            self.show_third_stage_window()
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Text Correction (Stage 4)",
+            command=open_stage4,
+            width=220,
+            height=40,
+            font=ctk.CTkFont(size=13),
+            fg_color="orange",
+            hover_color="darkorange",
+        ).pack(side="left", padx=10, pady=10)
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Close",
+            command=window.destroy,
+            width=100,
+            height=40,
+        ).pack(side="left", padx=10, pady=10)
+
+    def show_third_stage_window(self):
+        """Show fourth stage window for text correction (was third stage)"""
+        window = ctk.CTkToplevel(self.root)
+        window.title("Fourth Stage - Text Correction")
+        window.geometry("900x800")
+        window.minsize(800, 700)
+
+        main_frame = ctk.CTkScrollableFrame(window)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Fourth Stage - Text Correction",
             font=ctk.CTkFont(size=22, weight="bold"),
         )
         title.pack(pady=(0, 20))
@@ -801,7 +991,7 @@ class ContentAutomationGUI:
 
         ctk.CTkLabel(
             json2_frame,
-            text="📄 Second JSON (from Stage 2)",
+            text="📄 Second JSON (from Stage 3)",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(15, 10))
 
@@ -810,7 +1000,7 @@ class ContentAutomationGUI:
 
         ctk.CTkLabel(
             file2_frame,
-            text="JSON File (Stage 2):",
+            text="JSON File (Stage 3):",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
 
@@ -963,6 +1153,22 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=13),
         ).pack(side="left", padx=10, pady=10)
 
+        # Go to Stage 4 form
+        def open_fourth_stage():
+            window.destroy()
+            self.show_fourth_stage_window()
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Next Form (Stage 4)",
+            command=open_fourth_stage,
+            width=180,
+            height=40,
+            font=ctk.CTkFont(size=13),
+            fg_color="orange",
+            hover_color="darkorange",
+        ).pack(side="left", padx=10, pady=10)
+
         ctk.CTkButton(
             controls_frame,
             text="Close",
@@ -1027,60 +1233,39 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", f"Failed to load JSON files:\n{str(e)}")
                 return
 
-            self.update_status("Preparing prompt with JSON data...")
+            self.update_status("Preparing chunked third-stage processing...")
 
-            # Prepare combined prompt
-            json1_str = json.dumps(json1_data, ensure_ascii=False, indent=2)
-            json2_str = json.dumps(json2_data, ensure_ascii=False, indent=2)
+            # Use chunked third-stage processor according to the new prompt specification
+            from third_stage_chunk_processor import run_third_stage_chunked
 
-            full_prompt = f"""{prompt}
-
-First JSON (from Stage 1):
-{json1_str}
-
-Second JSON (from Stage 2):
-{json2_str}
-
-Please process both JSON files according to the prompt above and return the result as JSON."""
-
-            self.update_status(f"Processing with {model_name}...")
-
-            # Process with model
-            response = self.api_client.process_text(
-                text=full_prompt,
+            # At this point, 'prompt' already has {CHAPTER_NAME} replaced (see above)
+            final_structured_json = run_third_stage_chunked(
+                api_client=self.api_client,
+                json1_data=json1_data,
+                json2_data=json2_data,
+                base_prompt=prompt,
+                chapter_name=chapter_name,
                 model_name=model_name,
-                temperature=0.7,
-                max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+                progress_callback=self.update_status,
+                stage_name="third",
             )
 
-            if not response:
-                self.update_status("❌ Text correction failed.")
-                messagebox.showerror("Error", "Text correction failed. Check logs for details.")
+            if not final_structured_json:
+                self.update_status("❌ Third-stage chunked processing failed.")
+                messagebox.showerror(
+                    "Error",
+                    "Third-stage chunked processing failed. Please check the logs for details.",
+                )
                 return
 
-            self.update_status("Parsing response...")
+            # Wrap final structured JSON in a result_data structure compatible with the converter
+            result_data = {
+                "response": json.dumps(final_structured_json, ensure_ascii=False, indent=2),
+                "processed_at": datetime.now().isoformat(),
+                "model": model_name,
+            }
 
-            # Try to extract JSON from response
-            try:
-                # Clean response
-                cleaned = response.strip()
-                if cleaned.startswith('```'):
-                    end_idx = cleaned.find('```', 3)
-                    if end_idx > 0:
-                        cleaned = cleaned[3:end_idx].strip()
-                        if cleaned.startswith('json'):
-                            cleaned = cleaned[4:].strip()
-
-                result_data = json.loads(cleaned)
-            except json.JSONDecodeError:
-                # If not JSON, wrap in a structure
-                result_data = {
-                    "response": response,
-                    "processed_at": datetime.now().isoformat(),
-                    "model": model_name,
-                }
-
-            # Save raw result (for debugging, not shown to user)
+            # Save raw result (for debugging)
             base_name1 = os.path.splitext(os.path.basename(json1_path))[0]
             base_name2 = os.path.splitext(os.path.basename(json2_path))[0]
             raw_output_filename = f"{base_name1}_{base_name2}_corrected_raw.json"
@@ -1094,6 +1279,36 @@ Please process both JSON files according to the prompt above and return the resu
 
             # Post-process result_data into clean hierarchical structure with PointId
             self.update_status("Post-processing corrected JSON into final structured output...")
+            
+            # Use independent converter function
+            from third_stage_converter import convert_third_stage_file
+            
+            converted_path = convert_third_stage_file(
+                input_path=raw_output_path,
+                book_id=book_id,
+                chapter_id=chapter_id_num,
+                start_index=start_index,
+                output_path=None  # Auto-generate output path
+            )
+            
+            if converted_path and os.path.exists(converted_path):
+                self.update_status(f"✓ Text correction completed. Final structured JSON saved to: {converted_path}")
+                self.last_corrected_path = converted_path
+                
+                # Load and display converted JSON
+                try:
+                    with open(converted_path, "r", encoding="utf-8") as f:
+                        clean_output = json.load(f)
+                    response_text = json.dumps(clean_output, ensure_ascii=False, indent=2)
+                    self.show_response_window(response_text, converted_path, False, True)
+                    messagebox.showinfo("Success", f"Text correction completed!\n\nFinal JSON saved to:\n{converted_path}")
+                except Exception as e:
+                    self.logger.error(f"Failed to load converted JSON: {e}")
+                    messagebox.showerror("Error", f"Failed to load converted JSON:\n{str(e)}")
+                return
+            
+            # Fallback to old method if converter fails
+            self.logger.warning("Converter failed, falling back to old method")
 
             def clean_label(text: str) -> str:
                 if not isinstance(text, str):
@@ -1172,7 +1387,7 @@ Please process both JSON files according to the prompt above and return the resu
                 self.update_status(f"Warning: {error_msg}")
                 self.logger.warning(error_msg)
                 
-                output_filename = f"{base_name1}_{base_name2}_corrected.json"
+                output_filename = f"{base_name1}_{base_name2}_stage4.json"
                 output_path = os.path.join(os.path.dirname(json1_path), output_filename)
                 try:
                     with open(output_path, "w", encoding="utf-8") as f:
@@ -1228,7 +1443,7 @@ Please process both JSON files according to the prompt above and return the resu
 
             if not flat_rows:
                 self.update_status("Warning: No points extracted from corrected JSON. Showing raw JSON.")
-                output_filename = f"{base_name1}_{base_name2}_corrected.json"
+                output_filename = f"{base_name1}_{base_name2}_stage4.json"
                 output_path = os.path.join(os.path.dirname(json1_path), output_filename)
                 try:
                     with open(output_path, "w", encoding="utf-8") as f:
@@ -1249,6 +1464,10 @@ Please process both JSON files according to the prompt above and return the resu
                 row["PointId"] = point_id
                 current_index += 1
 
+            # Helper to shorten base names for filenames in this stage
+            def _short_name_stage4(name: str, max_len: int = 40) -> str:
+                return name if len(name) <= max_len else name[:max_len]
+
             # Build final clean JSON
             clean_output = {
                 "metadata": {
@@ -1265,8 +1484,10 @@ Please process both JSON files according to the prompt above and return the resu
                 "points": flat_rows,
             }
 
-            # Save clean output
-            output_filename = f"{base_name1}_{base_name2}_corrected.json"
+            # Save clean output (Stage 4 final JSON with PointId)
+            base_name1_s = _short_name_stage4(base_name1)
+            base_name2_s = _short_name_stage4(base_name2)
+            output_filename = f"{base_name1_s}_{base_name2_s}_s4.json"
             output_path = os.path.join(os.path.dirname(json1_path), output_filename)
 
             with open(output_path, "w", encoding="utf-8") as f:
@@ -1291,6 +1512,555 @@ Please process both JSON files according to the prompt above and return the resu
                 self.root.after(
                     0,
                     lambda: start_button.configure(state="normal", text="🚀 Start Text Correction")
+                )
+            except Exception:
+                pass
+
+    def process_third_stage_mid_worker(self, parent_window, start_button):
+        """Background worker for new third stage (between Stage 2 and Text Correction)"""
+        try:
+            json1_path = self.stage3_json1_var.get().strip()
+            json2_path = self.stage3_json2_var.get().strip()
+            prompt = self.stage3_prompt_text.get("1.0", tk.END).strip()
+            model_name = self.stage3_model_var.get()
+
+            # Validate inputs
+            if not json1_path or not os.path.exists(json1_path):
+                messagebox.showerror("Error", "Please select a valid Stage 1 JSON file.")
+                return
+
+            if not json2_path or not os.path.exists(json2_path):
+                messagebox.showerror("Error", "Please select a valid Stage 2 JSON file.")
+                return
+
+            if not prompt:
+                messagebox.showerror("Error", "Please enter a prompt for Stage 3 processing.")
+                return
+
+            self.update_status("Loading Stage 1 and Stage 2 JSON files for Stage 3...")
+
+            try:
+                with open(json1_path, "r", encoding="utf-8") as f:
+                    json1_data = json.load(f)
+                with open(json2_path, "r", encoding="utf-8") as f:
+                    json2_data = json.load(f)
+            except Exception as e:
+                self.logger.error(f"Failed to load Stage 1/Stage 2 JSON files: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Failed to load JSON files:\n{str(e)}")
+                return
+
+            # Helper to shorten base names for filenames
+            def _short_name(name: str, max_len: int = 40) -> str:
+                return name if len(name) <= max_len else name[:max_len]
+
+            # Prepare combined prompt: user prompt + both JSONs
+            self.update_status("Preparing full prompt for Stage 3...")
+            json1_str = json.dumps(json1_data, ensure_ascii=False, indent=2)
+            json2_str = json.dumps(json2_data, ensure_ascii=False, indent=2)
+
+            full_prompt = f"""{prompt}
+
+====================
+First JSON (Stage 1 - Source JSON):
+====================
+{json1_str}
+
+====================
+Second JSON (Stage 2 - Incomplete Output):
+====================
+{json2_str}
+"""
+
+            self.update_status(f"Running Stage 3 processing with model {model_name}...")
+
+            response = self.api_client.process_text(
+                text=full_prompt,
+                model_name=model_name,
+                temperature=0.7,
+                max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+            )
+
+            if not response:
+                self.update_status("❌ Stage 3 processing failed (no response).")
+                messagebox.showerror("Error", "Stage 3 processing failed. Check logs for details.")
+                return
+
+            # Save raw Stage 3 output (for debugging / later stages)
+            base_name1 = os.path.splitext(os.path.basename(json1_path))[0]
+            base_name2 = os.path.splitext(os.path.basename(json2_path))[0]
+            base_name1_s = _short_name(base_name1)
+            base_name2_s = _short_name(base_name2)
+            raw_output_filename = f"{base_name1_s}_{base_name2_s}_s3_raw.json"
+            raw_output_path = os.path.join(os.path.dirname(json1_path), raw_output_filename)
+
+            result_data = {
+                "response": response,
+                "processed_at": datetime.now().isoformat(),
+                "model": model_name,
+            }
+
+            try:
+                with open(raw_output_path, "w", encoding="utf-8") as f:
+                    json.dump(result_data, f, ensure_ascii=False, indent=2)
+                self.last_stage3_raw_path = raw_output_path
+                self.update_status(f"Stage 3 raw JSON saved to: {raw_output_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to save Stage 3 raw JSON: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Failed to save Stage 3 raw JSON:\n{str(e)}")
+                return
+
+            # Convert raw response text to clean JSON (remove markdown fences, parse JSON)
+            self.update_status("Converting Stage 3 response to clean JSON...")
+            from third_stage_converter import ThirdStageConverter
+
+            converter = ThirdStageConverter()
+            try:
+                json_data = converter._extract_json_from_response(response)  # reuse robust extractor
+            except Exception as e:
+                json_data = None
+                self.logger.error(f"Failed to extract JSON from Stage 3 response: {e}", exc_info=True)
+
+            if not json_data:
+                # اگر نتوانستیم JSON تمیز بسازیم، فقط خام را نگه می‌داریم
+                messagebox.showwarning(
+                    "Warning",
+                    f"Stage 3 raw JSON saved, but failed to parse clean JSON.\n\nPath:\n{raw_output_path}",
+                )
+                return
+
+            # Save clean converted JSON (Stage 3 final JSON)
+            converted_filename = f"{base_name1_s}_{base_name2_s}_s3.json"
+            converted_path = os.path.join(os.path.dirname(json1_path), converted_filename)
+
+            try:
+                with open(converted_path, "w", encoding="utf-8") as f:
+                    json.dump(json_data, f, ensure_ascii=False, indent=2)
+                self.update_status(f"Stage 3 clean JSON saved to: {converted_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to save Stage 3 clean JSON: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Failed to save Stage 3 clean JSON:\n{str(e)}")
+                return
+
+            # نمایش JSON تمیز به کاربر
+            try:
+                response_text = json.dumps(json_data, ensure_ascii=False, indent=2)
+                self.show_response_window(response_text, converted_path, False, True)
+            except Exception as e:
+                self.logger.error(f"Failed to display Stage 3 clean JSON: {e}", exc_info=True)
+
+            messagebox.showinfo(
+                "Success",
+                f"Stage 3 processing completed.\n\nRaw JSON saved to:\n{raw_output_path}\n\n"
+                f"Clean JSON saved to:\n{converted_path}",
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error in third-stage (mid) processing: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"Stage 3 processing error:\n{str(e)}")
+        finally:
+            try:
+                def _reset_stage3_button(btn=start_button):
+                    try:
+                        if btn.winfo_exists():
+                            btn.configure(state="normal", text="Run Stage 3 Processing")
+                    except Exception:
+                        pass
+
+                self.root.after(0, _reset_stage3_button)
+            except Exception:
+                pass
+
+    def show_fourth_stage_window(self):
+        """Show fifth stage window for advanced point-level processing"""
+        window = ctk.CTkToplevel(self.root)
+        window.title("Fifth Stage - Advanced Point Processing")
+        window.geometry("900x800")
+        window.minsize(800, 700)
+
+        main_frame = ctk.CTkScrollableFrame(window)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Fifth Stage - Advanced Point Processing",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        )
+        title.pack(pady=(0, 20))
+
+        # Stage 1 JSON (source)
+        json1_frame = ctk.CTkFrame(main_frame)
+        json1_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            json1_frame,
+            text="Stage 1 JSON (Source JSON)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file1_frame = ctk.CTkFrame(json1_frame)
+        file1_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file1_frame,
+            text="Stage 1 JSON file:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.fourth_stage_json1_var = ctk.StringVar()
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            self.fourth_stage_json1_var.set(self.last_final_output_path)
+
+        json1_entry = ctk.CTkEntry(file1_frame, textvariable=self.fourth_stage_json1_var, width=400)
+        json1_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_stage1():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 1 JSON file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.fourth_stage_json1_var.set(filename)
+
+        ctk.CTkButton(
+            file1_frame,
+            text="Browse",
+            command=browse_stage1,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Stage 3 JSON (with PointId)
+        json3_frame = ctk.CTkFrame(main_frame)
+        json3_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            json3_frame,
+            text="Stage 4 JSON (with PointId)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        file3_frame = ctk.CTkFrame(json3_frame)
+        file3_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            file3_frame,
+            text="Stage 4 JSON file:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.fourth_stage_json3_var = ctk.StringVar()
+        if self.last_corrected_path and os.path.exists(self.last_corrected_path):
+            self.fourth_stage_json3_var.set(self.last_corrected_path)
+
+        json3_entry = ctk.CTkEntry(file3_frame, textvariable=self.fourth_stage_json3_var, width=400)
+        json3_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+
+        def browse_stage3():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 4 JSON file (with PointId)",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.fourth_stage_json3_var.set(filename)
+
+        ctk.CTkButton(
+            file3_frame,
+            text="Browse",
+            command=browse_stage3,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+
+        # Prompt section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Fifth-Stage Prompt",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Enter the prompt for fifth-stage processing (chunked JSON logic, similar to Stage 5).",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        self.fourth_stage_prompt_text = ctk.CTkTextbox(prompt_frame, height=160)
+        self.fourth_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+
+        # Model selection for stage 4
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(
+            model_frame,
+            text="🤖 Model Selection (Stage 5)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(15, 10))
+
+        inner_model_frame = ctk.CTkFrame(model_frame)
+        inner_model_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="Select Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        self.fourth_stage_model_var = ctk.StringVar(value=self.model_var.get())
+        self.fourth_stage_model_combo = ctk.CTkComboBox(
+            inner_model_frame,
+            values=APIConfig.TEXT_MODELS,
+            variable=self.fourth_stage_model_var,
+            width=400,
+        )
+        self.fourth_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Control buttons
+        controls_frame = ctk.CTkFrame(main_frame)
+        controls_frame.pack(fill="x", pady=(10, 10))
+
+        def start_fourth_stage():
+            start_button.configure(state="disabled", text="Processing...")
+            threading.Thread(
+                target=self.process_fourth_stage_worker,
+                args=(window, start_button),
+                daemon=True
+            ).start()
+
+        start_button = ctk.CTkButton(
+            controls_frame,
+            text="Start Stage 5 Processing",
+            command=start_fourth_stage,
+            width=240,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        start_button.pack(side="left", padx=10, pady=10)
+
+        ctk.CTkButton(
+            controls_frame,
+            text="Close",
+            command=window.destroy,
+            width=100,
+            height=40,
+        ).pack(side="left", padx=10, pady=10)
+
+    def process_fourth_stage_worker(self, parent_window, start_button):
+        """Background worker for fourth-stage chunked processing and PointId append"""
+        try:
+            json1_path = self.fourth_stage_json1_var.get().strip()
+            json3_path = self.fourth_stage_json3_var.get().strip()
+            prompt = self.fourth_stage_prompt_text.get("1.0", tk.END).strip()
+            model_name = self.fourth_stage_model_var.get()
+
+            # Validate inputs
+            if not json1_path or not os.path.exists(json1_path):
+                messagebox.showerror("Error", "Please select a valid Stage 1 JSON file.")
+                return
+
+            if not json3_path or not os.path.exists(json3_path):
+                messagebox.showerror("Error", "Please select a valid Stage 3 JSON file (with PointId).")
+                return
+
+            if not prompt:
+                messagebox.showerror("Error", "Please enter a prompt for Stage 4.")
+                return
+
+            self.update_status("Loading Stage 1 and Stage 3 JSON files...")
+
+            try:
+                with open(json1_path, "r", encoding="utf-8") as f:
+                    json1_data = json.load(f)
+                with open(json3_path, "r", encoding="utf-8") as f:
+                    stage3_data = json.load(f)
+            except Exception as e:
+                self.logger.error(f"Failed to load Stage 1/Stage 3 JSON files: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Failed to load JSON files:\n{str(e)}")
+                return
+
+            # Extract chapter name for prompt replacement if needed
+            chapter_name = ""
+            try:
+                chapter_name = stage3_data.get("metadata", {}).get("chapter", "")
+            except Exception:
+                chapter_name = ""
+
+            if "{CHAPTER_NAME}" in prompt and chapter_name:
+                prompt = prompt.replace("{CHAPTER_NAME}", chapter_name)
+
+            self.update_status("Running Stage 4 chunked processing with model...")
+
+            from third_stage_chunk_processor import run_third_stage_chunked
+
+            final_structured_json = run_third_stage_chunked(
+                api_client=self.api_client,
+                json1_data=json1_data,
+                json2_data=stage3_data,
+                base_prompt=prompt,
+                chapter_name=chapter_name or "UNKNOWN",
+                model_name=model_name,
+                progress_callback=self.update_status,
+                stage_name="fourth",
+            )
+
+            if not final_structured_json:
+                self.update_status("❌ Stage 4 chunked processing failed.")
+                messagebox.showerror(
+                    "Error",
+                    "Stage 4 chunked processing failed. Please check the logs for details.",
+                )
+                return
+
+            # Save raw Stage 4 output (for later stages), not shown to user
+            def _short_name_stage5(name: str, max_len: int = 40) -> str:
+                return name if len(name) <= max_len else name[:max_len]
+
+            base_name1 = os.path.splitext(os.path.basename(json1_path))[0]
+            base_name3 = os.path.splitext(os.path.basename(json3_path))[0]
+            base_name1_s = _short_name_stage5(base_name1)
+            base_name3_s = _short_name_stage5(base_name3)
+            raw_output_filename = f"{base_name3_s}_{base_name1_s}_s5_raw.json"
+            raw_output_path = os.path.join(os.path.dirname(json3_path), raw_output_filename)
+
+            try:
+                with open(raw_output_path, "w", encoding="utf-8") as f:
+                    json.dump(final_structured_json, f, ensure_ascii=False, indent=2)
+                self.last_stage4_raw_path = raw_output_path
+                self.update_status(f"Stage 4 raw JSON saved to: {raw_output_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to save Stage 4 raw JSON: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Failed to save Stage 4 raw JSON:\n{str(e)}")
+                return
+
+            # Now append Stage 4 points to Stage 3 JSON,
+            # with new PointIds continuing from the last PointId in Stage 3.
+            self.update_status("Appending Stage 4 points to Stage 3 JSON...")
+
+            points_stage3 = stage3_data.get("points", [])
+            if not isinstance(points_stage3, list):
+                points_stage3 = []
+
+            # Determine base book/chapter and next index from existing PointIds
+            book_id = 0
+            chapter_id_num = 0
+            next_index = 1
+
+            # Try to get from metadata first
+            meta = stage3_data.get("metadata", {})
+            try:
+                book_id = int(meta.get("book_id", 0))
+                chapter_id_num = int(meta.get("chapter_id", 0))
+                start_idx = int(meta.get("start_point_index", 1))
+            except Exception:
+                book_id = 0
+                chapter_id_num = 0
+                start_idx = 1
+
+            # Compute max index from existing PointIds
+            max_index = 0
+            for row in points_stage3:
+                pid = row.get("PointId")
+                if isinstance(pid, str) and pid.isdigit() and len(pid) >= 10:
+                    try:
+                        idx = int(pid[-4:])
+                        if idx > max_index:
+                            max_index = idx
+                        # Derive book/chapter from first valid PointId if not set
+                        if book_id == 0 or chapter_id_num == 0:
+                            book_id = int(pid[0:3])
+                            chapter_id_num = int(pid[3:6])
+                    except Exception:
+                        continue
+
+            next_index = max_index + 1 if max_index > 0 else start_idx
+
+            # Extract new rows from Stage 4 structured JSON
+            new_content = final_structured_json.get("content", [])
+            if not isinstance(new_content, list):
+                new_content = [new_content] if new_content else []
+
+            appended_rows = []
+            for row in new_content:
+                if not isinstance(row, dict):
+                    continue
+
+                # Use point_text as the main text source for final points
+                text_val = row.get("point_text") or row.get("points") or row.get("PointId") or ""
+                if not isinstance(text_val, str):
+                    text_val = str(text_val)
+
+                new_row = dict(row)  # shallow copy
+                # Remove unwanted columns from Stage 5 payload
+                new_row.pop("caption", None)
+                new_row.pop("source_page", None)
+
+                # Set final points column from point_text
+                new_row["points"] = text_val.strip()
+
+                # Assign new sequential PointId, continuing from Stage 3
+                point_id = f"{book_id:03d}{chapter_id_num:03d}{next_index:04d}"
+                new_row["PointId"] = point_id
+                next_index += 1
+
+                appended_rows.append(new_row)
+
+            if not appended_rows:
+                self.update_status("Warning: No valid points found in Stage 4 output to append.")
+                messagebox.showwarning(
+                    "Warning",
+                    "No valid points were found in the Stage 4 output to append.",
+                )
+                return
+
+            # Merge points
+            merged_points = points_stage3 + appended_rows
+
+            # Build merged Stage 3+4 JSON
+            merged_metadata = dict(meta) if isinstance(meta, dict) else {}
+            merged_metadata["total_points"] = len(merged_points)
+            merged_metadata["processed_at"] = datetime.now().isoformat()
+
+            merged_data = {
+                "metadata": merged_metadata,
+                "points": merged_points,
+            }
+
+            # Save merged JSON and show to user
+            merged_filename = f"{base_name3}_stage4_merged.json"
+            merged_path = os.path.join(os.path.dirname(json3_path), merged_filename)
+
+            try:
+                with open(merged_path, "w", encoding="utf-8") as f:
+                    json.dump(merged_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                self.logger.error(f"Failed to save merged Stage 3+4 JSON: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Failed to save merged JSON:\n{str(e)}")
+                return
+
+            self.last_corrected_path = merged_path
+            self.update_status(f"✓ Stage 4 processing completed. Merged JSON saved to: {merged_path}")
+
+            # Display merged result to the user
+            response_text = json.dumps(merged_data, ensure_ascii=False, indent=2)
+            self.show_response_window(response_text, merged_path, False, True)
+
+            messagebox.showinfo(
+                "Success",
+                f"Stage 4 processing completed.\n\n"
+                f"Raw Stage 4 JSON saved to:\n{raw_output_path}\n\n"
+                f"Merged JSON saved to:\n{merged_path}",
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error in fourth-stage processing: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"Stage 4 processing error:\n{str(e)}")
+        finally:
+            try:
+                self.root.after(
+                    0,
+                    lambda: start_button.configure(state="normal", text="Start Stage 4 Processing")
                 )
             except Exception:
                 pass

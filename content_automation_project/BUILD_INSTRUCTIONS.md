@@ -66,3 +66,6 @@ pyinstaller build_exe.spec --clean --noconfirm
 3. از `--debug=all` در PyInstaller استفاده کنید
 
 
+
+
+
