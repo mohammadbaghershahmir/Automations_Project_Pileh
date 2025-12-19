@@ -1172,8 +1172,9 @@ class ContentAutomationGUI:
 
             # --- Stage 2: per-Part processing using existing MultiPartPostProcessor ---
             # We reuse existing Stage 2 module which already does per-Part calls and returns a single JSON.
+            # Now we also get individual responses per Part for use in Stage 3.
             self.update_status("Running Stage 2 (per-Part) processing for all parts...")
-            stage2_path = self.multi_part_post_processor.process_final_json_by_parts(
+            stage2_path, stage2_part_responses = self.multi_part_post_processor.process_final_json_by_parts_with_responses(
                 json_path=stage1_path,
                 user_prompt=stage2_prompt,
                 model_name=stage2_model,
@@ -1182,6 +1183,11 @@ class ContentAutomationGUI:
             if not stage2_path or not os.path.exists(stage2_path):
                 self.update_status("Stage 2 processing failed.")
                 messagebox.showerror("Error", "Stage 2 processing failed. Check logs for details.")
+                return
+
+            if not stage2_part_responses:
+                self.update_status("Stage 2 processing failed: No individual responses received.")
+                messagebox.showerror("Error", "Stage 2 processing failed: No individual responses received.")
                 return
 
             self.last_post_processed_path = stage2_path
@@ -1193,11 +1199,9 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", f"Failed to load Stage 2 JSON:\n{str(e)}")
                 return
 
-            # Stage 2 output is a combined structure (typically chapter + content) and
-            # does not carry per-Part fields directly. For Stage 3/4 we will restrict
-            # the raw Stage 1 rows to the current Part, while using Stage 2 JSON only
-            # as global context (not to distinguish parts). This removes Part dependency
-            # from prompts.
+            # Stage 2: Each Part has its own response. For Stage 3, we use the response
+            # from the same Part (not the combined JSON). This ensures each Part's
+            # Stage 3 processing uses its corresponding Stage 2 response.
 
             processed_parts = 0
             stage3_txt_files = []
@@ -1232,9 +1236,9 @@ class ContentAutomationGUI:
                     "rows": part_rows,
                 }
 
-                # Stage 2 JSON به‌صورت زمینه کلی استفاده می‌شود (همانند قبل)، اما در Stage 3:
-                # برای هر پارت فقط یک بار مدل را صدا می‌زنیم و هیچ تبدیل JSON انجام نمی‌دهیم؛
+                # Stage 3: برای هر پارت فقط یک بار مدل را صدا می‌زنیم و هیچ تبدیل JSON انجام نمی‌دهیم؛
                 # فقط پاسخ خام مدل را به‌صورت فایل متنی ذخیره می‌کنیم.
+                # از Response Stage 2 همان Part استفاده می‌کنیم (نه combined JSON).
 
                 _update_progress(idx - 1, "Stage 3 (structuring)")
                 self.update_status(f"Stage 3: Processing Part {part_num} ({idx}/{total_parts})...")
@@ -1244,9 +1248,16 @@ class ContentAutomationGUI:
                 if "{CHAPTER_NAME}" in s3_prompt_part and chapter_name:
                     s3_prompt_part = s3_prompt_part.replace("{CHAPTER_NAME}", chapter_name)
 
+                # Get Stage 2 response for this specific Part
+                stage2_response_for_part = stage2_part_responses.get(part_num, "")
+                if not stage2_response_for_part:
+                    self.update_status(
+                        f"Warning: No Stage 2 response found for Part {part_num}. Skipping Stage 3 for this Part."
+                    )
+                    continue
+
                 try:
                     s1_str = json.dumps(stage1_part, ensure_ascii=False, indent=2)
-                    s2_str = json.dumps(stage2_data, ensure_ascii=False, indent=2)
                 except Exception as e:
                     self.update_status(
                         f"Error serializing JSON for Stage 3 (Part {part_num}): {e}"
@@ -1264,9 +1275,9 @@ class ContentAutomationGUI:
                     "====================\n"
                     f"{s1_str}\n\n"
                     "====================\n"
-                    "Stage 2 JSON (global context):\n"
+                    "Stage 2 Response (for this Part):\n"
                     "====================\n"
-                    f"{s2_str}\n"
+                    f"{stage2_response_for_part}\n"
                 )
 
                 # مشابه Stage 2: فقط متن خام پاسخ را می‌گیریم (در صورت نیاز با چند ری‌تری) و به‌صورت txt ذخیره می‌کنیم.
@@ -1441,10 +1452,25 @@ class ContentAutomationGUI:
             # --- After all parts: build final JSON with flattened points and PointId ---
             self.update_status("Building final JSON with PointId from Stage 4 TXT files...")
 
+            # Sort Stage 4 files by Part number to ensure correct order
+            def extract_part_number(file_path: str) -> int:
+                """Extract part number from filename like '*_part3_stage4.txt'"""
+                import re
+                match = re.search(r'_part(\d+)_stage4\.txt', os.path.basename(file_path))
+                if match:
+                    return int(match.group(1))
+                return 0  # Default to 0 if not found
+            
+            sorted_stage4_files = sorted(stage4_txt_files, key=extract_part_number)
+            self.logger.info(f"Processing {len(sorted_stage4_files)} Stage 4 files in order: {[extract_part_number(f) for f in sorted_stage4_files]}")
+
             # Convert each Stage 4 TXT to JSON, flatten, and accumulate rows
             converter = ThirdStageConverter()
 
-            for s4_txt_path in stage4_txt_files:
+            for s4_txt_path in sorted_stage4_files:
+                part_num = extract_part_number(s4_txt_path)
+                self.update_status(f"Processing Stage 4 file for Part {part_num}: {os.path.basename(s4_txt_path)}")
+                
                 json_obj = load_stage_txt_as_json(s4_txt_path)
                 if not json_obj:
                     self.logger.warning(
@@ -1454,13 +1480,13 @@ class ContentAutomationGUI:
 
                 try:
                     flat_rows = converter._flatten_to_points(json_obj)
+                    self.logger.info(f"Part {part_num}: Extracted {len(flat_rows)} points from Stage 4")
+                    all_stage4_rows.extend(flat_rows)
                 except Exception as e:
                     self.logger.error(
                         "Failed to flatten Stage 4 JSON for %s: %s", s4_txt_path, e
                     )
                     continue
-
-                all_stage4_rows.extend(flat_rows)
 
             if not all_stage4_rows:
                 self.update_status("No valid points extracted from Stage 4 outputs.")
@@ -1471,15 +1497,25 @@ class ContentAutomationGUI:
                 )
                 return
 
+            # Log summary of extracted points
+            self.logger.info(f"Total {len(all_stage4_rows)} points extracted from {len(sorted_stage4_files)} Stage 4 files")
+            self.update_status(f"Extracted {len(all_stage4_rows)} points from {len(sorted_stage4_files)} Stage 4 files")
+
             # Assign PointId sequentially across all parts, starting from user-provided index
             total_points = len(all_stage4_rows)
             assigned_points: List[Dict[str, Any]] = []
 
-            for row in all_stage4_rows:
+            self.update_status(f"Assigning PointId to {total_points} points (starting from {start_pointid_str})...")
+            for idx, row in enumerate(all_stage4_rows, 1):
                 point_id = f"{book_id:03d}{chapter_id_num:03d}{current_index:04d}"
                 row["PointId"] = point_id
                 current_index += 1
                 assigned_points.append(row)
+                if idx % 100 == 0:
+                    self.update_status(f"Assigned PointId to {idx}/{total_points} points...")
+            
+            self.logger.info(f"Assigned PointId to {len(assigned_points)} points (next free index: {current_index})")
+            self.update_status(f"Assigned PointId to all {len(assigned_points)} points")
 
             # --- Build final merged JSON with metadata + points ---
             base_dir = os.path.dirname(stage1_path) or os.getcwd()
