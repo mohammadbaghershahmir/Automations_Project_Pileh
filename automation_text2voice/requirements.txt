@@ -1,0 +1,8 @@
+customtkinter>=5.2.0
+google-generativeai>=0.3.0
+google-genai>=0.1.0
+google-cloud-texttospeech>=2.14.1
+pygame>=2.1.2
+Pillow>=9.3.0
+tkinter
+pydub>=0.25.1 

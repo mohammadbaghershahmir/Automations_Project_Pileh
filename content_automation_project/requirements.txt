@@ -1,0 +1,27 @@
+# Content Automation Project Dependencies
+
+# Gemini API libraries
+google-genai>=0.1.0
+google-generativeai>=0.3.0
+
+# PDF processing
+PyPDF2>=3.0.0
+
+# GUI framework
+customtkinter>=5.2.0
+Pillow>=9.3.0
+
+# Word document generation
+python-docx>=1.1.0
+
+# Standard libraries (included with Python, listed for reference)
+# csv - built-in
+# asyncio - built-in
+# wave - built-in
+# logging - built-in
+# os - built-in
+# typing - built-in
+# datetime - built-in
+# json - built-in
+# threading - built-in
+

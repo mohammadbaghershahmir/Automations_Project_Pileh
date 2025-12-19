@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.mp3
+*.wav
+*.json
+!prompts.json
+*.csv
+*.xlsx
+*.xls
+*.pdf
+*.docx
+*.txt
+!requirements*.txt
+!README*.md
+!*.spec
+!BUILD_INSTRUCTIONS.md
+!SECURITY_GUIDE.md
+!APPLICATION_SUMMARY.md
+
