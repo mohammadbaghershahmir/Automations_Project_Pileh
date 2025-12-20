@@ -79,6 +79,45 @@ def load_stage_txt_as_json(txt_path: str | Path) -> Optional[Dict[str, Any]]:
     fence_pattern = re.compile(r"^```[a-zA-Z0-9_-]*\s*|\s*```$", re.MULTILINE)
     cleaned = fence_pattern.sub("", text).strip()
 
+    # Try to extract complete objects from array (for incomplete JSON)
+    array_start = cleaned.find("[")
+    if array_start != -1:
+        objects = []
+        obj_start = -1
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        
+        for i, char in enumerate(cleaned[array_start:], start=array_start):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == "\\":
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+            if not in_string:
+                if char == "{":
+                    if brace_count == 0:
+                        obj_start = i
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0 and obj_start != -1:
+                        obj_str = cleaned[obj_start:i+1]
+                        try:
+                            obj = json.loads(obj_str)
+                            objects.append(obj)
+                        except Exception:
+                            pass
+                        obj_start = -1
+        
+        if objects:
+            logger.info("Extracted %d complete objects from incomplete JSON array for %s", len(objects), txt_path)
+            return {"data": objects}
+
+    # Fallback: try to parse as single object
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start == -1 or end == -1 or end <= start:

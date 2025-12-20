@@ -23,6 +23,9 @@ from multi_part_processor import MultiPartProcessor
 from multi_part_post_processor import MultiPartPostProcessor
 from third_stage_converter import ThirdStageConverter
 from txt_stage_json_utils import load_stage_txt_as_json
+from stage_e_processor import StageEProcessor
+from stage_f_processor import StageFProcessor
+from stage_j_processor import StageJProcessor
 
 
 class ContentAutomationGUI:
@@ -56,6 +59,9 @@ class ContentAutomationGUI:
         self.api_client = GeminiAPIClient(self.api_key_manager)
         self.multi_part_processor = MultiPartProcessor(self.api_client)
         self.multi_part_post_processor = MultiPartPostProcessor(self.api_client)
+        self.stage_e_processor = StageEProcessor(self.api_client)
+        self.stage_f_processor = StageFProcessor(self.api_client)
+        self.stage_j_processor = StageJProcessor(self.api_client)
         
         # Variables
         self.pdf_path = None
@@ -67,6 +73,7 @@ class ContentAutomationGUI:
         self.last_corrected_path = None          # Stage 3 JSON (with PointId)
         self.last_stage3_raw_path = None         # Stage 3 raw JSON (new intermediate stage)
         self.last_stage4_raw_path = None         # Stage 4 raw JSON (chunked model output)
+        self.last_stage_e_path = None            # Stage E JSON
         
         # Setup UI
         self.setup_ui()
@@ -85,15 +92,82 @@ class ContentAutomationGUI:
     
     def setup_ui(self):
         """Setup the main user interface"""
+        # Create TabView for all stages (including Stages 1-4)
+        self.main_tabview = ctk.CTkTabview(self.root)
+        # Initially hide tabview - show main frame first
+        self.main_tabview.pack_forget()
+        
+        # Tab 1: Stages 1-4 (for tabview access) - MUST be first to be default
+        self.tab_stages_1_4 = self.main_tabview.add("Stages 1-4")
+        
+        # Main page: Stages 1-4 (Original UI) - shown directly on root
+        # This is the Part 1 form (Stage 1 only)
+        self.main_stages_1_4_frame = ctk.CTkFrame(self.root)
+        self.main_stages_1_4_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.setup_stages_1_4_ui(self.main_stages_1_4_frame)
+        
+        # Now setup Stages 2-3-4 UI in tabview (the actual Stages 1-4 form)
+        self.setup_stages_2_3_4_ui(self.tab_stages_1_4)
+        
+        # Tab 2: Stage E
+        self.tab_stage_e = self.main_tabview.add("Stage E")
+        self.setup_stage_e_ui(self.tab_stage_e)
+        
+        # Tab 3: Stage F
+        self.tab_stage_f = self.main_tabview.add("Stage F")
+        self.setup_stage_f_ui(self.tab_stage_f)
+        
+        # Tab 4: Stage J
+        self.tab_stage_j = self.main_tabview.add("Stage J")
+        self.setup_stage_j_ui(self.tab_stage_j)
+        
+        # Tab 5: Stage H
+        self.tab_stage_h = self.main_tabview.add("Stage H")
+        self.setup_stage_h_ui(self.tab_stage_h)
+        
+        # Tab 6: Stage V
+        self.tab_stage_v = self.main_tabview.add("Stage V")
+        self.setup_stage_v_ui(self.tab_stage_v)
+        
+        # Tab 7: Stage M
+        self.tab_stage_m = self.main_tabview.add("Stage M")
+        self.setup_stage_m_ui(self.tab_stage_m)
+        
+        # Tab 8: Stage L
+        self.tab_stage_l = self.main_tabview.add("Stage L")
+        self.setup_stage_l_ui(self.tab_stage_l)
+        
+        # Ensure Stages 1-4 is the default/selected tab
+        self.main_tabview.set("Stages 1-4")
+        
+        # Pipeline Status Bar (shown on all tabs)
+        self.setup_pipeline_status_bar()
+    
+    def setup_stages_1_4_ui(self, parent):
+        """Setup UI for Stages 1-4 (original functionality)"""
+        # Check if this is the tabview version (not main view)
+        is_tabview = hasattr(self, 'main_stages_1_4_frame') and parent != self.main_stages_1_4_frame
+        
         # Create main container with scrollable frame
-        main_frame = ctk.CTkScrollableFrame(self.root)
+        main_frame = ctk.CTkScrollableFrame(parent)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title
-        title = ctk.CTkLabel(main_frame, text="Content Automation - Part 1", 
-                            font=ctk.CTkFont(size=24, weight="bold"))
-        title.pack(pady=(0, 20))
+        # Add navigation button only in tabview version
+        if is_tabview:
+            nav_frame = ctk.CTkFrame(main_frame)
+            nav_frame.pack(fill="x", pady=(0, 10))
+            ctk.CTkButton(
+                nav_frame,
+                text="< Back to Main View",
+                command=self.show_main_view,
+                width=150,
+                height=30,
+                font=ctk.CTkFont(size=12),
+                fg_color="gray",
+                hover_color="darkgray"
+            ).pack(side="left", padx=10, pady=5)
         
+        # Setup all sections - widgets will be shared via StringVar and other variables
         # API Configuration Section
         self.setup_api_section(main_frame)
         
@@ -120,7 +194,7 @@ class ContentAutomationGUI:
         api_frame = ctk.CTkFrame(parent)
         api_frame.pack(fill="x", pady=(0, 20))
         
-        api_label = ctk.CTkLabel(api_frame, text="🔑 API Configuration", 
+        api_label = ctk.CTkLabel(api_frame, text="API Configuration", 
                                 font=ctk.CTkFont(size=18, weight="bold"))
         api_label.pack(pady=(15, 10))
         
@@ -131,7 +205,9 @@ class ContentAutomationGUI:
         ctk.CTkLabel(key_frame, text="API Key CSV File:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.api_key_file_var = ctk.StringVar()
+        # Only create StringVar if it doesn't exist (for main view)
+        if not hasattr(self, 'api_key_file_var'):
+            self.api_key_file_var = ctk.StringVar()
         api_key_entry = ctk.CTkEntry(key_frame, textvariable=self.api_key_file_var, width=400)
         api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
         
@@ -141,10 +217,17 @@ class ContentAutomationGUI:
         ctk.CTkLabel(key_frame, text="CSV format: account;project;api_key (API keys will be used in rotation)", 
                     font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
         
-        # API keys status
-        self.api_keys_status_label = ctk.CTkLabel(key_frame, text="No API keys loaded", 
-                                                  font=ctk.CTkFont(size=10), text_color="gray")
-        self.api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        # API keys status - only create for main view
+        if not hasattr(self, 'api_keys_status_label') or parent == self.main_stages_1_4_frame:
+            if not hasattr(self, 'api_keys_status_label'):
+                self.api_keys_status_label = ctk.CTkLabel(key_frame, text="No API keys loaded", 
+                                                          font=ctk.CTkFont(size=10), text_color="gray")
+                self.api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        else:
+            # For tabview, create a separate label that syncs with main
+            api_keys_status_label_tab = ctk.CTkLabel(key_frame, text="No API keys loaded", 
+                                                      font=ctk.CTkFont(size=10), text_color="gray")
+            api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_pdf_section(self, parent):
         """Setup PDF upload section"""
@@ -246,7 +329,9 @@ class ContentAutomationGUI:
         ctk.CTkLabel(model_select_frame, text="Select Gemini Model:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.model_var = ctk.StringVar(value=APIConfig.TEXT_MODELS[0])
+        # Only create StringVar if it doesn't exist (for main view)
+        if not hasattr(self, 'model_var'):
+            self.model_var = ctk.StringVar(value=APIConfig.TEXT_MODELS[0])
         self.model_combo = ctk.CTkComboBox(model_select_frame, values=APIConfig.TEXT_MODELS, 
                                           variable=self.model_var, width=400)
         self.model_combo.pack(anchor="w", padx=10, pady=(0, 10))
@@ -260,7 +345,7 @@ class ContentAutomationGUI:
         output_frame = ctk.CTkFrame(parent)
         output_frame.pack(fill="x", pady=(0, 20))
         
-        output_label = ctk.CTkLabel(output_frame, text="💾 Output Configuration", 
+        output_label = ctk.CTkLabel(output_frame, text="Output Configuration", 
                                    font=ctk.CTkFont(size=18, weight="bold"))
         output_label.pack(pady=(15, 10))
         
@@ -312,17 +397,19 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=14),
         )
         self.view_stage1_json_btn.pack(side="left", padx=10)
-
-        # Next step button - go to second page (post-processing of final JSON by Part)
-        self.next_step_btn = ctk.CTkButton(
+        
+        # Navigation button to switch to tabview
+        self.show_tabview_btn = ctk.CTkButton(
             buttons_frame,
-            text="Next Step (Part Processing)",
-            command=self.open_part_processing_window,
-            width=220,
+            text="View Other Stages (E-L)",
+            command=self.show_tabview,
+            width=200,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="purple",
+            hover_color="darkviolet"
         )
-        self.next_step_btn.pack(side="left", padx=10)
+        self.show_tabview_btn.pack(side="left", padx=10)
     
     def setup_status_section(self, parent):
         """Setup status section"""
@@ -354,7 +441,7 @@ class ContentAutomationGUI:
                 self.update_status(f"Loaded {num_keys} API key(s) from: {os.path.basename(filename)}")
             else:
                 self.api_keys_status_label.configure(
-                    text="✗ Failed to load API keys",
+                    text="X Failed to load API keys",
                     text_color="red"
                 )
                 messagebox.showerror("Error", "Failed to load API keys from file")
@@ -392,7 +479,7 @@ class ContentAutomationGUI:
             self.update_status(f"PDF validated: {os.path.basename(file_path)} ({page_count} pages)")
         else:
             self.pdf_info_label.configure(
-                text=f"✗ {error_msg}",
+                text=f"X {error_msg}",
                 text_color="red"
             )
             self.pdf_path = None
@@ -632,7 +719,7 @@ class ContentAutomationGUI:
         
         title = ctk.CTkLabel(
             main_frame,
-            text="Second Stage & Automatic Pipeline (Stages 2 → 3 → 4)",
+            text="Second Stage & Automatic Pipeline (Stages 2 to 3 to 4)",
             font=ctk.CTkFont(size=22, weight="bold"),
         )
         title.pack(pady=(0, 20))
@@ -893,7 +980,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             progress_frame,
-            text="Pipeline Progress (Stages 2 → 3 → 4 per Part)",
+            text="Pipeline Progress (Stages 2 to 3 to 4 per Part)",
             font=ctk.CTkFont(size=14, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -946,7 +1033,7 @@ class ContentAutomationGUI:
         
         full_btn = ctk.CTkButton(
             controls_frame,
-            text="Run Full Pipeline (Stage 2 → 3 → 4 per Part)",
+            text="Run Full Pipeline (Stage 2 to 3 to 4 per Part)",
             command=start_full_pipeline,
             width=320,
             height=40,
@@ -981,6 +1068,435 @@ class ContentAutomationGUI:
             width=100,
             height=40,
         ).pack(side="left", padx=10, pady=10)
+    
+    def setup_stages_2_3_4_ui(self, parent):
+        """
+        Setup UI for Stages 2-3-4 (same as open_part_processing_window but for tabview)
+        This is the actual Stages 1-4 form that should be shown in tabview
+        """
+        # Check if this is the tabview version (not main view)
+        is_tabview = hasattr(self, 'main_stages_1_4_frame') and parent != self.main_stages_1_4_frame
+        
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Add navigation button only in tabview version
+        if is_tabview:
+            nav_frame = ctk.CTkFrame(main_frame)
+            nav_frame.pack(fill="x", pady=(0, 10))
+            ctk.CTkButton(
+                nav_frame,
+                text="< Back to Main View",
+                command=self.show_main_view,
+                width=150,
+                height=30,
+                font=ctk.CTkFont(size=12),
+                fg_color="gray",
+                hover_color="darkgray"
+            ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Second Stage & Automatic Pipeline (Stages 2 to 3 to 4)",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        )
+        title.pack(pady=(0, 20))
+        
+        #
+        # --- Stage 2 configuration (per-Part processing, قبلی) ---
+        #
+        stage2_frame = ctk.CTkFrame(main_frame)
+        stage2_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            stage2_frame,
+            text="Second-Stage Prompt (per Part)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        ctk.CTkLabel(
+            stage2_frame,
+            text="This prompt will be applied separately to each Part in Stage 2.\n"
+                 "The JSON rows for each Part will be sent to the model with this prompt.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_prompt_text'):
+            self.second_stage_prompt_text = ctk.CTkTextbox(stage2_frame, height=140, font=self.farsi_text_font)
+            self.second_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.second_stage_prompt_text.pack_forget()
+            except:
+                pass
+            self.second_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Pre-fill with current prompt if available
+        current_prompt = self.get_selected_prompt()
+        if current_prompt and not self.second_stage_prompt_text.get("1.0", tk.END).strip():
+            self.second_stage_prompt_text.insert("1.0", current_prompt)
+        
+        # Chapter name section (right after prompt)
+        chapter_frame = ctk.CTkFrame(stage2_frame)
+        chapter_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            chapter_frame,
+            text="Chapter Name:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_chapter_var'):
+            self.second_stage_chapter_var = ctk.StringVar(value="درمان با UV")
+        chapter_entry = ctk.CTkEntry(
+            chapter_frame,
+            textvariable=self.second_stage_chapter_var,
+            width=400
+        )
+        chapter_entry.pack(anchor="w", padx=10, pady=(0, 5))
+        
+        ctk.CTkLabel(
+            chapter_frame,
+            text="This name will automatically replace {CHAPTER_NAME} in your prompts.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # JSON selection section
+        json_frame = ctk.CTkFrame(main_frame)
+        json_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            json_frame,
+            text="Input JSON (Stage 1 - final_output.json)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        file_frame = ctk.CTkFrame(json_frame)
+        file_frame.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(
+            file_frame,
+            text="Stage 1 JSON File:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_json_var'):
+            self.second_stage_json_var = ctk.StringVar()
+            if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+                self.second_stage_json_var.set(self.last_final_output_path)
+        
+        json_entry = ctk.CTkEntry(file_frame, textvariable=self.second_stage_json_var, width=400)
+        json_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+        
+        def browse_json_file():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 1 final_output.json file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.second_stage_json_var.set(filename)
+        
+        ctk.CTkButton(
+            file_frame,
+            text="Browse",
+            command=browse_json_file,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+        
+        # Model selection for second stage
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            model_frame,
+            text="Second-Stage Model Selection",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        inner_model_frame = ctk.CTkFrame(model_frame)
+        inner_model_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="Select model for second-stage (per-Part) processing:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_model_var'):
+            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else APIConfig.TEXT_MODELS[0])
+        if not hasattr(self, 'second_stage_model_combo'):
+            self.second_stage_model_combo = ctk.CTkComboBox(
+                inner_model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.second_stage_model_var,
+                width=400,
+            )
+            self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.second_stage_model_combo.pack_forget()
+            except:
+                pass
+            self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="You can use a lighter model (e.g., gemini-2.5-flash) for faster processing in the second stage.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        #
+        # --- Automatic Stage 3 & 4 settings (per-Part pipeline) ---
+        #
+        auto_frame = ctk.CTkFrame(main_frame)
+        auto_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            auto_frame,
+            text="Automatic Pipeline Settings (Stages 3 & 4 per Part)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        # Stage 3 prompt
+        s3_frame = ctk.CTkFrame(auto_frame)
+        s3_frame.pack(fill="x", padx=15, pady=(5, 10))
+        
+        ctk.CTkLabel(
+            s3_frame,
+            text="Stage 3 Prompt (structuring & point extraction):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage3_prompt_text'):
+            self.auto_stage3_prompt_text = ctk.CTkTextbox(s3_frame, height=140, font=self.farsi_text_font)
+        self.auto_stage3_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            s3_frame,
+            text="You can use {CHAPTER_NAME} and {PART_NUMBER} placeholders in this prompt.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Stage 4 prompt
+        s4_frame = ctk.CTkFrame(auto_frame)
+        s4_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            s4_frame,
+            text="Stage 4 Prompt (optional, e.g. question generation / extra notes):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage4_prompt_text'):
+            self.auto_stage4_prompt_text = ctk.CTkTextbox(s4_frame, height=120, font=self.farsi_text_font)
+            self.auto_stage4_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.auto_stage4_prompt_text.pack_forget()
+            except:
+                pass
+            self.auto_stage4_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            s4_frame,
+            text="You can also use {CHAPTER_NAME} and {PART_NUMBER} here.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Stage 3 / 4 model & PointId
+        model34_frame = ctk.CTkFrame(auto_frame)
+        model34_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        # Stage 3 model
+        s3_model_row = ctk.CTkFrame(model34_frame)
+        s3_model_row.pack(fill="x", pady=(5, 5))
+        
+        ctk.CTkLabel(
+            s3_model_row,
+            text="Stage 3 Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(10, 5), pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage3_model_var'):
+            self.auto_stage3_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else APIConfig.TEXT_MODELS[0])
+        if not hasattr(self, 'auto_stage3_model_combo'):
+            self.auto_stage3_model_combo = ctk.CTkComboBox(
+                s3_model_row,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.auto_stage3_model_var,
+                width=280,
+            )
+            self.auto_stage3_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.auto_stage3_model_combo.pack_forget()
+            except:
+                pass
+            self.auto_stage3_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        
+        # Stage 4 model
+        s4_model_row = ctk.CTkFrame(model34_frame)
+        s4_model_row.pack(fill="x", pady=(5, 5))
+        
+        ctk.CTkLabel(
+            s4_model_row,
+            text="Stage 4 Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(10, 5), pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage4_model_var'):
+            self.auto_stage4_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else APIConfig.TEXT_MODELS[0])
+        if not hasattr(self, 'auto_stage4_model_combo'):
+            self.auto_stage4_model_combo = ctk.CTkComboBox(
+                s4_model_row,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.auto_stage4_model_var,
+                width=280,
+            )
+            self.auto_stage4_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.auto_stage4_model_combo.pack_forget()
+            except:
+                pass
+            self.auto_stage4_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        
+        # Start PointId
+        pointid_row = ctk.CTkFrame(model34_frame)
+        pointid_row.pack(fill="x", pady=(5, 5))
+        
+        ctk.CTkLabel(
+            pointid_row,
+            text="Start PointId (e.g. 1050030000):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_start_pointid_var'):
+            self.auto_start_pointid_var = ctk.StringVar(value="")
+        ctk.CTkEntry(
+            pointid_row,
+            textvariable=self.auto_start_pointid_var,
+            width=300,
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        ctk.CTkLabel(
+            pointid_row,
+            text="If empty, a default starting PointId will be used.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        #
+        # --- Progress & control buttons ---
+        #
+        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame.pack(fill="x", pady=(10, 10))
+        
+        ctk.CTkLabel(
+            progress_frame,
+            text="Pipeline Progress (Stages 2 to 3 to 4 per Part)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'pipeline_progress_bar'):
+            self.pipeline_progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.pipeline_progress_bar.pack(fill="x", padx=10, pady=(0, 5))
+        self.pipeline_progress_bar.set(0.0)
+        
+        if not hasattr(self, 'pipeline_progress_label'):
+            self.pipeline_progress_label = ctk.CTkLabel(
+                progress_frame,
+                text="Waiting to start...",
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+            )
+        self.pipeline_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Control buttons
+        controls_frame = ctk.CTkFrame(main_frame)
+        controls_frame.pack(fill="x", pady=(10, 10))
+        
+        def start_second_stage_only():
+            # فقط Stage 2 (پردازش پارت‌ها) – رفتار قبلی
+            start_stage2_btn.configure(state="disabled", text="Processing Stage 2...")
+            threading.Thread(
+                target=self.process_json_by_parts_worker,
+                args=(self.root, start_stage2_btn),
+                daemon=True,
+            ).start()
+        
+        start_stage2_btn = ctk.CTkButton(
+            controls_frame,
+            text="Run Stage 2 Only (per Part)",
+            command=start_second_stage_only,
+            width=240,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        start_stage2_btn.pack(side="left", padx=10, pady=10)
+        
+        # Full pipeline button
+        if not hasattr(self, 'full_pipeline_cancel'):
+            self.full_pipeline_cancel = False
+        
+        def start_full_pipeline():
+            full_btn.configure(state="disabled", text="Running Full Pipeline...")
+            self.full_pipeline_cancel = False
+            threading.Thread(
+                target=self.process_full_pipeline_worker,
+                args=(self.root, full_btn),
+                daemon=True,
+            ).start()
+        
+        full_btn = ctk.CTkButton(
+            controls_frame,
+            text="Run Full Pipeline (Stage 2 to 3 to 4 per Part)",
+            command=start_full_pipeline,
+            width=320,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        full_btn.pack(side="left", padx=10, pady=10)
+        
+        def cancel_pipeline():
+            self.full_pipeline_cancel = True
+            self.update_status("Cancellation requested. Current part will finish, then pipeline will stop.")
+            self.pipeline_progress_label.configure(
+                text="Cancellation requested...",
+                text_color="orange",
+            )
+        
+        cancel_btn = ctk.CTkButton(
+            controls_frame,
+            text="Cancel Pipeline",
+            command=cancel_pipeline,
+            width=160,
+            height=40,
+            font=ctk.CTkFont(size=13),
+            fg_color="red",
+            hover_color="darkred",
+        )
+        cancel_btn.pack(side="left", padx=10, pady=10)
 
     def process_json_by_parts_worker(self, parent_window, start_button):
         """
@@ -1799,6 +2315,771 @@ class ContentAutomationGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load JSON file:\n{str(e)}")
 
+    def show_tabview(self):
+        """Switch from main view to tabview"""
+        self.main_stages_1_4_frame.pack_forget()
+        self.main_tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        # Force switch to Stages 1-4 tab in tabview
+        # Use after() to ensure the tabview is fully packed before setting tab
+        def set_tab():
+            try:
+                self.main_tabview.set("Stages 1-4")
+                # Double-check after a short delay
+                self.root.after(50, lambda: self.main_tabview.set("Stages 1-4"))
+            except Exception as e:
+                self.logger.warning(f"Error setting tab to Stages 1-4: {e}")
+        self.root.after(10, set_tab)
+    
+    def show_main_view(self):
+        """Switch from tabview to main view"""
+        self.main_tabview.pack_forget()
+        self.main_stages_1_4_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    def setup_pipeline_status_bar(self):
+        """Setup pipeline status indicator bar"""
+        # Create status bar frame at the top
+        status_bar_frame = ctk.CTkFrame(self.root)
+        status_bar_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(status_bar_frame, text="Pipeline Status:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=10)
+        
+        # Status indicators for each stage
+        self.stage_status_labels = {}
+        stages = ['E', 'F', 'J', 'H', 'V', 'M', 'L']
+        
+        for stage in stages:
+            label = ctk.CTkLabel(status_bar_frame, text=f"{stage}: Waiting", 
+                               text_color="gray", width=60)
+            label.pack(side="left", padx=5)
+            self.stage_status_labels[stage] = label
+    
+    def update_stage_status(self, stage: str, status: str, file_path: Optional[str] = None):
+        """Update pipeline status for a stage"""
+        if stage not in self.stage_status_labels:
+            return
+        
+        label = self.stage_status_labels[stage]
+        if status == "completed":
+            label.configure(text=f"{stage}: OK", text_color="green")
+        elif status == "processing":
+            label.configure(text=f"{stage}: Processing", text_color="blue")
+        elif status == "error":
+            label.configure(text=f"{stage}: Error", text_color="red")
+        else:
+            label.configure(text=f"{stage}: Waiting", text_color="gray")
+    
+    def setup_stage_e_ui(self, parent):
+        """Setup UI for Stage E: Image Notes Processing"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Stage E: Image Notes Processing", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Generate image notes from Stage 4 JSON and merge with Stage 4 data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Stage 4 File Selection
+        stage4_frame = ctk.CTkFrame(main_frame)
+        stage4_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage4_frame, text="Stage 4 JSON (with PointId):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_e_stage4_var = ctk.StringVar()
+        # Auto-fill if available
+        if self.last_corrected_path and os.path.exists(self.last_corrected_path):
+            self.stage_e_stage4_var.set(self.last_corrected_path)
+        
+        entry_frame = ctk.CTkFrame(stage4_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage4_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_e_stage4_var)
+        stage4_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_e_stage4_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        self.stage_e_stage4_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_e_stage4_valid.pack(side="right", padx=5)
+        
+        # Stage 1 File Selection
+        stage1_frame = ctk.CTkFrame(main_frame)
+        stage1_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage1_frame, text="Stage 1 JSON:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_e_stage1_var = ctk.StringVar()
+        # Auto-fill if available
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            self.stage_e_stage1_var.set(self.last_final_output_path)
+        
+        entry_frame1 = ctk.CTkFrame(stage1_frame)
+        entry_frame1.pack(fill="x", padx=10, pady=5)
+        
+        stage1_entry = ctk.CTkEntry(entry_frame1, textvariable=self.stage_e_stage1_var)
+        stage1_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame1, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_e_stage1_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        self.stage_e_stage1_valid = ctk.CTkLabel(entry_frame1, text="", width=30)
+        self.stage_e_stage1_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(prompt_frame, text="Prompt for Image Notes Generation:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_e_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_e_prompt_text.pack(fill="x", padx=10, pady=5)
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Get default model from main model selection if available
+        default_model = "gemini-2.5-flash"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        self.stage_e_model_var = ctk.StringVar(value=default_model)
+        self.stage_e_model_combo = ctk.CTkComboBox(
+            model_frame,
+            values=APIConfig.TEXT_MODELS,
+            variable=self.stage_e_model_var,
+            width=300
+        )
+        self.stage_e_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        self.stage_e_process_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process Stage E",
+            command=self.process_stage_e,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="blue"
+        )
+        self.stage_e_process_btn.pack(pady=10)
+        
+        # Status for Stage E
+        self.stage_e_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                 font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_e_status_label.pack(pady=10)
+        
+        # Auto-validate files on change
+        self.stage_e_stage4_var.trace('w', lambda *args: self.validate_stage_e_files())
+        self.stage_e_stage1_var.trace('w', lambda *args: self.validate_stage_e_files())
+    
+    def browse_file_for_stage(self, var: ctk.StringVar, filetypes: list = None):
+        """Browse for file and set variable"""
+        if filetypes is None:
+            filetypes = [("All files", "*.*")]
+        
+        filename = filedialog.askopenfilename(
+            title="Select File",
+            filetypes=filetypes
+        )
+        if filename:
+            var.set(filename)
+    
+    def validate_stage_e_files(self):
+        """Validate Stage E input files"""
+        stage4_path = self.stage_e_stage4_var.get()
+        stage1_path = self.stage_e_stage1_var.get()
+        
+        # Validate Stage 4
+        if stage4_path and os.path.exists(stage4_path):
+            try:
+                data = json.load(open(stage4_path, 'r', encoding='utf-8'))
+                points = data.get("data") or data.get("points") or data.get("rows", [])
+                if points and points[0].get("PointId"):
+                    self.stage_e_stage4_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_e_stage4_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_e_stage4_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_e_stage4_valid.configure(text="", text_color="gray")
+        
+        # Validate Stage 1
+        if stage1_path and os.path.exists(stage1_path):
+            try:
+                data = json.load(open(stage1_path, 'r', encoding='utf-8'))
+                rows = data.get("data") or data.get("rows", [])
+                if rows:
+                    self.stage_e_stage1_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_e_stage1_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_e_stage1_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_e_stage1_valid.configure(text="", text_color="gray")
+    
+    def process_stage_e(self):
+        """Process Stage E in background thread"""
+        def worker():
+            try:
+                self.stage_e_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("E", "processing")
+                self.stage_e_status_label.configure(text="Processing Stage E...", text_color="blue")
+                
+                # Validate inputs
+                stage4_path = self.stage_e_stage4_var.get().strip()
+                stage1_path = self.stage_e_stage1_var.get().strip()
+                prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_e_model_var.get()
+                
+                if not stage4_path or not os.path.exists(stage4_path):
+                    messagebox.showerror("Error", "Please select a valid Stage 4 JSON file")
+                    return
+                
+                if not stage1_path or not os.path.exists(stage1_path):
+                    messagebox.showerror("Error", "Please select a valid Stage 1 JSON file")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for image notes generation")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_e_status_label.configure(text=msg))
+                
+                # Process Stage E
+                output_path = self.stage_e_processor.process_stage_e(
+                    stage4_path=stage4_path,
+                    stage1_path=stage1_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_e_path = output_path
+                    self.update_stage_status("E", "completed", output_path)
+                    self.stage_e_status_label.configure(
+                        text=f"Stage E completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Stage E completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("E", "error")
+                    self.stage_e_status_label.configure(text="Stage E failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Stage E processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Stage E processing: {e}", exc_info=True)
+                self.update_stage_status("E", "error")
+                self.stage_e_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Stage E processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_e_process_btn.configure(state="normal", text="Process Stage E"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_f_ui(self, parent):
+        """Setup UI for Stage F: Image File Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Stage F: Image File Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Generate image file JSON from Stage E data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Stage E File Selection
+        stage_e_frame = ctk.CTkFrame(main_frame)
+        stage_e_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_e_frame, text="Stage E JSON:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_f_stage_e_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_e_path') and self.last_stage_e_path and os.path.exists(self.last_stage_e_path):
+            self.stage_f_stage_e_var.set(self.last_stage_e_path)
+        
+        entry_frame = ctk.CTkFrame(stage_e_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_e_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_f_stage_e_var)
+        stage_e_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_f_stage_e_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        self.stage_f_stage_e_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_f_stage_e_valid.pack(side="right", padx=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        self.stage_f_process_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process Stage F",
+            command=self.process_stage_f,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="blue"
+        )
+        self.stage_f_process_btn.pack(pady=10)
+        
+        # Status for Stage F
+        self.stage_f_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                 font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_f_status_label.pack(pady=10)
+        
+        # Auto-validate file on change
+        self.stage_f_stage_e_var.trace('w', lambda *args: self.validate_stage_f_file())
+    
+    def validate_stage_f_file(self):
+        """Validate Stage F input file"""
+        stage_e_path = self.stage_f_stage_e_var.get()
+        
+        if stage_e_path and os.path.exists(stage_e_path):
+            try:
+                data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
+                metadata = data.get("metadata", {})
+                if metadata.get("first_image_point_id"):
+                    self.stage_f_stage_e_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_f_stage_e_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_f_stage_e_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_f_stage_e_valid.configure(text="", text_color="gray")
+    
+    def process_stage_f(self):
+        """Process Stage F in background thread"""
+        def worker():
+            try:
+                self.stage_f_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("F", "processing")
+                self.stage_f_status_label.configure(text="Processing Stage F...", text_color="blue")
+                
+                # Validate inputs
+                stage_e_path = self.stage_f_stage_e_var.get().strip()
+                
+                if not stage_e_path or not os.path.exists(stage_e_path):
+                    messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_f_status_label.configure(text=msg))
+                
+                # Process Stage F
+                output_path = self.stage_f_processor.process_stage_f(
+                    stage_e_path=stage_e_path,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.update_stage_status("F", "completed", output_path)
+                    self.stage_f_status_label.configure(
+                        text=f"Stage F completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Stage F completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("F", "error")
+                    self.stage_f_status_label.configure(text="Stage F failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Stage F processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Stage F processing: {e}", exc_info=True)
+                self.update_stage_status("F", "error")
+                self.stage_f_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Stage F processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_f_process_btn.configure(state="normal", text="Process Stage F"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_j_ui(self, parent):
+        """Setup UI for Stage J: Add Imp & Type"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="< Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Stage J: Add Imp & Type", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Add Imp and Type columns to Stage E data based on Word test file.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Stage E File Selection
+        stage_e_frame = ctk.CTkFrame(main_frame)
+        stage_e_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_e_frame, text="Stage E JSON:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_stage_e_var'):
+            self.stage_j_stage_e_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_e_path') and self.last_stage_e_path and os.path.exists(self.last_stage_e_path):
+            self.stage_j_stage_e_var.set(self.last_stage_e_path)
+        
+        entry_frame = ctk.CTkFrame(stage_e_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_e_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_j_stage_e_var)
+        stage_e_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_j_stage_e_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_j_stage_e_valid'):
+            self.stage_j_stage_e_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_j_stage_e_valid.pack(side="right", padx=5)
+        
+        # Word File Selection
+        word_frame = ctk.CTkFrame(main_frame)
+        word_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(word_frame, text="Word File (Test Questions):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_word_var'):
+            self.stage_j_word_var = ctk.StringVar()
+        
+        entry_frame_word = ctk.CTkFrame(word_frame)
+        entry_frame_word.pack(fill="x", padx=10, pady=5)
+        
+        word_entry = ctk.CTkEntry(entry_frame_word, textvariable=self.stage_j_word_var)
+        word_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_word, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_j_word_var, 
+                                                                 filetypes=[("Word Documents", "*.docx *.doc"), ("All files", "*.*")])).pack(side="right")
+        
+        # Validation indicator for Word file
+        if not hasattr(self, 'stage_j_word_valid'):
+            self.stage_j_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
+        self.stage_j_word_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(prompt_frame, text="Prompt for Imp & Type Generation:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_prompt_text'):
+            self.stage_j_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_j_prompt_text.pack(fill="x", padx=10, pady=5)
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Get default model from main model selection if available
+        default_model = "gemini-2.5-flash"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        if not hasattr(self, 'stage_j_model_var'):
+            self.stage_j_model_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_j_model_combo'):
+            self.stage_j_model_combo = ctk.CTkComboBox(
+                model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_j_model_var,
+                width=300
+            )
+        self.stage_j_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_j_process_btn'):
+            self.stage_j_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Stage J",
+                command=self.process_stage_j,
+                width=200,
+                height=40,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                fg_color="blue"
+            )
+        self.stage_j_process_btn.pack(pady=10)
+        
+        # Status for Stage J
+        if not hasattr(self, 'stage_j_status_label'):
+            self.stage_j_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                     font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_j_status_label.pack(pady=10)
+        
+        # Auto-validate files on change
+        self.stage_j_stage_e_var.trace('w', lambda *args: self.validate_stage_j_files())
+        self.stage_j_word_var.trace('w', lambda *args: self.validate_stage_j_files())
+    
+    def validate_stage_j_files(self):
+        """Validate Stage J input files"""
+        stage_e_path = self.stage_j_stage_e_var.get()
+        word_path = self.stage_j_word_var.get()
+        
+        # Validate Stage E
+        if stage_e_path and os.path.exists(stage_e_path):
+            try:
+                data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
+                records = data.get("data") or data.get("rows", [])
+                if records and records[0].get("PointId"):
+                    self.stage_j_stage_e_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_j_stage_e_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_j_stage_e_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_j_stage_e_valid.configure(text="", text_color="gray")
+        
+        # Validate Word file
+        if word_path and os.path.exists(word_path):
+            # Check if it's a Word file
+            ext = os.path.splitext(word_path)[1].lower()
+            if ext in ['.docx', '.doc']:
+                self.stage_j_word_valid.configure(text="OK", text_color="green")
+            else:
+                self.stage_j_word_valid.configure(text="W", text_color="orange")
+        else:
+            self.stage_j_word_valid.configure(text="", text_color="gray")
+    
+    def process_stage_j(self):
+        """Process Stage J in background thread"""
+        def worker():
+            try:
+                self.stage_j_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("J", "processing")
+                self.stage_j_status_label.configure(text="Processing Stage J...", text_color="blue")
+                
+                # Validate inputs
+                stage_e_path = self.stage_j_stage_e_var.get().strip()
+                word_path = self.stage_j_word_var.get().strip()
+                prompt = self.stage_j_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_j_model_var.get()
+                
+                if not stage_e_path or not os.path.exists(stage_e_path):
+                    messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                    return
+                
+                if not word_path or not os.path.exists(word_path):
+                    messagebox.showerror("Error", "Please select a valid Word file")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for Imp & Type generation")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_j_status_label.configure(text=msg))
+                
+                # Process Stage J
+                output_path = self.stage_j_processor.process_stage_j(
+                    stage_e_path=stage_e_path,
+                    word_file_path=word_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.update_stage_status("J", "completed", output_path)
+                    self.stage_j_status_label.configure(
+                        text=f"Stage J completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Stage J completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("J", "error")
+                    self.stage_j_status_label.configure(text="Stage J failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Stage J processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Stage J processing: {e}", exc_info=True)
+                self.update_stage_status("J", "error")
+                self.stage_j_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Stage J processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_j_process_btn.configure(state="normal", text="Process Stage J"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_h_ui(self, parent):
+        """Setup UI for Stage H: Flashcard Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        title = ctk.CTkLabel(main_frame, text="Stage H: Flashcard Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Generate flashcards from Stage J and Stage F data.", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+        
+        placeholder = ctk.CTkLabel(main_frame, text="Stage H UI - Coming Soon", 
+                                  font=ctk.CTkFont(size=16), text_color="gray")
+        placeholder.pack(pady=50)
+    
+    def setup_stage_v_ui(self, parent):
+        """Setup UI for Stage V: Test File Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        title = ctk.CTkLabel(main_frame, text="Stage V: Test File Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Generate test files from Stage J data and Word document.", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+        
+        placeholder = ctk.CTkLabel(main_frame, text="Stage V UI - Coming Soon", 
+                                  font=ctk.CTkFont(size=16), text_color="gray")
+        placeholder.pack(pady=50)
+    
+    def setup_stage_m_ui(self, parent):
+        """Setup UI for Stage M: Topic ID List"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        title = ctk.CTkLabel(main_frame, text="Stage M: Topic ID List", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Extract unique topics from Stage H (ac) file.", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+        
+        placeholder = ctk.CTkLabel(main_frame, text="Stage M UI - Coming Soon", 
+                                  font=ctk.CTkFont(size=16), text_color="gray")
+        placeholder.pack(pady=50)
+    
+    def setup_stage_l_ui(self, parent):
+        """Setup UI for Stage L: Chapter Overview"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        title = ctk.CTkLabel(main_frame, text="Stage L: Chapter Overview", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Generate chapter overview from Stage J and Stage V data.", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+        
+        placeholder = ctk.CTkLabel(main_frame, text="Stage L UI - Coming Soon", 
+                                  font=ctk.CTkFont(size=16), text_color="gray")
+        placeholder.pack(pady=50)
+    
     def run(self):
         """Start the GUI main loop"""
         self.root.mainloop()
