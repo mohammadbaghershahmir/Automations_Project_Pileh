@@ -531,10 +531,30 @@ class GeminiAPIClient:
             else:
                 full_prompt = text
             
+            # Determine maximum tokens based on model
+            # Model-specific maximum tokens:
+            # gemini-2.5-pro: up to 32768 tokens
+            # gemini-2.5-flash: up to 32768 tokens
+            # gemini-2.0-flash: up to 32768 tokens
+            # gemini-1.5-pro: up to 8192 tokens
+            # gemini-1.5-flash: up to 8192 tokens
+            if '2.5' in model_name or '2.0' in model_name:
+                # Newer models support up to 32768 tokens
+                model_max_tokens = 32768
+            elif '1.5' in model_name:
+                # Older models support up to 8192 tokens
+                model_max_tokens = 8192
+            else:
+                # Default to maximum for safety
+                model_max_tokens = 32768
+            
+            # Use the maximum available for the model, but respect user's max_tokens if lower
+            effective_max_tokens = min(max(max_tokens, model_max_tokens), model_max_tokens)
+            
             # Generate content
             generation_config = genai.types.GenerationConfig(
                 temperature=temperature,
-                max_output_tokens=max_tokens,
+                max_output_tokens=effective_max_tokens,
             )
             
             response = self.text_client.generate_content(

@@ -26,6 +26,7 @@ from txt_stage_json_utils import load_stage_txt_as_json
 from stage_e_processor import StageEProcessor
 from stage_f_processor import StageFProcessor
 from stage_j_processor import StageJProcessor
+from stage_h_processor import StageHProcessor
 
 
 class ContentAutomationGUI:
@@ -62,6 +63,7 @@ class ContentAutomationGUI:
         self.stage_e_processor = StageEProcessor(self.api_client)
         self.stage_f_processor = StageFProcessor(self.api_client)
         self.stage_j_processor = StageJProcessor(self.api_client)
+        self.stage_h_processor = StageHProcessor(self.api_client)
         
         # Variables
         self.pdf_path = None
@@ -74,6 +76,8 @@ class ContentAutomationGUI:
         self.last_stage3_raw_path = None         # Stage 3 raw JSON (new intermediate stage)
         self.last_stage4_raw_path = None         # Stage 4 raw JSON (chunked model output)
         self.last_stage_e_path = None            # Stage E JSON
+        self.last_stage_j_path = None            # Stage J JSON
+        self.last_stage_f_path = None            # Stage F JSON
         
         # Setup UI
         self.setup_ui()
@@ -2746,6 +2750,7 @@ class ContentAutomationGUI:
                 )
                 
                 if output_path:
+                    self.last_stage_f_path = output_path
                     self.update_stage_status("F", "completed", output_path)
                     self.stage_f_status_label.configure(
                         text=f"Stage F completed successfully!\nOutput: {os.path.basename(output_path)}",
@@ -2855,6 +2860,40 @@ class ContentAutomationGUI:
             self.stage_j_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
         self.stage_j_word_valid.pack(side="right", padx=5)
         
+        # Stage F File Selection (Optional)
+        stage_f_frame = ctk.CTkFrame(main_frame)
+        stage_f_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_f_frame, text="Stage F JSON (Optional - f.json):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_stage_f_var'):
+            self.stage_j_stage_f_var = ctk.StringVar()
+        # Auto-fill if available (try to find f.json in same directory as Stage E)
+        if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
+            self.stage_j_stage_f_var.set(self.last_stage_f_path)
+        elif self.stage_j_stage_e_var.get():
+            # Try to find f.json in same directory
+            stage_e_dir = os.path.dirname(self.stage_j_stage_e_var.get())
+            f_json_path = os.path.join(stage_e_dir, "f.json")
+            if os.path.exists(f_json_path):
+                self.stage_j_stage_f_var.set(f_json_path)
+        
+        entry_frame_f = ctk.CTkFrame(stage_f_frame)
+        entry_frame_f.pack(fill="x", padx=10, pady=5)
+        
+        stage_f_entry = ctk.CTkEntry(entry_frame_f, textvariable=self.stage_j_stage_f_var)
+        stage_f_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_f, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_j_stage_f_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator for Stage F file
+        if not hasattr(self, 'stage_j_stage_f_valid'):
+            self.stage_j_stage_f_valid = ctk.CTkLabel(entry_frame_f, text="", width=30)
+        self.stage_j_stage_f_valid.pack(side="right", padx=5)
+        
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
         prompt_frame.pack(fill="x", pady=10)
@@ -2914,11 +2953,13 @@ class ContentAutomationGUI:
         # Auto-validate files on change
         self.stage_j_stage_e_var.trace('w', lambda *args: self.validate_stage_j_files())
         self.stage_j_word_var.trace('w', lambda *args: self.validate_stage_j_files())
+        self.stage_j_stage_f_var.trace('w', lambda *args: self.validate_stage_j_files())
     
     def validate_stage_j_files(self):
         """Validate Stage J input files"""
         stage_e_path = self.stage_j_stage_e_var.get()
         word_path = self.stage_j_word_var.get()
+        stage_f_path = self.stage_j_stage_f_var.get() if hasattr(self, 'stage_j_stage_f_var') else ""
         
         # Validate Stage E
         if stage_e_path and os.path.exists(stage_e_path):
@@ -2944,6 +2985,21 @@ class ContentAutomationGUI:
                 self.stage_j_word_valid.configure(text="W", text_color="orange")
         else:
             self.stage_j_word_valid.configure(text="", text_color="gray")
+        
+        # Validate Stage F (optional)
+        if hasattr(self, 'stage_j_stage_f_valid'):
+            if stage_f_path and os.path.exists(stage_f_path):
+                try:
+                    data = json.load(open(stage_f_path, 'r', encoding='utf-8'))
+                    records = data.get("data") or data.get("rows", [])
+                    if records:
+                        self.stage_j_stage_f_valid.configure(text="OK", text_color="green")
+                    else:
+                        self.stage_j_stage_f_valid.configure(text="W", text_color="orange")
+                except:
+                    self.stage_j_stage_f_valid.configure(text="X", text_color="red")
+            else:
+                self.stage_j_stage_f_valid.configure(text="", text_color="gray")
     
     def process_stage_j(self):
         """Process Stage J in background thread"""
@@ -2956,6 +3012,7 @@ class ContentAutomationGUI:
                 # Validate inputs
                 stage_e_path = self.stage_j_stage_e_var.get().strip()
                 word_path = self.stage_j_word_var.get().strip()
+                stage_f_path = self.stage_j_stage_f_var.get().strip() if hasattr(self, 'stage_j_stage_f_var') else ""
                 prompt = self.stage_j_prompt_text.get("1.0", tk.END).strip()
                 model_name = self.stage_j_model_var.get()
                 
@@ -2971,6 +3028,11 @@ class ContentAutomationGUI:
                     messagebox.showerror("Error", "Please enter a prompt for Imp & Type generation")
                     return
                 
+                # Stage F is optional, but validate if provided
+                if stage_f_path and not os.path.exists(stage_f_path):
+                    messagebox.showerror("Error", "Stage F JSON file path is invalid")
+                    return
+                
                 # Validate API keys
                 if not self.api_key_manager.api_keys:
                     messagebox.showerror("Error", "Please load API keys first")
@@ -2983,12 +3045,14 @@ class ContentAutomationGUI:
                 output_path = self.stage_j_processor.process_stage_j(
                     stage_e_path=stage_e_path,
                     word_file_path=word_path,
+                    stage_f_path=stage_f_path if stage_f_path else None,
                     prompt=prompt,
                     model_name=model_name,
                     progress_callback=progress_callback
                 )
                 
                 if output_path:
+                    self.last_stage_j_path = output_path
                     self.update_stage_status("J", "completed", output_path)
                     self.stage_j_status_label.configure(
                         text=f"Stage J completed successfully!\nOutput: {os.path.basename(output_path)}",
@@ -3012,6 +3076,106 @@ class ContentAutomationGUI:
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
     
+    def validate_stage_h_files(self):
+        """Validate Stage H input files"""
+        stage_j_path = self.stage_h_stage_j_var.get()
+        stage_f_path = self.stage_h_stage_f_var.get()
+        
+        # Validate Stage J
+        if stage_j_path and os.path.exists(stage_j_path):
+            try:
+                data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
+                records = data.get("data") or data.get("rows", [])
+                if records and records[0].get("PointId"):
+                    self.stage_h_stage_j_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_h_stage_j_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_h_stage_j_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_h_stage_j_valid.configure(text="", text_color="gray")
+        
+        # Validate Stage F
+        if stage_f_path and os.path.exists(stage_f_path):
+            try:
+                data = json.load(open(stage_f_path, 'r', encoding='utf-8'))
+                records = data.get("data") or data.get("rows", [])
+                if records:
+                    self.stage_h_stage_f_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_h_stage_f_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_h_stage_f_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_h_stage_f_valid.configure(text="", text_color="gray")
+    
+    def process_stage_h(self):
+        """Process Stage H in background thread"""
+        def worker():
+            try:
+                self.stage_h_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("H", "processing")
+                self.stage_h_status_label.configure(text="Processing Stage H...", text_color="blue")
+                
+                # Validate inputs
+                stage_j_path = self.stage_h_stage_j_var.get().strip()
+                stage_f_path = self.stage_h_stage_f_var.get().strip()
+                prompt = self.stage_h_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_h_model_var.get()
+                
+                if not stage_j_path or not os.path.exists(stage_j_path):
+                    messagebox.showerror("Error", "Please select a valid Stage J JSON file")
+                    return
+                
+                if not stage_f_path or not os.path.exists(stage_f_path):
+                    messagebox.showerror("Error", "Please select a valid Stage F JSON file")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for flashcard generation")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_h_status_label.configure(text=msg))
+                
+                # Process Stage H
+                output_path = self.stage_h_processor.process_stage_h(
+                    stage_j_path=stage_j_path,
+                    stage_f_path=stage_f_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.update_stage_status("H", "completed", output_path)
+                    self.stage_h_status_label.configure(
+                        text=f"Stage H completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Stage H completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("H", "error")
+                    self.stage_h_status_label.configure(text="Stage H failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Stage H processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Stage H processing: {e}", exc_info=True)
+                self.update_stage_status("H", "error")
+                self.stage_h_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Stage H processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_h_process_btn.configure(state="normal", text="Process Stage H"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
     def setup_stage_h_ui(self, parent):
         """Setup UI for Stage H: Flashcard Generation"""
         main_frame = ctk.CTkScrollableFrame(parent)
@@ -3025,9 +3189,132 @@ class ContentAutomationGUI:
                            font=ctk.CTkFont(size=12), text_color="gray")
         desc.pack(pady=(0, 20))
         
-        placeholder = ctk.CTkLabel(main_frame, text="Stage H UI - Coming Soon", 
-                                  font=ctk.CTkFont(size=16), text_color="gray")
-        placeholder.pack(pady=50)
+        # Stage J File Selection
+        stage_j_frame = ctk.CTkFrame(main_frame)
+        stage_j_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_j_frame, text="Stage J JSON (a file):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_h_stage_j_var'):
+            self.stage_h_stage_j_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
+            self.stage_h_stage_j_var.set(self.last_stage_j_path)
+        
+        entry_frame = ctk.CTkFrame(stage_j_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_j_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_h_stage_j_var)
+        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_h_stage_j_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_h_stage_j_valid'):
+            self.stage_h_stage_j_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_h_stage_j_valid.pack(side="right", padx=5)
+        
+        # Stage F File Selection
+        stage_f_frame = ctk.CTkFrame(main_frame)
+        stage_f_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_f_frame, text="Stage F JSON (f.json):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_h_stage_f_var'):
+            self.stage_h_stage_f_var = ctk.StringVar()
+        # Auto-fill if available (try to find f.json in same directory as Stage J)
+        if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
+            self.stage_h_stage_f_var.set(self.last_stage_f_path)
+        elif self.stage_h_stage_j_var.get():
+            # Try to find f.json in same directory
+            stage_j_dir = os.path.dirname(self.stage_h_stage_j_var.get())
+            f_json_path = os.path.join(stage_j_dir, "f.json")
+            if os.path.exists(f_json_path):
+                self.stage_h_stage_f_var.set(f_json_path)
+        
+        entry_frame_f = ctk.CTkFrame(stage_f_frame)
+        entry_frame_f.pack(fill="x", padx=10, pady=5)
+        
+        stage_f_entry = ctk.CTkEntry(entry_frame_f, textvariable=self.stage_h_stage_f_var)
+        stage_f_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_f, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_h_stage_f_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator for Stage F file
+        if not hasattr(self, 'stage_h_stage_f_valid'):
+            self.stage_h_stage_f_valid = ctk.CTkLabel(entry_frame_f, text="", width=30)
+        self.stage_h_stage_f_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(prompt_frame, text="Prompt for Flashcard Generation:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_h_prompt_text'):
+            self.stage_h_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_h_prompt_text.pack(fill="x", padx=10, pady=5)
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Get default model from main model selection if available
+        default_model = "gemini-2.5-flash"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        if not hasattr(self, 'stage_h_model_var'):
+            self.stage_h_model_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_h_model_combo'):
+            self.stage_h_model_combo = ctk.CTkComboBox(
+                model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_h_model_var,
+                width=300
+            )
+        self.stage_h_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_h_process_btn'):
+            self.stage_h_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Stage H",
+                command=self.process_stage_h,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_h_process_btn.pack(pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'stage_h_status_label'):
+            self.stage_h_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_h_status_label.pack(pady=5)
+        
+        # Bind validation
+        self.stage_h_stage_j_var.trace('w', lambda *args: self.validate_stage_h_files())
+        self.stage_h_stage_f_var.trace('w', lambda *args: self.validate_stage_h_files())
+        
+        # Initial validation
+        self.validate_stage_h_files()
     
     def setup_stage_v_ui(self, parent):
         """Setup UI for Stage V: Test File Generation"""
