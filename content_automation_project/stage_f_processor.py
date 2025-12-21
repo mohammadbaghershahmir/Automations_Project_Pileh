@@ -49,62 +49,82 @@ class StageFProcessor(BaseStageProcessor):
         """
         Extract and transform file name from Points column value.
         Transformations:
-        - If "تصویر" is in the name: replace with "Fig" and ":" with "_"
-        - If "جدول" is in the name: replace with "Table" and ":" with "_"
-        - Remove all spaces and extra characters, keeping only prefix, numbers, and "_"
+        - If "تصویر" is in the name: replace with "Fig" and ":" with "-"
+        - If "جدول" is in the name: replace with "Table" and ":" with "-"
+        - Keep space between prefix and numbers
+        - Preserve prefix letters (like "e") before numbers
         Examples:
-        - "تصویر 30:19" → "Fig30_19"
-        - "تصویر e30:18" → "Fig30_18"
-        - "جدول 30:3" → "Table30_3"
+        - "تصویر 30:19" → "Fig 30-19"
+        - "تصویر e30:15" → "eFig 30-15"
+        - "جدول 30:3" → "Table 30-3"
+        - "جدول e30:3" → "eTable 30-3"
         
         Args:
-            points_value: Value from Points column (e.g., "تصویر 30:19" or "جدول 30:3")
+            points_value: Value from Points column (e.g., "تصویر 30:19" or "جدول e30:3")
             
         Returns:
-            Transformed file name (e.g., "Fig30_19" or "Table30_3")
+            Transformed file name (e.g., "Fig 30-19" or "eFig 30-15")
         """
         if not points_value:
             return ""
         
         file_name = points_value.strip()
         prefix = ""
+        letter_prefix = ""  # For letters like "e" before numbers
         
         # Check for "تصویر" (Persian for "Figure")
         if "تصویر" in file_name:
             prefix = "Fig"
             # Remove "تصویر" from the string
-            file_name = file_name.replace("تصویر", "")
+            file_name = file_name.replace("تصویر", "").strip()
         
         # Check for "جدول" (Persian for "Table")
         elif "جدول" in file_name:
             prefix = "Table"
             # Remove "جدول" from the string
-            file_name = file_name.replace("جدول", "")
+            file_name = file_name.replace("جدول", "").strip()
         
         # Check if already has English prefix
         elif "Fig" in file_name or "fig" in file_name.lower():
             prefix = "Fig"
             # Remove "Fig" or "fig" from the string
-            file_name = re.sub(r'[Ff]ig\s*', '', file_name)
+            file_name = re.sub(r'[Ff]ig\s*', '', file_name).strip()
         
         elif "Table" in file_name or "table" in file_name.lower():
             prefix = "Table"
             # Remove "Table" or "table" from the string
-            file_name = re.sub(r'[Tt]able\s*', '', file_name)
+            file_name = re.sub(r'[Tt]able\s*', '', file_name).strip()
         
         # If no prefix found, default to "Fig"
         if not prefix:
             prefix = "Fig"
         
-        # Replace ":" with "_"
-        file_name = file_name.replace(":", "_")
+        # Check for letter prefix (like "e" before numbers)
+        # Pattern: letter(s) followed by number (e.g., "e30:15" or "e 30:15")
+        letter_match = re.match(r'^([a-zA-Z]+)\s*(\d)', file_name)
+        if letter_match:
+            letter_prefix = letter_match.group(1)
+            file_name = file_name[len(letter_prefix):].strip()
         
-        # Extract only numbers and "_" (remove all other characters including spaces, letters like "e")
-        # Keep the pattern: numbers_numbers (e.g., "30_19" or "30_3")
-        file_name = re.sub(r'[^\d_]', '', file_name)
+        # Replace ":" with "-"
+        file_name = file_name.replace(":", "-")
         
-        # Combine prefix with cleaned numbers
-        result = prefix + file_name
+        # Extract numbers and "-" (remove all other characters except spaces)
+        # Keep the pattern: numbers-numbers (e.g., "30-19" or "30-3")
+        # First, replace multiple spaces with single space
+        file_name = re.sub(r'\s+', ' ', file_name)
+        # Extract numbers, dashes, and spaces
+        file_name = re.sub(r'[^\d\s-]', '', file_name)
+        # Clean up: remove leading/trailing spaces and normalize dashes
+        file_name = file_name.strip()
+        # Replace multiple dashes with single dash
+        file_name = re.sub(r'-+', '-', file_name)
+        
+        # Combine: letter_prefix + prefix + space + numbers
+        if letter_prefix:
+            result = f"{letter_prefix}{prefix} {file_name}"
+        else:
+            result = f"{prefix} {file_name}"
         
         return result
     
