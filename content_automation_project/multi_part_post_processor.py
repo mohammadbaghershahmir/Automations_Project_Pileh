@@ -129,7 +129,7 @@ class MultiPartPostProcessor:
         if not all_json_blocks:
             self.logger.error("No JSON blocks extracted from any response")
             return None
-        
+
         self.logger.info(f"Total {len(all_json_blocks)} JSON block(s) extracted from all parts")
         
         # Combine all JSON blocks into final structure

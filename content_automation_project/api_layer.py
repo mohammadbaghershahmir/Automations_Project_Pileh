@@ -512,7 +512,7 @@ class GeminiAPIClient:
         if not GENERATIVEAI_AVAILABLE:
             self.logger.error("google.generativeai library not available")
             return None
-        
+            
         def _do_process():
             """Inner function to perform the actual processing"""
             # Initialize client if needed
@@ -565,7 +565,7 @@ class GeminiAPIClient:
             processed_text = response.text
             self.logger.info(f"Text processed successfully with {model_name}")
             return processed_text
-        
+            
         # Try with retry logic for timeout errors
         import time
         max_retries = 3
