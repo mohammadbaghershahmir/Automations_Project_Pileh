@@ -178,12 +178,29 @@ IMPORTANT:
             self.logger.error("Failed to extract JSON from Stage L response")
             return None
 
+        # Stage L output can have different structures:
+        # 1. Standard format: {"data": [...]}
+        # 2. Direct format: {"Chapter": "...", "Description": {...}}
+        # 3. Other formats with data/points/rows keys
         overview_records = self.get_data_from_json(json_output)
+        
+        # If no standard data array found, check if it's a direct chapter overview structure
+        if not overview_records:
+            # Check if it's a direct chapter overview (e.g., {"Chapter": "...", "Description": {...}})
+            if isinstance(json_output, dict) and ("Chapter" in json_output or "Description" in json_output):
+                # Wrap the entire response as a single record
+                overview_records = [json_output]
+                _progress("Detected direct chapter overview structure, wrapping as single record")
+            else:
+                # Try to use the entire JSON as a single record
+                overview_records = [json_output]
+                _progress("Using entire JSON response as single overview record")
+        
         if not overview_records:
             self.logger.error("No data found in Stage L JSON output")
             return None
 
-        _progress(f"Extracted {len(overview_records)} overview records from model")
+        _progress(f"Extracted {len(overview_records)} overview record(s) from model")
 
         # Output filename: o{book}{chapter}.json
         output_path = self.generate_filename("o", book_id, chapter_id, output_dir)
@@ -196,7 +213,7 @@ IMPORTANT:
             "source_stage_v": os.path.basename(stage_v_path),
             "stage_l_txt_file": os.path.basename(txt_path),
             "model_used": model_name,
-            "total_topics": len(overview_records),
+            "total_records": len(overview_records),
         }
 
         _progress(f"Saving Stage L output to: {output_path}")
@@ -256,5 +273,6 @@ IMPORTANT:
             "total_points": sum(t["num_points"] for t in context_list),
             "total_questions": sum(t["num_questions"] for t in context_list),
         }
+
 
 
