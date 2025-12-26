@@ -11649,3 +11649,3278 @@ OSError: [Errno 36] File name too long: '/home/mohammadbagher/Desktop/tts app ba
 2025-12-19 20:50:14,252 - INFO - Part 3: Extracted 168 points from Stage 4
 2025-12-19 20:50:14,252 - INFO - Total 708 points extracted from 3 Stage 4 files
 2025-12-19 20:50:14,253 - INFO - Assigned PointId to 708 points (next free index: 709)
+2025-12-24 13:07:58,618 - INFO - Loaded 10 predefined prompts
+2025-12-24 13:07:58,679 - INFO - python-docx library is available
+2025-12-24 13:07:58,679 - INFO - python-docx library is available
+2025-12-24 13:42:30,464 - INFO - Loaded 11 predefined prompts
+2025-12-24 13:42:30,512 - INFO - python-docx library is available
+2025-12-24 13:42:30,512 - INFO - python-docx library is available
+2025-12-24 13:42:37,338 - INFO - python-docx library is available
+2025-12-24 13:42:37,338 - INFO - python-docx library is available
+2025-12-24 13:42:37,338 - INFO - python-docx library is available
+2025-12-24 13:46:39,846 - INFO - Loaded 11 predefined prompts
+2025-12-24 13:46:39,911 - INFO - python-docx library is available
+2025-12-24 13:46:39,911 - INFO - python-docx library is available
+2025-12-24 13:46:46,938 - INFO - python-docx library is available
+2025-12-24 13:46:46,939 - INFO - python-docx library is available
+2025-12-24 13:46:46,940 - INFO - python-docx library is available
+2025-12-24 14:06:26,609 - INFO - Loaded 11 predefined prompts
+2025-12-24 14:06:26,662 - INFO - python-docx library is available
+2025-12-24 14:06:26,662 - INFO - python-docx library is available
+2025-12-24 14:06:34,291 - INFO - python-docx library is available
+2025-12-24 14:06:34,291 - INFO - python-docx library is available
+2025-12-24 14:06:34,291 - INFO - python-docx library is available
+2025-12-24 14:11:38,653 - INFO - Loaded 3 API keys
+2025-12-24 14:20:48,010 - INFO - python-docx library is available
+2025-12-24 14:20:48,011 - INFO - python-docx library is available
+2025-12-24 14:20:48,012 - INFO - python-docx library is available
+2025-12-24 14:20:48,012 - INFO - ================================================================================
+2025-12-24 14:20:48,013 - INFO - Starting Automated Pipeline Orchestrator
+2025-12-24 14:20:48,013 - INFO - ================================================================================
+2025-12-24 14:20:48,013 - INFO - PointID: 1050030001 (Book: 105, Chapter: 003, Start Index: 0001)
+2025-12-24 14:20:48,014 - INFO - 
+================================================================================
+2025-12-24 14:20:48,014 - INFO - STAGE 1: Processing PDF
+2025-12-24 14:20:48,014 - INFO - ================================================================================
+2025-12-24 14:20:48,015 - INFO - Processing PDF: Bolognia 5th Edition 2024 (1)-29-6-22.pdf
+2025-12-24 14:20:48,015 - INFO - Using prompt: 5134 characters
+2025-12-24 14:20:48,015 - INFO - Using model: gemini-2.5-pro
+2025-12-24 14:20:48,034 - INFO - Processing PDF with 17 pages in batches of 10 pages
+2025-12-24 14:20:48,034 - INFO - Using original prompt with JSON output instruction for batch processing (prompt preserved)
+2025-12-24 14:21:03,388 - INFO - Uploaded PDF file: Bolognia 5th Edition 2024 (1)-29-6-22.pdf
+2025-12-24 14:21:03,390 - INFO - Processing batch 1/2: pages 1-10
+2025-12-24 14:23:51,698 - INFO - ✓ Batch pages 1-10: Completed normally
+2025-12-24 14:23:51,699 - INFO - Extracted content from generic code block
+2025-12-24 14:23:51,700 - INFO - Found JSON array in 'rows' key with 29 items
+2025-12-24 14:23:51,700 - INFO - Batch pages 1-10: Extracted 29 rows
+2025-12-24 14:23:51,702 - INFO - Processing batch 2/2: pages 11-17
+2025-12-24 14:25:21,101 - INFO - ✓ Batch pages 11-17: Completed normally
+2025-12-24 14:25:21,102 - INFO - Extracted content from generic code block
+2025-12-24 14:25:21,102 - INFO - Found JSON array in 'rows' key with 9 items
+2025-12-24 14:25:21,103 - INFO - Batch pages 11-17: Extracted 9 rows
+2025-12-24 14:25:21,111 - INFO - JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22_output_20251224_142521.json
+2025-12-24 14:25:21,125 - INFO - JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22_output_20251224_142521.json
+2025-12-24 14:25:22,565 - ERROR - Stage 1 failed: 'list' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/automated_pipeline_orchestrator.py", line 276, in run_automated_pipeline
+    stage1_json_path = multi_part_processor.process_multi_part(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 93, in process_multi_part
+    rows = batch_data.get("rows", [])
+           ^^^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'get'
+2025-12-24 14:25:22,568 - INFO - Stage 1 failed: Stage 1 failed: 'list' object has no attribute 'get'
+2025-12-25 09:58:47,376 - INFO - Loaded 11 predefined prompts
+2025-12-25 09:58:47,436 - INFO - python-docx library is available
+2025-12-25 09:58:47,436 - INFO - python-docx library is available
+2025-12-25 10:28:35,959 - INFO - Loaded 11 predefined prompts
+2025-12-25 10:28:36,011 - INFO - python-docx library is available
+2025-12-25 10:28:36,011 - INFO - python-docx library is available
+2025-12-25 10:36:35,480 - INFO - Loaded 3 API keys
+2025-12-25 11:28:37,784 - INFO - Starting Stage X processing...
+2025-12-25 11:28:37,791 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 11:28:37,792 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 11:28:37,793 - ERROR - Error in Stage X processing: MultiPartProcessor.process_multi_part() got an unexpected keyword argument 'output_dir'
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/main_gui.py", line 5730, in worker
+    output_path = self.stage_x_processor.process_stage_x(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/stage_x_processor.py", line 86, in process_stage_x
+    pdf_extracted_path = self.multi_part_processor.process_multi_part(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: MultiPartProcessor.process_multi_part() got an unexpected keyword argument 'output_dir'
+2025-12-25 11:30:21,996 - INFO - Loaded 11 predefined prompts
+2025-12-25 11:30:22,042 - INFO - python-docx library is available
+2025-12-25 11:30:22,042 - INFO - python-docx library is available
+2025-12-25 11:31:50,514 - INFO - Starting Stage X processing...
+2025-12-25 11:31:50,521 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 11:31:50,522 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 11:31:50,538 - INFO - Processing PDF with 20 pages in batches of 10 pages
+2025-12-25 11:31:50,538 - INFO - Using original prompt with JSON output instruction for batch processing (prompt preserved)
+2025-12-25 11:31:50,539 - ERROR - No API key available
+2025-12-25 11:31:50,539 - ERROR - Batch processing failed or returned no output
+2025-12-25 11:31:50,539 - ERROR - Part 1: PDF extraction failed
+2025-12-25 11:32:28,804 - INFO - Loaded 3 API keys
+2025-12-25 11:32:39,395 - INFO - Starting Stage X processing...
+2025-12-25 11:32:39,400 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 11:32:39,401 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 11:32:39,415 - INFO - Processing PDF with 20 pages in batches of 10 pages
+2025-12-25 11:32:39,415 - INFO - Using original prompt with JSON output instruction for batch processing (prompt preserved)
+2025-12-25 11:32:56,549 - INFO - Uploaded PDF file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 11:32:56,550 - INFO - Processing batch 1/2: pages 1-10
+2025-12-25 11:34:41,744 - INFO - ✓ Batch pages 1-10: Completed normally
+2025-12-25 11:34:41,745 - INFO - Extracted content from generic code block
+2025-12-25 11:34:41,746 - WARNING - Regex-extracted JSON also failed to parse: Expecting ',' delimiter: line 137 column 20 (char 9956)
+2025-12-25 11:34:41,747 - WARNING - Could not extract valid JSON from response
+2025-12-25 11:34:41,747 - WARNING - Batch pages 1-10: No JSON data extracted
+2025-12-25 11:34:41,747 - WARNING - Batch 1 returned no results
+2025-12-25 11:34:41,748 - INFO - Processing batch 2/2: pages 11-20
+2025-12-25 11:36:58,353 - INFO - ✓ Batch pages 11-20: Completed normally
+2025-12-25 11:36:58,354 - INFO - Extracted content from generic code block
+2025-12-25 11:36:58,354 - INFO - Found JSON array in 'rows' key with 60 items
+2025-12-25 11:36:58,354 - INFO - Batch pages 11-20: Extracted 60 rows
+2025-12-25 11:36:58,357 - INFO - JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_output_20251225_113658.json
+2025-12-25 11:36:58,365 - INFO - JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_output_20251225_113658.json
+2025-12-25 11:36:59,747 - ERROR - Error in Stage X processing: 'list' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/main_gui.py", line 5730, in worker
+    output_path = self.stage_x_processor.process_stage_x(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/stage_x_processor.py", line 88, in process_stage_x
+    pdf_extracted_path = pdf_processor.process_multi_part(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 128, in process_multi_part
+    "total_parts": batch_data.get("metadata", {}).get("total_parts", 1),
+                   ^^^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'get'
+2025-12-25 11:42:27,618 - INFO - === Starting PDF Processing ===
+2025-12-25 11:42:27,618 - INFO - Model: gemini-2.5-pro
+2025-12-25 11:42:27,618 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 11:42:27,618 - INFO - Full prompt being sent (5134 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+====================
+CRITICAL OUTPUT CONTRACT (MULTI-PART)
+====================
+
+The full output is TOO LARGE to fit in one response.
+
+
+
+You MUST split the final output into multiple CHUNKS.
+
+
+
+IMPORTANT:
+
+- A CHUNK is ONLY a technical split of the RESPONSE due to size limits.
+
+- CHUNKS are identified ONLY by the field "chunk_index".
+
+- CHUNKS have NOTHING to do with the medical or logical structure of the chapter.
+
+
+
+Each response MUST:
+
+- Output ONLY valid JSON
+
+- Contain ONLY ONE CHUNK of the final output
+
+- NOT repeat rows from previous chunks
+
+- Preserve the exact order of rows across chunks
+
+
+
+====================
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "chunk_index": <integer starting from 1>,
+
+  "is_last": <true | false>,
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+
+
+====================
+MEANING OF chunk_index
+====================
+
+- "chunk_index" indicates ONLY the sequential number of this RESPONSE CHUNK.
+
+- chunk_index = 1 means: first technical chunk of the output.
+
+- chunk_index = 2 means: second technical chunk of the output.
+
+- chunk_index has NO semantic meaning about the chapter content.
+
+- chunk_index MUST strictly increase by 1 across responses.
+
+
+
+====================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+
+
+====================
+CHUNK INSTRUCTIONS
+====================
+
+This is CHUNK {chunk_index} of the output.
+
+
+
+Generate ONLY the rows that belong to this CHUNK.
+
+Stop when you reach a safe size limit for a single response.
+
+If more content remains after this CHUNK, set:
+
+  "is_last": false
+
+Otherwise set:
+
+  "is_last": true
+
+
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+
+
+You will now receive a PDF.
+
+Generate CHUNK {chunk_index}.
+2025-12-25 11:42:27,637 - INFO - Processing PDF with 20 pages in batches of 10 pages
+2025-12-25 11:42:27,638 - INFO - Using original prompt with JSON output instruction for batch processing (prompt preserved)
+2025-12-25 11:42:42,181 - INFO - Uploaded PDF file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 11:42:42,183 - INFO - Processing batch 1/2: pages 1-10
+2025-12-25 11:44:19,066 - INFO - ✓ Batch pages 1-10: Completed normally
+2025-12-25 11:44:19,067 - INFO - Extracted content from generic code block
+2025-12-25 11:44:19,068 - WARNING - Regex-extracted JSON also failed to parse: Expecting ',' delimiter: line 59 column 20 (char 8615)
+2025-12-25 11:44:19,068 - WARNING - Could not extract valid JSON from response
+2025-12-25 11:44:19,068 - WARNING - Batch pages 1-10: No JSON data extracted
+2025-12-25 11:44:19,069 - WARNING - Batch 1 returned no results
+2025-12-25 11:44:19,071 - INFO - Processing batch 2/2: pages 11-20
+2025-12-25 11:46:05,638 - INFO - ✓ Batch pages 11-20: Completed normally
+2025-12-25 11:46:05,639 - INFO - Extracted content from generic code block
+2025-12-25 11:46:05,640 - INFO - Found JSON array in 'rows' key with 24 items
+2025-12-25 11:46:05,640 - INFO - Batch pages 11-20: Extracted 24 rows
+2025-12-25 11:46:05,646 - INFO - JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_output_20251225_114605.json
+2025-12-25 11:46:05,647 - INFO - JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_output_20251225_114605.json
+2025-12-25 11:46:06,561 - ERROR - Error processing PDF: 'list' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/main_gui.py", line 1082, in worker
+    final_output_path = self.multi_part_processor.process_multi_part(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 128, in process_multi_part
+    metadata = batch_data.get("metadata", {})
+                       ^^^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'get'
+2025-12-25 11:46:36,371 - INFO - Loaded 11 predefined prompts
+2025-12-25 11:46:36,419 - INFO - python-docx library is available
+2025-12-25 11:46:36,419 - INFO - python-docx library is available
+2025-12-25 11:52:58,150 - INFO - Loaded 11 predefined prompts
+2025-12-25 11:52:58,198 - INFO - python-docx library is available
+2025-12-25 11:52:58,198 - INFO - python-docx library is available
+2025-12-25 11:53:33,202 - INFO - Loaded 3 API keys
+2025-12-25 11:53:57,131 - INFO - === Starting PDF Processing ===
+2025-12-25 11:53:57,131 - INFO - Model: gemini-2.5-pro
+2025-12-25 11:53:57,132 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 11:53:57,132 - INFO - Full prompt being sent (3611 chars): You are a meticulous medical OCR & structuring assistant.
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+and convert it into clean, AI-ready text with structured sections.
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+====================
+GLOBAL PRINCIPLES
+====================
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+  - Remove headers/footers and running titles.
+  - Fix broken words at line breaks.
+  - Replace ligatures (ﬁ, ﬂ).
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+- CITATIONS: Keep in-text citations verbatim.
+- MATH/CHEM: Use inline LaTeX.
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+OUTPUT FORMAT (EXACT)
+====================
+{
+  "rows": [
+    {
+      "Type": "page text | Figure | Table",
+      "Extraction": "<single-line text or JSON>",
+      "Number": <page number>,
+      "Part": <integer>
+    }
+  ]
+}
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+- "Part" is NOT related to chunk_index.
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+How to define "Part":
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+   the author-defined parts ("author parts") and their page ranges.
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+3) Each "Our part" MUST:
+   - consist of consecutive author parts
+   - NOT exceed 10 pages total
+4) Assign integer labels starting from 1:
+   - Our part 1
+   - Our part 2
+   - Our part 3
+   - etc.
+
+Example:
+If author parts have page counts:
+2, 4, 5, 3, 1, 7, 5
+
+Then:
+- Our part 1 = author parts 1 + 2
+- Our part 2 = author parts 3 + 4 + 5
+- Our part 3 = author part 6
+- Our part 4 = author part 7
+
+Rules for assigning "Part" in rows:
+- Every row MUST have exactly ONE integer "Part" value.
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+  occurs in the middle of the page.
+- In such cases, split the page text into TWO separate rows:
+  - one row with the previous Part
+  - one row with the next Part
+- NEVER mix content from two different Parts inside the same row.
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+You MUST process the document STRICTLY page by page, in ascending page order.
+- NEVER go back to a previous page.
+- NEVER re-extract or regenerate content from any page that has already appeared
+  in earlier chunks.
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+====================
+Rules for rows
+====================
+- Each row represents exactly ONE of:
+  - page text
+  - figure
+  - table
+- Extraction MUST be single-line (no ENTER).
+- JSON inside Extraction MUST be minified and valid.
+- References section at end of chapter MUST be ignored.
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+[keep your full original rules here verbatim — unchanged]
+
+====================
+FINAL RULES
+====================
+- DO NOT summarize.
+- DO NOT explain.
+- DO NOT add commentary.
+- Output ONLY the JSON object described above.
+You will now receive a PDF.
+Generate CHUNK {chunk_index}.
+2025-12-25 11:53:57,135 - ERROR - PyMuPDF (fitz) not available. Cannot process PDF.
+2025-12-25 11:53:57,135 - ERROR - Multi-part processing returned no final output file
+2025-12-25 11:54:35,966 - INFO - === Starting PDF Processing ===
+2025-12-25 11:54:35,967 - INFO - Model: gemini-2.5-pro
+2025-12-25 11:54:35,967 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 11:54:35,967 - INFO - Full prompt being sent (3611 chars): You are a meticulous medical OCR & structuring assistant.
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+and convert it into clean, AI-ready text with structured sections.
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+====================
+GLOBAL PRINCIPLES
+====================
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+  - Remove headers/footers and running titles.
+  - Fix broken words at line breaks.
+  - Replace ligatures (ﬁ, ﬂ).
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+- CITATIONS: Keep in-text citations verbatim.
+- MATH/CHEM: Use inline LaTeX.
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+OUTPUT FORMAT (EXACT)
+====================
+{
+  "rows": [
+    {
+      "Type": "page text | Figure | Table",
+      "Extraction": "<single-line text or JSON>",
+      "Number": <page number>,
+      "Part": <integer>
+    }
+  ]
+}
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+- "Part" is NOT related to chunk_index.
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+How to define "Part":
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+   the author-defined parts ("author parts") and their page ranges.
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+3) Each "Our part" MUST:
+   - consist of consecutive author parts
+   - NOT exceed 10 pages total
+4) Assign integer labels starting from 1:
+   - Our part 1
+   - Our part 2
+   - Our part 3
+   - etc.
+
+Example:
+If author parts have page counts:
+2, 4, 5, 3, 1, 7, 5
+
+Then:
+- Our part 1 = author parts 1 + 2
+- Our part 2 = author parts 3 + 4 + 5
+- Our part 3 = author part 6
+- Our part 4 = author part 7
+
+Rules for assigning "Part" in rows:
+- Every row MUST have exactly ONE integer "Part" value.
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+  occurs in the middle of the page.
+- In such cases, split the page text into TWO separate rows:
+  - one row with the previous Part
+  - one row with the next Part
+- NEVER mix content from two different Parts inside the same row.
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+You MUST process the document STRICTLY page by page, in ascending page order.
+- NEVER go back to a previous page.
+- NEVER re-extract or regenerate content from any page that has already appeared
+  in earlier chunks.
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+====================
+Rules for rows
+====================
+- Each row represents exactly ONE of:
+  - page text
+  - figure
+  - table
+- Extraction MUST be single-line (no ENTER).
+- JSON inside Extraction MUST be minified and valid.
+- References section at end of chapter MUST be ignored.
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+[keep your full original rules here verbatim — unchanged]
+
+====================
+FINAL RULES
+====================
+- DO NOT summarize.
+- DO NOT explain.
+- DO NOT add commentary.
+- Output ONLY the JSON object described above.
+You will now receive a PDF.
+Generate CHUNK {chunk_index}.
+2025-12-25 11:54:35,969 - ERROR - PyMuPDF (fitz) not available. Cannot process PDF.
+2025-12-25 11:54:35,970 - ERROR - Multi-part processing returned no final output file
+2025-12-25 11:58:29,293 - INFO - Loaded 11 predefined prompts
+2025-12-25 11:58:29,339 - INFO - python-docx library is available
+2025-12-25 11:58:29,339 - INFO - python-docx library is available
+2025-12-25 11:59:16,045 - INFO - Loaded 11 predefined prompts
+2025-12-25 11:59:16,091 - INFO - python-docx library is available
+2025-12-25 11:59:16,092 - INFO - python-docx library is available
+2025-12-25 12:00:49,583 - INFO - Loaded 11 predefined prompts
+2025-12-25 12:00:49,634 - INFO - python-docx library is available
+2025-12-25 12:00:49,634 - INFO - python-docx library is available
+2025-12-25 12:02:18,400 - INFO - Loaded 11 predefined prompts
+2025-12-25 12:02:18,448 - INFO - python-docx library is available
+2025-12-25 12:02:18,448 - INFO - python-docx library is available
+2025-12-25 12:04:23,025 - INFO - Loaded 11 predefined prompts
+2025-12-25 12:04:23,072 - INFO - python-docx library is available
+2025-12-25 12:04:23,072 - INFO - python-docx library is available
+2025-12-25 12:05:12,508 - INFO - Loaded 3 API keys
+2025-12-25 12:05:31,734 - INFO - === Starting PDF Processing ===
+2025-12-25 12:05:31,734 - INFO - Model: gemini-2.5-pro
+2025-12-25 12:05:31,735 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 12:05:31,735 - INFO - Full prompt being sent (3668 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+You will now receive a PDF.
+2025-12-25 12:05:31,751 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 12:07:49,055 - ERROR - No JSON data extracted from any part
+2025-12-25 12:07:49,056 - ERROR - Multi-part processing returned no final output file
+2025-12-25 12:12:39,786 - INFO - Loaded 11 predefined prompts
+2025-12-25 12:12:39,833 - INFO - python-docx library is available
+2025-12-25 12:12:39,833 - INFO - python-docx library is available
+2025-12-25 12:13:34,863 - INFO - Loaded 3 API keys
+2025-12-25 12:13:51,563 - INFO - === Starting PDF Processing ===
+2025-12-25 12:13:51,564 - INFO - Model: gemini-1.5-pro
+2025-12-25 12:13:51,564 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 12:13:51,565 - INFO - Full prompt being sent (3668 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+You will now receive a PDF.
+2025-12-25 12:13:51,583 - INFO - Text client initialized with model: gemini-1.5-pro
+2025-12-25 12:14:06,043 - ERROR - Part processing (pages 1-10) failed: 404 models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+2025-12-25 12:14:06,043 - WARNING - Part 1 returned no response
+2025-12-25 12:14:06,329 - ERROR - Part processing (pages 11-20) failed: 404 models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+2025-12-25 12:14:06,330 - WARNING - Part 2 returned no response
+2025-12-25 12:14:06,963 - ERROR - No JSON data extracted from any part
+2025-12-25 12:14:06,964 - ERROR - Multi-part processing returned no final output file
+2025-12-25 12:15:06,082 - INFO - === Starting PDF Processing ===
+2025-12-25 12:15:06,082 - INFO - Model: gemini-2.5-pro
+2025-12-25 12:15:06,083 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 12:15:06,083 - INFO - Full prompt being sent (3668 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+You will now receive a PDF.
+2025-12-25 12:15:06,092 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 12:16:20,807 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:16:20,807 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 14614). Trying fallback extraction...
+2025-12-25 12:16:20,808 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 14562)
+2025-12-25 12:16:20,810 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:16:20,815 - WARNING - Repair method returned None
+2025-12-25 12:16:20,816 - ERROR - All JSON extraction methods failed
+2025-12-25 12:16:20,816 - WARNING - Failed to extract JSON from response
+2025-12-25 12:16:20,816 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:16:20,817 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 14614). Trying fallback extraction...
+2025-12-25 12:16:20,817 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 14562)
+2025-12-25 12:16:20,819 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:16:20,824 - WARNING - Repair method returned None
+2025-12-25 12:16:20,824 - ERROR - All JSON extraction methods failed
+2025-12-25 12:17:23,537 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:17:23,538 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 16412). Trying fallback extraction...
+2025-12-25 12:17:23,538 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 16360)
+2025-12-25 12:17:23,540 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:17:23,545 - WARNING - Repair method returned None
+2025-12-25 12:17:23,545 - ERROR - All JSON extraction methods failed
+2025-12-25 12:17:23,545 - WARNING - Failed to extract JSON from response
+2025-12-25 12:17:23,545 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:17:23,546 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 16412). Trying fallback extraction...
+2025-12-25 12:17:23,546 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 16360)
+2025-12-25 12:17:23,547 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:17:23,552 - WARNING - Repair method returned None
+2025-12-25 12:17:23,552 - ERROR - All JSON extraction methods failed
+2025-12-25 12:17:24,356 - ERROR - No JSON data extracted from any part
+2025-12-25 12:17:24,357 - ERROR - Multi-part processing returned no final output file
+2025-12-25 12:20:50,305 - INFO - Loaded 11 predefined prompts
+2025-12-25 12:20:50,352 - INFO - python-docx library is available
+2025-12-25 12:20:50,352 - INFO - python-docx library is available
+2025-12-25 12:21:20,284 - INFO - Loaded 3 API keys
+2025-12-25 12:21:38,039 - INFO - === Starting PDF Processing ===
+2025-12-25 12:21:38,039 - INFO - Model: gemini-2.5-pro
+2025-12-25 12:21:38,040 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 12:21:38,040 - INFO - Full prompt being sent (3668 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+You will now receive a PDF.
+2025-12-25 12:21:38,058 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 12:22:51,722 - INFO - Saved Part 1 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part1.txt
+2025-12-25 12:22:51,724 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:22:51,725 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 15427). Trying fallback extraction...
+2025-12-25 12:22:51,725 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 15372)
+2025-12-25 12:22:51,727 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:22:51,733 - WARNING - Repair method returned None
+2025-12-25 12:22:51,733 - ERROR - All JSON extraction methods failed
+2025-12-25 12:22:51,733 - WARNING - Failed to extract JSON from response
+2025-12-25 12:22:51,734 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:22:51,734 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 15427). Trying fallback extraction...
+2025-12-25 12:22:51,734 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 15372)
+2025-12-25 12:22:51,736 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:22:51,741 - WARNING - Repair method returned None
+2025-12-25 12:22:51,741 - ERROR - All JSON extraction methods failed
+2025-12-25 12:22:51,741 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:22:51,741 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 41 column 21 (char 15427). Trying fallback extraction...
+2025-12-25 12:22:51,742 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 38 column 6 (char 15372)
+2025-12-25 12:22:51,743 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:22:51,745 - WARNING - Repair method returned None
+2025-12-25 12:22:51,745 - ERROR - All JSON extraction methods failed
+2025-12-25 12:22:51,745 - INFO - Falling back to manual JSON extraction for /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part1.txt
+2025-12-25 12:22:51,747 - INFO - Extracted 6 complete objects from incomplete JSON array for /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part1.txt
+2025-12-25 12:22:51,747 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part1.txt
+2025-12-25 12:23:53,239 - INFO - Saved Part 2 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part2.txt
+2025-12-25 12:23:53,240 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:23:53,241 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 11 column 21 (char 2176). Trying fallback extraction...
+2025-12-25 12:23:53,241 - WARNING - Object extraction parse failed: Unterminated string starting at: line 11 column 21 (char 2176)
+2025-12-25 12:23:53,243 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:23:53,244 - WARNING - Repair method returned None
+2025-12-25 12:23:53,245 - ERROR - All JSON extraction methods failed
+2025-12-25 12:23:53,245 - WARNING - Failed to extract JSON from response
+2025-12-25 12:23:53,245 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:23:53,246 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 11 column 21 (char 2176). Trying fallback extraction...
+2025-12-25 12:23:53,246 - WARNING - Object extraction parse failed: Unterminated string starting at: line 11 column 21 (char 2176)
+2025-12-25 12:23:53,247 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:23:53,248 - WARNING - Repair method returned None
+2025-12-25 12:23:53,249 - ERROR - All JSON extraction methods failed
+2025-12-25 12:23:53,250 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 12:23:53,250 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 11 column 21 (char 2176). Trying fallback extraction...
+2025-12-25 12:23:53,251 - WARNING - Object extraction parse failed: Unterminated string starting at: line 11 column 21 (char 2176)
+2025-12-25 12:23:53,251 - INFO - Attempting to repair incomplete JSON...
+2025-12-25 12:23:53,252 - WARNING - Repair method returned None
+2025-12-25 12:23:53,252 - ERROR - All JSON extraction methods failed
+2025-12-25 12:23:53,253 - INFO - Falling back to manual JSON extraction for /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part2.txt
+2025-12-25 12:23:53,254 - INFO - Extracted 1 complete objects from incomplete JSON array for /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part2.txt
+2025-12-25 12:23:53,254 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part2.txt
+2025-12-25 12:23:54,135 - INFO - Final JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_final_output.json
+2025-12-25 12:23:54,137 - INFO - CSV file saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_final_output.csv
+2025-12-25 12:40:18,463 - INFO - Loaded 11 predefined prompts
+2025-12-25 12:40:18,513 - INFO - python-docx library is available
+2025-12-25 12:40:18,513 - INFO - python-docx library is available
+2025-12-25 12:40:48,558 - INFO - Loaded 3 API keys
+2025-12-25 12:41:08,034 - INFO - === Starting PDF Processing ===
+2025-12-25 12:41:08,034 - INFO - Model: gemini-2.5-pro
+2025-12-25 12:41:08,034 - INFO - PDF: /home/shahmir/Downloads/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615.pdf
+2025-12-25 12:41:08,035 - INFO - Full prompt being sent (3668 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+You will now receive a PDF.
+2025-12-25 12:41:08,050 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 12:41:21,220 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 12:43:18,888 - INFO - Saved Part 1 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part1.txt
+2025-12-25 12:43:18,890 - INFO - Successfully extracted JSON from response
+2025-12-25 12:43:18,892 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 12:45:10,583 - INFO - Saved Part 2 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_part2.txt
+2025-12-25 12:45:10,585 - INFO - Successfully extracted JSON from response
+2025-12-25 12:45:11,223 - INFO - Final JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_final_output.json
+2025-12-25 12:45:11,229 - INFO - CSV file saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_final_output.csv
+2025-12-25 12:53:27,829 - INFO - Starting Stage X processing...
+2025-12-25 12:53:27,835 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 12:53:27,835 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 12:53:27,848 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 12:53:27,848 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 12:53:41,257 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 12:53:41,257 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 12:55:34,108 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 12:55:34,108 - INFO - Extracting JSON from Part 1...
+2025-12-25 12:55:34,109 - INFO - Successfully extracted JSON from response
+2025-12-25 12:55:34,110 - INFO - Part 1: Extracted 50 rows
+2025-12-25 12:55:34,111 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 12:55:34,111 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 12:57:28,571 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 12:57:28,572 - INFO - Extracting JSON from Part 2...
+2025-12-25 12:57:28,573 - INFO - Successfully extracted JSON from response
+2025-12-25 12:57:28,573 - INFO - Part 2: Extracted 24 rows
+2025-12-25 12:57:29,579 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 12:57:29,584 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 12:57:29,585 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 12:57:29,586 - INFO - Part 2: Detecting changes...
+2025-12-25 12:57:29,587 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 12:57:29,588 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 12:57:29,589 - INFO - Loaded 74 rows from extracted PDF
+2025-12-25 12:57:29,602 - INFO - Calling model for change detection...
+2025-12-25 13:01:10,314 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 13:01:10,315 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 13:01:10,316 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 2345 column 5 (char 43914). Trying fallback extraction...
+2025-12-25 13:01:10,316 - ERROR - All JSON extraction methods failed
+2025-12-25 13:01:10,316 - WARNING - Failed to extract JSON from response
+2025-12-25 13:01:10,316 - ERROR - Failed to extract JSON from model response
+2025-12-25 13:09:23,162 - INFO - Loaded 11 predefined prompts
+2025-12-25 13:09:23,210 - INFO - python-docx library is available
+2025-12-25 13:09:23,210 - INFO - python-docx library is available
+2025-12-25 13:09:54,989 - INFO - Loaded 3 API keys
+2025-12-25 13:11:04,489 - INFO - Starting Stage X processing...
+2025-12-25 13:11:04,496 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 13:11:04,497 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 13:11:04,511 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 13:11:04,511 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 13:11:18,458 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 13:11:18,459 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 13:13:32,599 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 13:13:32,601 - INFO - Extracting JSON from Part 1...
+2025-12-25 13:13:32,601 - INFO - Successfully extracted JSON from response
+2025-12-25 13:13:32,602 - INFO - Part 1: Extracted 32 rows
+2025-12-25 13:13:32,603 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 13:13:32,603 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 13:15:21,534 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 13:15:21,534 - INFO - Extracting JSON from Part 2...
+2025-12-25 13:15:21,535 - INFO - Successfully extracted JSON from response
+2025-12-25 13:15:21,535 - INFO - Part 2: Extracted 22 rows
+2025-12-25 13:15:23,019 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 13:15:23,025 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 13:15:23,026 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 13:15:23,027 - INFO - Part 2: Detecting changes...
+2025-12-25 13:15:23,029 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 13:15:23,031 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 13:15:23,032 - INFO - Loaded 54 rows from extracted PDF
+2025-12-25 13:15:23,046 - INFO - Calling model for change detection...
+2025-12-25 13:18:57,890 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 13:18:57,891 - INFO - Saved raw model response to: a105030_stage_x_part2.txt
+2025-12-25 13:18:57,892 - INFO - Saved Stage X Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2.txt
+2025-12-25 13:18:57,893 - INFO - Extracting JSON from model response...
+2025-12-25 13:18:57,893 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 13:18:57,894 - WARNING - Direct JSON parse failed: Expecting property name enclosed in double quotes: line 3087 column 4 (char 58418). Trying fallback extraction...
+2025-12-25 13:18:57,894 - ERROR - All JSON extraction methods failed
+2025-12-25 13:18:57,894 - WARNING - Failed to extract JSON from response
+2025-12-25 13:18:57,895 - INFO - Trying to extract JSON from text using fallback...
+2025-12-25 13:18:57,896 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 13:18:57,897 - WARNING - Direct JSON parse failed: Expecting property name enclosed in double quotes: line 3087 column 4 (char 58418). Trying fallback extraction...
+2025-12-25 13:18:57,898 - ERROR - All JSON extraction methods failed
+2025-12-25 13:18:57,899 - INFO - Trying to load JSON from TXT file...
+2025-12-25 13:18:57,899 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 13:18:57,901 - WARNING - Direct JSON parse failed: Expecting property name enclosed in double quotes: line 3087 column 4 (char 58418). Trying fallback extraction...
+2025-12-25 13:18:57,901 - ERROR - All JSON extraction methods failed
+2025-12-25 13:18:57,902 - INFO - Falling back to manual JSON extraction for /home/shahmir/Desktop/file-auto/a105030_stage_x_part2.txt
+2025-12-25 13:18:57,913 - INFO - Extracted 617 complete objects from incomplete JSON array for /home/shahmir/Desktop/file-auto/a105030_stage_x_part2.txt
+2025-12-25 13:18:57,913 - INFO - Successfully loaded JSON from TXT: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2.txt
+2025-12-25 13:18:57,914 - ERROR - Error in Stage X processing: BaseStageProcessor.save_json_file() missing 2 required positional arguments: 'metadata' and 'stage_name'
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/main_gui.py", line 5730, in worker
+    output_path = self.stage_x_processor.process_stage_x(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/stage_x_processor.py", line 208, in process_stage_x
+    self.save_json_file(output_path, output_data)
+TypeError: BaseStageProcessor.save_json_file() missing 2 required positional arguments: 'metadata' and 'stage_name'
+2025-12-25 13:37:25,592 - INFO - Loaded 11 predefined prompts
+2025-12-25 13:37:25,640 - INFO - python-docx library is available
+2025-12-25 13:37:25,640 - INFO - python-docx library is available
+2025-12-25 13:38:04,751 - INFO - Loaded 3 API keys
+2025-12-25 13:39:04,554 - INFO - Starting Stage X processing...
+2025-12-25 13:39:04,560 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 13:39:04,562 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 13:39:04,577 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 13:39:04,578 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 13:39:20,073 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 13:39:20,074 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 13:41:26,572 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 13:41:26,573 - INFO - Extracting JSON from Part 1...
+2025-12-25 13:41:26,574 - INFO - Successfully extracted JSON from response
+2025-12-25 13:41:26,574 - INFO - Part 1: Extracted 26 rows
+2025-12-25 13:41:26,575 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 13:41:26,575 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 13:43:31,937 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 13:43:31,939 - INFO - Extracting JSON from Part 2...
+2025-12-25 13:43:31,939 - INFO - Successfully extracted JSON from response
+2025-12-25 13:43:31,940 - INFO - Part 2: Extracted 23 rows
+2025-12-25 13:43:33,220 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 13:43:33,225 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 13:43:33,225 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 13:43:33,226 - INFO - Part 2: Detecting changes...
+2025-12-25 13:43:33,227 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 13:43:33,228 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 13:43:33,228 - INFO - Loaded 49 rows from extracted PDF
+2025-12-25 13:43:33,229 - INFO - Divided Stage A into 2 parts: Part 1 (373 records), Part 2 (374 records)
+2025-12-25 13:43:33,229 - INFO - ============================================================
+2025-12-25 13:43:33,230 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-25 13:43:33,231 - INFO - ============================================================
+2025-12-25 13:53:33,244 - WARNING - ⚠️ Timeout error (504) - Attempt 1/3
+2025-12-25 13:53:33,245 - WARNING -    Waiting 10.0s before retry...
+2025-12-25 14:12:03,340 - WARNING - ⚠️ Timeout error (504) - Attempt 2/3
+2025-12-25 14:12:03,341 - WARNING -    Waiting 15.0s before retry...
+2025-12-25 14:12:22,748 - ERROR - Text processing failed: 403 Received http2 header with status: 403
+2025-12-25 14:12:22,749 - WARNING - Part 1 returned no response
+2025-12-25 14:12:22,750 - INFO - ============================================================
+2025-12-25 14:12:22,751 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-25 14:12:22,751 - INFO - ============================================================
+2025-12-25 14:12:25,399 - ERROR - Text processing failed: 403 Received http2 header with status: 403
+2025-12-25 14:12:25,399 - WARNING - Part 2 returned no response
+2025-12-25 14:12:25,401 - INFO - Saved combined TXT: a105030_stage_x_part2_all_parts.txt
+2025-12-25 14:12:25,401 - ERROR - Failed to extract JSON from model responses
+2025-12-25 14:52:00,403 - INFO - Starting Stage X processing...
+2025-12-25 14:52:00,408 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 14:52:00,409 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 14:52:00,419 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 14:52:00,419 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 14:53:22,799 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 14:53:22,799 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 14:55:32,234 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 14:55:32,235 - INFO - Extracting JSON from Part 1...
+2025-12-25 14:55:32,237 - INFO - Successfully extracted JSON from response
+2025-12-25 14:55:32,238 - INFO - Part 1: Extracted 28 rows
+2025-12-25 14:55:32,238 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 14:55:32,238 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 14:57:28,893 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 14:57:28,895 - INFO - Extracting JSON from Part 2...
+2025-12-25 14:57:28,896 - INFO - Successfully extracted JSON from response
+2025-12-25 14:57:28,897 - INFO - Part 2: Extracted 25 rows
+2025-12-25 14:57:30,282 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 14:57:30,287 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 14:57:30,287 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 14:57:30,288 - INFO - Part 2: Detecting changes...
+2025-12-25 14:57:30,289 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 14:57:30,290 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 14:57:30,290 - INFO - Loaded 53 rows from extracted PDF
+2025-12-25 14:57:30,291 - INFO - Divided Stage A into 2 parts: Part 1 (373 records), Part 2 (374 records)
+2025-12-25 14:57:30,291 - INFO - ============================================================
+2025-12-25 14:57:30,292 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-25 14:57:30,292 - INFO - ============================================================
+2025-12-25 14:59:39,879 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 14:59:39,880 - INFO - Saved Part 1 raw response to: a105030_stage_x_part2_part1.txt
+2025-12-25 14:59:39,881 - INFO - Saved Stage X Part 2 Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 14:59:39,882 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 14:59:39,883 - INFO - Successfully extracted JSON from response
+2025-12-25 14:59:39,884 - INFO - Part 1: Extracted 373 changes
+2025-12-25 14:59:39,885 - INFO - ============================================================
+2025-12-25 14:59:39,885 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-25 14:59:39,887 - INFO - ============================================================
+2025-12-25 15:02:05,144 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:02:05,146 - INFO - Saved Part 2 raw response to: a105030_stage_x_part2_part2.txt
+2025-12-25 15:02:05,147 - INFO - Saved Stage X Part 2 Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:02:05,147 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 15:02:05,148 - INFO - Successfully extracted JSON from response
+2025-12-25 15:02:05,149 - INFO - Part 2: Extracted 374 changes
+2025-12-25 15:02:05,155 - INFO - Saved combined TXT: a105030_stage_x_part2_all_parts.txt
+2025-12-25 15:02:05,156 - INFO - Total validated changes: 747
+2025-12-25 15:02:05,159 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/x105030.json (747 records)
+2025-12-25 15:02:05,159 - INFO - Stage X completed: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 15:05:03,608 - INFO - Loaded 11 predefined prompts
+2025-12-25 15:05:03,655 - INFO - python-docx library is available
+2025-12-25 15:05:03,656 - INFO - python-docx library is available
+2025-12-25 15:05:39,875 - INFO - Loaded 3 API keys
+2025-12-25 15:06:29,615 - INFO - Starting Stage X processing...
+2025-12-25 15:06:29,621 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 15:06:29,622 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 15:06:29,637 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 15:06:29,638 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 15:07:41,224 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 15:07:41,225 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 15:09:45,194 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 15:09:45,195 - INFO - Extracting JSON from Part 1...
+2025-12-25 15:09:45,196 - INFO - Successfully extracted JSON from response
+2025-12-25 15:09:45,196 - INFO - Part 1: Extracted 30 rows
+2025-12-25 15:09:45,196 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 15:09:45,197 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 15:11:47,947 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 15:11:47,948 - INFO - Extracting JSON from Part 2...
+2025-12-25 15:11:47,950 - INFO - Successfully extracted JSON from response
+2025-12-25 15:11:47,951 - INFO - Part 2: Extracted 23 rows
+2025-12-25 15:11:50,311 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 15:11:50,318 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:11:50,319 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:11:50,320 - INFO - Part 2: Detecting changes...
+2025-12-25 15:11:50,321 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 15:11:50,323 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:11:50,323 - INFO - Loaded 53 rows from extracted PDF
+2025-12-25 15:11:50,324 - INFO - Divided Stage A into 2 parts: Part 1 (373 records), Part 2 (374 records)
+2025-12-25 15:11:50,324 - INFO - ============================================================
+2025-12-25 15:11:50,325 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-25 15:11:50,326 - INFO - ============================================================
+2025-12-25 15:15:34,373 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:15:34,374 - INFO - Saved Part 1 raw response to: a105030_stage_x_part2_part1.txt
+2025-12-25 15:15:34,375 - INFO - Saved Stage X Part 2 Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 15:15:34,375 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 15:15:34,376 - INFO - Successfully extracted JSON from response
+2025-12-25 15:15:34,376 - INFO - Part 1: Extracted 373 changes
+2025-12-25 15:15:34,377 - INFO - ============================================================
+2025-12-25 15:15:34,377 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-25 15:15:34,377 - INFO - ============================================================
+2025-12-25 15:18:46,352 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:18:46,354 - INFO - Saved Part 2 raw response to: a105030_stage_x_part2_part2.txt
+2025-12-25 15:18:46,355 - INFO - Saved Stage X Part 2 Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:18:46,355 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 15:18:46,356 - INFO - Successfully extracted JSON from response
+2025-12-25 15:18:46,357 - INFO - Part 2: Extracted 374 changes
+2025-12-25 15:18:46,359 - INFO - Saved combined TXT: a105030_stage_x_part2_all_parts.txt
+2025-12-25 15:18:46,361 - INFO - Total validated changes: 747
+2025-12-25 15:18:46,363 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/x105030.json (747 records)
+2025-12-25 15:18:46,363 - INFO - Stage X completed: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 15:21:30,433 - INFO - Loaded 11 predefined prompts
+2025-12-25 15:21:30,479 - INFO - python-docx library is available
+2025-12-25 15:21:30,479 - INFO - python-docx library is available
+2025-12-25 15:22:08,463 - INFO - Loaded 3 API keys
+2025-12-25 15:23:01,501 - INFO - Starting Stage X processing...
+2025-12-25 15:23:01,509 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 15:23:01,509 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 15:23:01,525 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 15:23:01,525 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 15:24:13,483 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 15:24:13,484 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 15:26:14,760 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 15:26:14,760 - INFO - Extracting JSON from Part 1...
+2025-12-25 15:26:14,761 - INFO - Successfully extracted JSON from response
+2025-12-25 15:26:14,762 - INFO - Part 1: Extracted 28 rows
+2025-12-25 15:26:14,763 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 15:26:14,763 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 15:28:08,832 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 15:28:08,833 - INFO - Extracting JSON from Part 2...
+2025-12-25 15:28:08,834 - INFO - Successfully extracted JSON from response
+2025-12-25 15:28:08,835 - INFO - Part 2: Extracted 23 rows
+2025-12-25 15:28:09,589 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 15:28:09,594 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:28:09,595 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:28:09,595 - INFO - Part 2: Detecting changes...
+2025-12-25 15:28:09,597 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 15:28:09,598 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:28:09,598 - INFO - Loaded 51 rows from extracted PDF
+2025-12-25 15:28:09,599 - INFO - Divided Stage A into 2 parts: Part 1 (373 records), Part 2 (374 records)
+2025-12-25 15:28:09,599 - INFO - ============================================================
+2025-12-25 15:28:09,600 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-25 15:28:09,600 - INFO - ============================================================
+2025-12-25 15:31:50,944 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:31:50,946 - INFO - Saved Part 1 raw response to: a105030_stage_x_part2_part1.txt
+2025-12-25 15:31:50,947 - INFO - Saved Stage X Part 2 Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 15:31:50,948 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 15:31:50,949 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 15:31:50,950 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1633 column 16 (char 32514). Trying fallback extraction...
+2025-12-25 15:31:50,950 - ERROR - All JSON extraction methods failed
+2025-12-25 15:31:50,950 - WARNING - Failed to extract JSON from response
+2025-12-25 15:31:50,951 - INFO - Trying to extract Part 1 JSON from text using fallback...
+2025-12-25 15:31:50,951 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 15:31:50,952 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1633 column 16 (char 32514). Trying fallback extraction...
+2025-12-25 15:31:50,953 - ERROR - All JSON extraction methods failed
+2025-12-25 15:31:50,954 - INFO - Trying to load Part 1 JSON from TXT file...
+2025-12-25 15:31:50,954 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 15:31:50,955 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1633 column 16 (char 32514). Trying fallback extraction...
+2025-12-25 15:31:50,955 - ERROR - All JSON extraction methods failed
+2025-12-25 15:31:50,955 - INFO - Falling back to manual JSON extraction for /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 15:31:50,957 - INFO - Extracted 326 complete objects from incomplete JSON array for /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 15:31:50,957 - INFO - Successfully loaded JSON from TXT: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 15:31:50,957 - INFO - Part 1: Extracted 326 changes
+2025-12-25 15:31:50,957 - INFO - ============================================================
+2025-12-25 15:31:50,958 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-25 15:31:50,958 - INFO - ============================================================
+2025-12-25 15:34:36,089 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:34:36,090 - INFO - Saved Part 2 raw response to: a105030_stage_x_part2_part2.txt
+2025-12-25 15:34:36,091 - INFO - Saved Stage X Part 2 Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:34:36,092 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 15:34:36,093 - INFO - Successfully extracted JSON from response
+2025-12-25 15:34:36,093 - INFO - Part 2: Extracted 374 changes
+2025-12-25 15:34:36,095 - INFO - Saved combined TXT: a105030_stage_x_part2_all_parts.txt
+2025-12-25 15:34:36,096 - INFO - Total validated changes: 700
+2025-12-25 15:34:36,101 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/x105030.json (700 records)
+2025-12-25 15:34:36,101 - INFO - Stage X completed: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 15:36:56,108 - INFO - Loaded 11 predefined prompts
+2025-12-25 15:36:56,155 - INFO - python-docx library is available
+2025-12-25 15:36:56,155 - INFO - python-docx library is available
+2025-12-25 15:37:27,100 - INFO - Loaded 3 API keys
+2025-12-25 15:38:07,700 - INFO - Starting Stage X processing...
+2025-12-25 15:38:07,709 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 15:38:07,710 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 15:38:07,724 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 15:38:07,724 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 15:39:19,673 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 15:39:19,673 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 15:41:24,856 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 15:41:24,856 - INFO - Extracting JSON from Part 1...
+2025-12-25 15:41:24,857 - INFO - Successfully extracted JSON from response
+2025-12-25 15:41:24,859 - INFO - Part 1: Extracted 25 rows
+2025-12-25 15:41:24,860 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 15:41:24,860 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 15:43:23,057 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 15:43:23,058 - INFO - Extracting JSON from Part 2...
+2025-12-25 15:43:23,059 - INFO - Successfully extracted JSON from response
+2025-12-25 15:43:23,059 - INFO - Part 2: Extracted 22 rows
+2025-12-25 15:43:24,387 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 15:43:24,391 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:43:24,392 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:43:24,392 - INFO - Part 2: Detecting changes...
+2025-12-25 15:43:24,393 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 15:43:24,394 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 15:43:24,395 - INFO - Loaded 47 rows from extracted PDF
+2025-12-25 15:43:24,396 - INFO - Divided Stage A into 2 parts: Part 1 (373 records), Part 2 (374 records)
+2025-12-25 15:43:24,397 - INFO - ============================================================
+2025-12-25 15:43:24,397 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-25 15:43:24,398 - INFO - ============================================================
+2025-12-25 15:46:10,749 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:46:10,750 - INFO - Saved Part 1 raw response to: a105030_stage_x_part2_part1.txt
+2025-12-25 15:46:10,751 - INFO - Saved Stage X Part 2 Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 15:46:10,751 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 15:46:10,752 - INFO - Successfully extracted JSON from response
+2025-12-25 15:46:10,753 - INFO - Part 1: Extracted 373 changes
+2025-12-25 15:46:10,753 - INFO - ============================================================
+2025-12-25 15:46:10,754 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-25 15:46:10,754 - INFO - ============================================================
+2025-12-25 15:49:49,430 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 15:49:49,432 - INFO - Saved Part 2 raw response to: a105030_stage_x_part2_part2.txt
+2025-12-25 15:49:49,433 - INFO - Saved Stage X Part 2 Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:49:49,434 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 15:49:49,434 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 15:49:49,435 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1723 column 16 (char 32451). Trying fallback extraction...
+2025-12-25 15:49:49,435 - ERROR - All JSON extraction methods failed
+2025-12-25 15:49:49,435 - WARNING - Failed to extract JSON from response
+2025-12-25 15:49:49,436 - INFO - Trying to extract Part 2 JSON from text using fallback...
+2025-12-25 15:49:49,436 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 15:49:49,437 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1723 column 16 (char 32451). Trying fallback extraction...
+2025-12-25 15:49:49,437 - ERROR - All JSON extraction methods failed
+2025-12-25 15:49:49,438 - INFO - Trying to load Part 2 JSON from TXT file...
+2025-12-25 15:49:49,438 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-25 15:49:49,439 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1723 column 16 (char 32451). Trying fallback extraction...
+2025-12-25 15:49:49,439 - ERROR - All JSON extraction methods failed
+2025-12-25 15:49:49,440 - INFO - Falling back to manual JSON extraction for /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:49:49,446 - INFO - Extracted 344 complete objects from incomplete JSON array for /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:49:49,446 - INFO - Successfully loaded JSON from TXT: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 15:49:49,446 - INFO - Part 2: Extracted 344 changes
+2025-12-25 15:49:49,446 - INFO - Saved combined TXT: a105030_stage_x_part2_all_parts.txt
+2025-12-25 15:49:49,446 - INFO - Total validated changes: 717
+2025-12-25 15:49:49,448 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/x105030.json (717 records)
+2025-12-25 15:49:49,448 - INFO - Stage X completed: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 16:44:57,736 - INFO - Loaded 11 predefined prompts
+2025-12-25 16:44:57,785 - INFO - python-docx library is available
+2025-12-25 16:44:57,785 - INFO - python-docx library is available
+2025-12-25 16:45:30,500 - INFO - Loaded 3 API keys
+2025-12-25 16:46:21,031 - INFO - Starting Stage X processing...
+2025-12-25 16:46:21,042 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 16:46:21,043 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-25 16:46:21,058 - INFO - PDF has 20 pages. Part 1: pages 1-10, Part 2: pages 11-20
+2025-12-25 16:46:21,059 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-25 16:47:30,298 - INFO - Processing Part 1 (pages 1-10)...
+2025-12-25 16:47:30,299 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 16:49:36,345 - INFO - Saved Part 1 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part1.txt
+2025-12-25 16:49:36,347 - INFO - Extracting JSON from Part 1...
+2025-12-25 16:49:36,348 - INFO - Successfully extracted JSON from response
+2025-12-25 16:49:36,349 - INFO - Part 1: Extracted 25 rows
+2025-12-25 16:49:36,349 - INFO - Processing Part 2 (pages 11-20)...
+2025-12-25 16:49:36,349 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-25 16:53:10,715 - INFO - Saved Part 2 TXT: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_part2.txt
+2025-12-25 16:53:10,716 - INFO - Extracting JSON from Part 2...
+2025-12-25 16:53:10,717 - INFO - Successfully extracted JSON from response
+2025-12-25 16:53:10,718 - INFO - Part 2: Extracted 24 rows
+2025-12-25 16:53:10,931 - INFO - Saved combined TXT file: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_all_parts.txt
+2025-12-25 16:53:10,936 - INFO - Saved extracted JSON: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 16:53:10,936 - INFO - Part 1 completed: Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 16:53:10,937 - INFO - Part 2: Detecting changes...
+2025-12-25 16:53:10,938 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 16:53:10,940 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 16:53:10,940 - INFO - Loaded 49 rows from extracted PDF
+2025-12-25 16:53:10,941 - INFO - Divided Stage A into 3 parts: Part 1 (249 records), Part 2 (249 records), Part 3 (249 records)
+2025-12-25 16:53:10,942 - INFO - ============================================================
+2025-12-25 16:53:10,942 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-25 16:53:10,942 - INFO - ============================================================
+2025-12-25 16:55:38,461 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 16:55:38,473 - INFO - Saved Part 1 raw response to: a105030_stage_x_part2_part1.txt
+2025-12-25 16:55:38,473 - INFO - Saved Stage X Part 2 Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part1.txt
+2025-12-25 16:55:38,474 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 16:55:38,475 - INFO - Successfully extracted JSON from response
+2025-12-25 16:55:38,477 - INFO - Part 1: Extracted 249 changes
+2025-12-25 16:55:38,478 - INFO - ============================================================
+2025-12-25 16:55:38,479 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-25 16:55:38,480 - INFO - ============================================================
+2025-12-25 16:57:29,441 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 16:57:29,442 - INFO - Saved Part 2 raw response to: a105030_stage_x_part2_part2.txt
+2025-12-25 16:57:29,443 - INFO - Saved Stage X Part 2 Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part2.txt
+2025-12-25 16:57:29,443 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 16:57:29,444 - INFO - Successfully extracted JSON from response
+2025-12-25 16:57:29,444 - INFO - Part 2: Extracted 249 changes
+2025-12-25 16:57:29,445 - INFO - ============================================================
+2025-12-25 16:57:29,445 - INFO - Processing Part 3 of Stage A for change detection...
+2025-12-25 16:57:29,446 - INFO - ============================================================
+2025-12-25 16:59:39,528 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 16:59:39,529 - INFO - Saved Part 3 raw response to: a105030_stage_x_part2_part3.txt
+2025-12-25 16:59:39,529 - INFO - Saved Stage X Part 2 Part 3 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_x_part2_part3.txt
+2025-12-25 16:59:39,530 - INFO - Extracting JSON from Part 3 response...
+2025-12-25 16:59:39,531 - INFO - Successfully extracted JSON from response
+2025-12-25 16:59:39,533 - INFO - Part 3: Extracted 249 changes
+2025-12-25 16:59:39,535 - INFO - Saved combined TXT: a105030_stage_x_part2_all_parts.txt
+2025-12-25 16:59:39,537 - INFO - Total validated changes: 747
+2025-12-25 16:59:39,543 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/x105030.json (747 records)
+2025-12-25 16:59:39,544 - INFO - Stage X completed: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 17:21:02,130 - INFO - Starting Stage Y processing...
+2025-12-25 17:21:02,135 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 17:21:02,136 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 17:21:02,137 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 17:21:02,138 - INFO - Loaded 49 rows from PDF extracted JSON
+2025-12-25 17:21:02,139 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 17:21:02,140 - INFO - Loaded 747 changes from Stage X
+2025-12-25 17:21:02,140 - INFO - Divided Stage A into 3 parts: Part 1 (249 records), Part 2 (249 records), Part 3 (249 records)
+2025-12-25 17:21:02,140 - INFO - ============================================================
+2025-12-25 17:21:02,141 - INFO - Processing Part 1 of Stage A for deletion detection...
+2025-12-25 17:21:02,141 - INFO - ============================================================
+2025-12-25 17:22:19,294 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:22:19,295 - INFO - Saved Part 1 raw response to: a105030_stage_y_part1.txt
+2025-12-25 17:22:19,296 - INFO - Saved Stage Y Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part1.txt
+2025-12-25 17:22:19,297 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 17:22:19,297 - INFO - Successfully extracted JSON from response
+2025-12-25 17:22:19,298 - INFO - Part 1: Extracted 18 deletions
+2025-12-25 17:22:19,298 - INFO - ============================================================
+2025-12-25 17:22:19,299 - INFO - Processing Part 2 of Stage A for deletion detection...
+2025-12-25 17:22:19,300 - INFO - ============================================================
+2025-12-25 17:23:24,100 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:23:24,101 - INFO - Saved Part 2 raw response to: a105030_stage_y_part2.txt
+2025-12-25 17:23:24,102 - INFO - Saved Stage Y Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part2.txt
+2025-12-25 17:23:24,102 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 17:23:24,103 - INFO - Successfully extracted JSON from response
+2025-12-25 17:23:24,104 - INFO - Part 2: Extracted 10 deletions
+2025-12-25 17:23:24,105 - INFO - ============================================================
+2025-12-25 17:23:24,106 - INFO - Processing Part 3 of Stage A for deletion detection...
+2025-12-25 17:23:24,106 - INFO - ============================================================
+2025-12-25 17:24:22,937 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:24:22,939 - INFO - Saved Part 3 raw response to: a105030_stage_y_part3.txt
+2025-12-25 17:24:22,939 - INFO - Saved Stage Y Part 3 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part3.txt
+2025-12-25 17:24:22,940 - INFO - Extracting JSON from Part 3 response...
+2025-12-25 17:24:22,940 - INFO - Successfully extracted JSON from response
+2025-12-25 17:24:22,941 - INFO - Part 3: Extracted 12 deletions
+2025-12-25 17:24:22,942 - INFO - Saved combined TXT: a105030_stage_y_all_parts.txt
+2025-12-25 17:24:22,943 - INFO - Total validated deletions: 40
+2025-12-25 17:24:22,944 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/y105030.json (40 records)
+2025-12-25 17:24:22,945 - INFO - Stage Y completed: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-25 17:46:38,894 - INFO - Starting Stage Y processing...
+2025-12-25 17:46:38,900 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 17:46:38,901 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 17:46:38,902 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 17:46:38,903 - INFO - Loaded 49 rows from PDF extracted JSON
+2025-12-25 17:46:38,905 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 17:46:38,905 - INFO - Loaded 747 changes from Stage X
+2025-12-25 17:46:38,906 - INFO - Divided Stage A into 3 parts: Part 1 (249 records), Part 2 (249 records), Part 3 (249 records)
+2025-12-25 17:46:38,906 - INFO - ============================================================
+2025-12-25 17:46:38,907 - INFO - Processing Part 1 of Stage A for deletion detection...
+2025-12-25 17:46:38,907 - INFO - ============================================================
+2025-12-25 17:47:56,893 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:47:56,894 - INFO - Saved Part 1 raw response to: a105030_stage_y_part1.txt
+2025-12-25 17:47:56,895 - INFO - Saved Stage Y Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part1.txt
+2025-12-25 17:47:56,896 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 17:47:56,896 - INFO - Successfully extracted JSON from response
+2025-12-25 17:47:56,897 - INFO - Part 1: Extracted 26 deletions
+2025-12-25 17:47:56,897 - INFO - ============================================================
+2025-12-25 17:47:56,898 - INFO - Processing Part 2 of Stage A for deletion detection...
+2025-12-25 17:47:56,898 - INFO - ============================================================
+2025-12-25 17:49:17,677 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:49:17,678 - INFO - Saved Part 2 raw response to: a105030_stage_y_part2.txt
+2025-12-25 17:49:17,679 - INFO - Saved Stage Y Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part2.txt
+2025-12-25 17:49:17,679 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 17:49:17,680 - INFO - Successfully extracted JSON from response
+2025-12-25 17:49:17,680 - INFO - Part 2: Extracted 20 deletions
+2025-12-25 17:49:17,682 - INFO - ============================================================
+2025-12-25 17:49:17,682 - INFO - Processing Part 3 of Stage A for deletion detection...
+2025-12-25 17:49:17,683 - INFO - ============================================================
+2025-12-25 17:50:29,308 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:50:29,310 - INFO - Saved Part 3 raw response to: a105030_stage_y_part3.txt
+2025-12-25 17:50:29,311 - INFO - Saved Stage Y Part 3 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part3.txt
+2025-12-25 17:50:29,312 - INFO - Extracting JSON from Part 3 response...
+2025-12-25 17:50:29,312 - INFO - Successfully extracted JSON from response
+2025-12-25 17:50:29,313 - INFO - Part 3: Extracted 31 deletions
+2025-12-25 17:50:29,315 - INFO - Saved combined TXT: a105030_stage_y_all_parts.txt
+2025-12-25 17:50:29,316 - INFO - Total validated deletions: 77
+2025-12-25 17:50:29,318 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/y105030.json (77 records)
+2025-12-25 17:50:29,318 - INFO - Stage Y completed: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-25 17:50:52,746 - INFO - Loaded 11 predefined prompts
+2025-12-25 17:50:52,794 - INFO - python-docx library is available
+2025-12-25 17:50:52,794 - INFO - python-docx library is available
+2025-12-25 17:51:28,112 - INFO - Loaded 3 API keys
+2025-12-25 17:52:25,352 - INFO - Starting Stage Y processing...
+2025-12-25 17:52:25,363 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 17:52:25,364 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 17:52:25,365 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library)-596-615_stage_x_part1_extracted.json
+2025-12-25 17:52:25,366 - INFO - Loaded 49 rows from PDF extracted JSON
+2025-12-25 17:52:25,368 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 17:52:25,368 - INFO - Loaded 747 changes from Stage X
+2025-12-25 17:52:25,369 - INFO - Divided Stage A into 3 parts: Part 1 (249 records), Part 2 (249 records), Part 3 (249 records)
+2025-12-25 17:52:25,369 - INFO - ============================================================
+2025-12-25 17:52:25,370 - INFO - Processing Part 1 of Stage A for deletion detection...
+2025-12-25 17:52:25,370 - INFO - ============================================================
+2025-12-25 17:53:37,335 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:53:37,336 - INFO - Saved Part 1 raw response to: a105030_stage_y_part1.txt
+2025-12-25 17:53:37,337 - INFO - Saved Stage Y Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part1.txt
+2025-12-25 17:53:37,338 - INFO - Extracting JSON from Part 1 response...
+2025-12-25 17:53:37,339 - INFO - Successfully extracted JSON from response
+2025-12-25 17:53:37,340 - INFO - Part 1: Extracted 17 deletions
+2025-12-25 17:53:37,340 - INFO - ============================================================
+2025-12-25 17:53:37,341 - INFO - Processing Part 2 of Stage A for deletion detection...
+2025-12-25 17:53:37,342 - INFO - ============================================================
+2025-12-25 17:54:37,239 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:54:37,240 - INFO - Saved Part 2 raw response to: a105030_stage_y_part2.txt
+2025-12-25 17:54:37,241 - INFO - Saved Stage Y Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part2.txt
+2025-12-25 17:54:37,242 - INFO - Extracting JSON from Part 2 response...
+2025-12-25 17:54:37,243 - INFO - Successfully extracted JSON from response
+2025-12-25 17:54:37,243 - INFO - Part 2: Extracted 15 deletions
+2025-12-25 17:54:37,244 - INFO - ============================================================
+2025-12-25 17:54:37,244 - INFO - Processing Part 3 of Stage A for deletion detection...
+2025-12-25 17:54:37,244 - INFO - ============================================================
+2025-12-25 17:56:28,838 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 17:56:28,839 - INFO - Saved Part 3 raw response to: a105030_stage_y_part3.txt
+2025-12-25 17:56:28,840 - INFO - Saved Stage Y Part 3 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_y_part3.txt
+2025-12-25 17:56:28,841 - INFO - Extracting JSON from Part 3 response...
+2025-12-25 17:56:28,841 - INFO - Successfully extracted JSON from response
+2025-12-25 17:56:28,842 - INFO - Part 3: Extracted 51 deletions
+2025-12-25 17:56:28,843 - INFO - Saved combined TXT: a105030_stage_y_all_parts.txt
+2025-12-25 17:56:28,844 - INFO - Total validated deletions: 83 (Numbers auto-assigned 1-83)
+2025-12-25 17:56:28,846 - INFO - Successfully saved JSON: /home/shahmir/Desktop/file-auto/y105030.json (83 records)
+2025-12-25 17:56:28,847 - INFO - Stage Y completed: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-25 18:04:02,935 - INFO - Starting Stage Z processing...
+2025-12-25 18:04:02,940 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 18:04:02,941 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 18:04:02,943 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 18:04:02,943 - INFO - Loaded 747 changes from Stage X
+2025-12-25 18:04:02,944 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-25 18:04:02,945 - INFO - Loaded 83 deletions from Stage Y
+2025-12-25 18:04:02,946 - INFO - Divided Stage A into 3 parts: Part 1 (249 records), Part 2 (249 records), Part 3 (249 records)
+2025-12-25 18:04:02,946 - INFO - ============================================================
+2025-12-25 18:04:02,947 - INFO - Processing Part 1 of Stage A for RichText generation...
+2025-12-25 18:04:02,947 - INFO - ============================================================
+2025-12-25 18:05:14,301 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 18:05:14,302 - INFO - Saved Part 1 raw response to: a105030_stage_z_part1.txt
+2025-12-25 18:05:14,302 - INFO - Saved Stage Z Part 1 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_z_part1.txt
+2025-12-25 18:05:14,303 - INFO - Extracting RichText from Part 1 response...
+2025-12-25 18:05:14,304 - INFO - Part 1: Extracted RichText (13226 characters)
+2025-12-25 18:05:14,305 - INFO - ============================================================
+2025-12-25 18:05:14,306 - INFO - Processing Part 2 of Stage A for RichText generation...
+2025-12-25 18:05:14,306 - INFO - ============================================================
+2025-12-25 18:06:28,648 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 18:06:28,649 - INFO - Saved Part 2 raw response to: a105030_stage_z_part2.txt
+2025-12-25 18:06:28,650 - INFO - Saved Stage Z Part 2 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_z_part2.txt
+2025-12-25 18:06:28,651 - INFO - Extracting RichText from Part 2 response...
+2025-12-25 18:06:28,651 - INFO - Part 2: Extracted RichText (13594 characters)
+2025-12-25 18:06:28,651 - INFO - ============================================================
+2025-12-25 18:06:28,652 - INFO - Processing Part 3 of Stage A for RichText generation...
+2025-12-25 18:06:28,653 - INFO - ============================================================
+2025-12-25 18:08:00,424 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-25 18:08:00,425 - INFO - Saved Part 3 raw response to: a105030_stage_z_part3.txt
+2025-12-25 18:08:00,426 - INFO - Saved Stage Z Part 3 raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_z_part3.txt
+2025-12-25 18:08:00,427 - INFO - Extracting RichText from Part 3 response...
+2025-12-25 18:08:00,428 - INFO - Part 3: Extracted RichText (14701 characters)
+2025-12-25 18:08:00,429 - INFO - Saved combined TXT: a105030_stage_z_all_parts.txt
+2025-12-25 18:08:00,431 - INFO - Stage Z completed: z105030.rtf
+2025-12-25 18:17:03,961 - INFO - Loaded 11 predefined prompts
+2025-12-25 18:17:04,008 - INFO - python-docx library is available
+2025-12-25 18:17:04,009 - INFO - python-docx library is available
+2025-12-25 18:17:42,593 - INFO - Loaded 3 API keys
+2025-12-25 18:18:59,812 - INFO - Starting Stage Z processing...
+2025-12-25 18:18:59,820 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 18:18:59,821 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 18:18:59,823 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 18:18:59,824 - INFO - Loaded 747 changes from Stage X
+2025-12-25 18:18:59,824 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-25 18:18:59,825 - INFO - Loaded 83 deletions from Stage Y
+2025-12-25 18:18:59,825 - INFO - Processing Stage A as a whole (747 records)
+2025-12-25 18:18:59,835 - INFO - Calling model for RichText generation...
+2025-12-25 18:29:10,534 - WARNING - ⚠️ Timeout error (504) - Attempt 1/3
+2025-12-25 18:29:10,535 - WARNING -    Waiting 10.0s before retry...
+2025-12-25 18:35:15,082 - ERROR - Text processing failed: 429 Resource has been exhausted (e.g. check quota).
+2025-12-25 18:35:15,083 - ERROR - Model returned no response
+2025-12-25 18:51:36,402 - INFO - Starting Stage Z processing...
+2025-12-25 18:51:36,410 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-25 18:51:36,411 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-25 18:51:36,412 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-25 18:51:36,413 - INFO - Loaded 747 changes from Stage X
+2025-12-25 18:51:36,413 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-25 18:51:36,414 - INFO - Loaded 83 deletions from Stage Y
+2025-12-25 18:51:36,414 - INFO - Processing Stage A as a whole (747 records)
+2025-12-25 18:51:36,421 - INFO - Calling model for RichText generation...
+2025-12-25 18:51:47,085 - ERROR - Text processing failed: 429 Resource has been exhausted (e.g. check quota).
+2025-12-25 18:51:47,085 - ERROR - Model returned no response
+2025-12-26 09:51:37,313 - INFO - Loaded 11 predefined prompts
+2025-12-26 09:51:37,374 - INFO - python-docx library is available
+2025-12-26 09:51:37,374 - INFO - python-docx library is available
+2025-12-26 09:52:03,759 - INFO - Loaded 3 API keys
+2025-12-26 09:53:41,397 - INFO - Starting Stage Z processing...
+2025-12-26 09:53:41,415 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/a105030.json
+2025-12-26 09:53:41,416 - INFO - Loaded 747 records from Stage A (Imp column removed)
+2025-12-26 09:53:41,416 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/x105030.json
+2025-12-26 09:53:41,417 - INFO - Loaded 747 changes from Stage X
+2025-12-26 09:53:41,417 - INFO - Successfully loaded JSON: /home/shahmir/Desktop/file-auto/y105030.json
+2025-12-26 09:53:41,418 - INFO - Loaded 83 deletions from Stage Y
+2025-12-26 09:53:41,418 - INFO - Processing Stage A as a whole (747 records)
+2025-12-26 09:53:41,433 - INFO - Calling model for RichText generation...
+2025-12-26 09:59:22,272 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 09:59:22,273 - INFO - Saved raw model response to: a105030_stage_z.txt
+2025-12-26 09:59:22,273 - INFO - Saved Stage Z raw response to: /home/shahmir/Desktop/file-auto/a105030_stage_z.txt
+2025-12-26 09:59:22,276 - INFO - Stage Z completed: z105030.rtf
+2025-12-26 10:14:52,045 - INFO - Loaded 11 predefined prompts
+2025-12-26 10:14:52,092 - INFO - python-docx library is available
+2025-12-26 10:14:52,092 - INFO - python-docx library is available
+2025-12-26 10:16:59,731 - INFO - Loaded 14 predefined prompts
+2025-12-26 10:16:59,778 - INFO - python-docx library is available
+2025-12-26 10:16:59,779 - INFO - python-docx library is available
+2025-12-26 10:19:41,083 - INFO - Loaded 14 predefined prompts
+2025-12-26 10:19:41,131 - INFO - python-docx library is available
+2025-12-26 10:19:41,132 - INFO - python-docx library is available
+2025-12-26 10:21:10,886 - INFO - Loaded 14 predefined prompts
+2025-12-26 10:21:10,934 - INFO - python-docx library is available
+2025-12-26 10:21:10,934 - INFO - python-docx library is available
+2025-12-26 10:25:11,672 - INFO - Loaded 14 predefined prompts
+2025-12-26 10:25:11,720 - INFO - python-docx library is available
+2025-12-26 10:25:11,720 - INFO - python-docx library is available
+2025-12-26 10:31:04,358 - INFO - Loaded 14 predefined prompts
+2025-12-26 10:31:04,407 - INFO - python-docx library is available
+2025-12-26 10:31:04,407 - INFO - python-docx library is available
+2025-12-26 10:33:06,470 - INFO - Loaded 3 API keys
+2025-12-26 10:33:49,702 - INFO - === Starting PDF Processing ===
+2025-12-26 10:33:49,702 - INFO - Model: gemini-2.5-pro
+2025-12-26 10:33:49,702 - INFO - PDF: /home/shahmir/Downloads/Bolognia 5th Edition 2024 (1)-29-6-22 (1).pdf
+2025-12-26 10:33:49,703 - INFO - Full prompt being sent (3668 chars): You are a meticulous medical OCR & structuring assistant.
+
+
+
+Your job is to extract ONLY what is present on each provided textbook page image/PDF
+
+and convert it into clean, AI-ready text with structured sections.
+
+
+
+You MUST avoid hallucinations and preserve original medical meaning precisely.
+
+
+
+====================
+GLOBAL PRINCIPLES
+====================
+
+- NO HALLUCINATIONS: Output only content visible on the page(s). If unreadable/unclear, write "[UNREADABLE]" or add an "uncertain" flag with brief reason.
+- LANGUAGE & SPELLING: Preserve original English spelling and medical terminology.
+- CLEAN OCR:
+
+  - Remove headers/footers and running titles.
+
+  - Fix broken words at line breaks.
+
+  - Replace ligatures (ﬁ, ﬂ).
+
+  - Preserve italics (*italic*), bold (**bold**), and subscripts/superscripts via LaTeX.
+
+- CITATIONS: Keep in-text citations verbatim.
+
+- MATH/CHEM: Use inline LaTeX.
+
+- NO IMAGES: Describe figures textually only; do not invent labels.
+
+
+
+OUTPUT FORMAT (EXACT)
+====================
+
+{
+
+  "rows": [
+
+    {
+
+      "Type": "page text | Figure | Table",
+
+      "Extraction": "<single-line text or JSON>",
+
+      "Number": <page number>,
+
+      "Part": <integer>
+
+    }
+
+  ]
+
+}
+
+===================
+MEANING OF Part (VERY IMPORTANT)
+====================
+
+- "Part" represents the LOGICAL CONTENT PART of the chapter.
+
+- "Part" is NOT related to chunk_index.
+
+- "Part" is the result of grouping AUTHOR PARTS into YOUR OWN PARTS ("Our parts").
+
+
+
+How to define "Part":
+
+1) At the beginning of the chapter, there is a "Chapter contents" section that lists
+
+   the author-defined parts ("author parts") and their page ranges.
+
+2) You MUST group consecutive author parts into larger groups called "Our parts".
+
+3) Each "Our part" MUST:
+
+   - consist of consecutive author parts
+
+   - NOT exceed 10 pages total
+
+4) Assign integer labels starting from 1:
+
+   - Our part 1
+
+   - Our part 2
+
+   - Our part 3
+
+   - etc.
+
+
+
+Example:
+
+If author parts have page counts:
+
+2, 4, 5, 3, 1, 7, 5
+
+
+
+Then:
+
+- Our part 1 = author parts 1 + 2
+
+- Our part 2 = author parts 3 + 4 + 5
+
+- Our part 3 = author part 6
+
+- Our part 4 = author part 7
+
+
+
+Rules for assigning "Part" in rows:
+
+- Every row MUST have exactly ONE integer "Part" value.
+
+- A single page MAY belong to TWO different "Part" values if an Our part boundary
+
+  occurs in the middle of the page.
+
+- In such cases, split the page text into TWO separate rows:
+
+  - one row with the previous Part
+
+  - one row with the next Part
+
+- NEVER mix content from two different Parts inside the same row.
+
+====================
+PAGE-BY-PAGE FORWARD-ONLY PROCESSING (CRITICAL)
+====================
+
+You MUST process the document STRICTLY page by page, in ascending page order.
+
+- NEVER go back to a previous page.
+
+- NEVER re-extract or regenerate content from any page that has already appeared
+
+  in earlier chunks.
+
+- Once a page (or a portion of a page) is output in any chunk, it is considered FINAL.
+
+- Subsequent chunks MUST continue ONLY from the next unprocessed page or page segment.
+
+====================
+Rules for rows
+====================
+
+- Each row represents exactly ONE of:
+
+  - page text
+
+  - figure
+
+  - table
+
+- Extraction MUST be single-line (no ENTER).
+
+- JSON inside Extraction MUST be minified and valid.
+
+- References section at end of chapter MUST be ignored.
+
+====================
+AUTHOR PARTS → OUR PARTS RULES
+====================
+
+[keep your full original rules here verbatim — unchanged]
+
+
+
+====================
+FINAL RULES
+====================
+
+- DO NOT summarize.
+
+- DO NOT explain.
+
+- DO NOT add commentary.
+
+- Output ONLY the JSON object described above.
+
+You will now receive a PDF.
+2025-12-26 10:33:49,721 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-26 10:34:06,158 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-26 10:36:02,899 - INFO - Saved Part 1 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_part1.txt
+2025-12-26 10:36:02,901 - INFO - Successfully extracted JSON from response
+2025-12-26 10:36:02,902 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-26 10:38:07,029 - INFO - Saved Part 2 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_part2.txt
+2025-12-26 10:38:07,031 - INFO - Successfully extracted JSON from response
+2025-12-26 10:38:18,820 - INFO - Final JSON saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output.json
+2025-12-26 10:38:18,827 - INFO - CSV file saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output.csv
+2025-12-26 10:46:35,907 - INFO - Loading input JSON file: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output.json
+2025-12-26 10:46:35,908 - INFO - Found 37 rows in input JSON. Grouping by Part...
+2025-12-26 10:46:35,908 - INFO - Processing 3 parts: [1, 2, 3]
+2025-12-26 10:46:35,909 - INFO - Processing Part 1 (15 rows) with second-stage prompt...
+2025-12-26 10:48:36,522 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 10:48:36,523 - INFO - Part 1 processed successfully. Response length: 27207 characters
+2025-12-26 10:48:36,525 - INFO - Processing Part 2 (21 rows) with second-stage prompt...
+2025-12-26 10:50:39,679 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 10:50:39,679 - INFO - Part 2 processed successfully. Response length: 44413 characters
+2025-12-26 10:50:39,679 - INFO - Processing Part 3 (1 rows) with second-stage prompt...
+2025-12-26 10:51:18,141 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 10:51:18,142 - INFO - Part 3 processed successfully. Response length: 6911 characters
+2025-12-26 10:51:18,143 - INFO - Extracting JSON blocks from 3 responses (one per part)...
+2025-12-26 10:51:18,155 - INFO - Total 3 JSON block(s) extracted from all parts
+2025-12-26 10:51:18,155 - INFO - Combining JSON blocks into final structure...
+2025-12-26 10:51:18,155 - INFO - Combining 3 JSON block(s) into final structure...
+2025-12-26 10:51:18,155 - INFO - Final structure: chapter 'درمان با اشعه ماوراء بنفش' with 3 content items
+2025-12-26 10:51:18,155 - INFO - Saving post-processed JSON to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_stage2.json
+2025-12-26 10:51:18,161 - INFO - Post-processed JSON saved successfully: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_stage2.json
+2025-12-26 10:53:35,319 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 10:55:37,810 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 10:58:14,990 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:01:16,829 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:02:03,936 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:03:02,959 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:03:02,975 - INFO - Processing 3 Stage 4 files in order: [1, 2, 3]
+2025-12-26 11:03:02,979 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_part1_stage4.txt
+2025-12-26 11:03:02,979 - INFO - Processing chapter: '' with 0 top-level items
+2025-12-26 11:03:02,980 - INFO - Part 1: Extracted 0 points from Stage 4
+2025-12-26 11:03:02,983 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_part2_stage4.txt
+2025-12-26 11:03:02,984 - INFO - Processing chapter: '' with 0 top-level items
+2025-12-26 11:03:02,984 - INFO - Part 2: Extracted 0 points from Stage 4
+2025-12-26 11:03:02,987 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_part3_stage4.txt
+2025-12-26 11:03:02,987 - INFO - Processing chapter: '' with 0 top-level items
+2025-12-26 11:03:02,988 - INFO - Part 3: Extracted 0 points from Stage 4
+2025-12-26 11:15:10,419 - INFO - Loaded 14 predefined prompts
+2025-12-26 11:15:10,469 - INFO - python-docx library is available
+2025-12-26 11:15:10,469 - INFO - python-docx library is available
+2025-12-26 11:16:05,241 - INFO - Loaded 3 API keys
+2025-12-26 11:19:37,905 - INFO - Loading input JSON file: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output.json
+2025-12-26 11:19:37,907 - INFO - Found 37 rows in input JSON. Grouping by Part...
+2025-12-26 11:19:37,908 - INFO - Processing 3 parts: [1, 2, 3]
+2025-12-26 11:19:37,909 - INFO - Processing Part 1 (15 rows) with second-stage prompt...
+2025-12-26 11:22:03,791 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:22:03,792 - INFO - Part 1 processed successfully. Response length: 30517 characters
+2025-12-26 11:22:03,794 - INFO - Processing Part 2 (21 rows) with second-stage prompt...
+2025-12-26 11:24:34,874 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:24:34,875 - INFO - Part 2 processed successfully. Response length: 59785 characters
+2025-12-26 11:24:34,875 - INFO - Processing Part 3 (1 rows) with second-stage prompt...
+2025-12-26 11:25:21,948 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:25:21,948 - INFO - Part 3 processed successfully. Response length: 5869 characters
+2025-12-26 11:25:21,948 - INFO - Extracting JSON blocks from 3 responses (one per part)...
+2025-12-26 11:25:21,951 - INFO - Total 3 JSON block(s) extracted from all parts
+2025-12-26 11:25:21,951 - INFO - Combining JSON blocks into final structure...
+2025-12-26 11:25:21,951 - INFO - Combining 3 JSON block(s) into final structure...
+2025-12-26 11:25:21,951 - INFO - Final structure: chapter 'درمان با اشعه ماوراء بنفش' with 3 content items
+2025-12-26 11:25:21,951 - INFO - Saving post-processed JSON to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_stage2.json
+2025-12-26 11:25:21,953 - INFO - Post-processed JSON saved successfully: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_stage2.json
+2025-12-26 11:27:33,854 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:30:05,656 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:33:05,622 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:36:21,382 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:37:30,885 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:38:20,342 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:38:20,359 - INFO - Processing 3 Stage 4 files in order: [1, 2, 3]
+2025-12-26 11:38:20,361 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_part1_stage4.txt
+2025-12-26 11:38:20,361 - INFO - Extracted payload from chunk structure for Part 1
+2025-12-26 11:38:20,361 - INFO - Processing chapter: 'درمان با اشعه ماوراء بنفش' with 2 top-level items
+2025-12-26 11:38:20,363 - INFO - Part 1: Extracted 240 points from Stage 4
+2025-12-26 11:38:20,365 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_part2_stage4.txt
+2025-12-26 11:38:20,366 - INFO - Extracted payload from chunk structure for Part 2
+2025-12-26 11:38:20,366 - INFO - Processing chapter: 'درمان با اشعه ماوراء بنفش' with 1 top-level items
+2025-12-26 11:38:20,368 - INFO - Part 2: Extracted 500 points from Stage 4
+2025-12-26 11:38:20,369 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_part3_stage4.txt
+2025-12-26 11:38:20,369 - INFO - Extracted payload from chunk structure for Part 3
+2025-12-26 11:38:20,369 - INFO - Processing chapter: 'درمان با اشعه ماوراء بنفش' with 1 top-level items
+2025-12-26 11:38:20,369 - INFO - Part 3: Extracted 47 points from Stage 4
+2025-12-26 11:38:20,369 - INFO - Total 787 points extracted from 3 Stage 4 files
+2025-12-26 11:38:20,371 - INFO - Assigned PointId to 787 points (next free index: 788)
+2025-12-26 11:39:44,850 - INFO - Starting Stage E processing...
+2025-12-26 11:39:44,851 - INFO - Loading Stage 4 JSON...
+2025-12-26 11:39:44,858 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points.json
+2025-12-26 11:39:44,859 - INFO - Loading Stage 1 JSON...
+2025-12-26 11:39:44,860 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output.json
+2025-12-26 11:39:44,861 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 11:39:44,861 - INFO - Last PointId in Stage 4: 1201340787, Starting image notes from index: 788
+2025-12-26 11:39:44,861 - INFO - Preparing input for model...
+2025-12-26 11:39:44,870 - INFO - Calling model gemini-2.5-pro...
+2025-12-26 11:44:35,098 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 11:44:35,099 - INFO - Saving model response as TXT file...
+2025-12-26 11:44:35,101 - INFO - Stage E raw text saved: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_stage_e.txt
+2025-12-26 11:44:35,102 - INFO - Converting TXT to JSON...
+2025-12-26 11:44:35,104 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_stage_e.txt
+2025-12-26 11:44:35,105 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_stage_e.txt
+2025-12-26 11:44:35,106 - INFO - Successfully extracted JSON (attempt 1)
+2025-12-26 11:44:35,107 - INFO - Extracted 19 image note records
+2025-12-26 11:44:35,108 - INFO - Processing image notes...
+2025-12-26 11:44:35,108 - INFO - Processed 19 image notes
+2025-12-26 11:44:35,109 - INFO - First image PointId: 1201340788
+2025-12-26 11:44:35,109 - INFO - Saving filepic JSON for Stage F...
+2025-12-26 11:44:35,110 - INFO - Found 19 records with caption out of 19
+2025-12-26 11:44:35,113 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_filepic.json (19 records)
+2025-12-26 11:44:35,113 - INFO - Filepic saved to: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_filepic.json
+2025-12-26 11:44:35,115 - INFO - Verified: filepic contains caption field (first caption: 477 chars)
+2025-12-26 11:44:35,116 - INFO - Merging Stage 4 points with image notes...
+2025-12-26 11:44:35,116 - INFO - Saving merged JSON to: /media/shahmir/Program/automation_pileh/content_automation_project/e120134.json
+2025-12-26 11:44:35,132 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/e120134.json (806 records)
+2025-12-26 11:44:35,132 - INFO - Stage E completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/e120134.json
+2025-12-26 11:46:58,226 - INFO - Starting Stage F processing...
+2025-12-26 11:46:58,227 - INFO - Loading Stage E JSON...
+2025-12-26 11:46:58,234 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/e120134.json
+2025-12-26 11:46:58,234 - INFO - First image PointId: 1201340788
+2025-12-26 11:46:58,235 - INFO - Found 19 image records starting from index 787
+2025-12-26 11:46:58,235 - INFO - Using filepic path from metadata: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_filepic.json
+2025-12-26 11:46:58,235 - INFO - Loading descriptions from filepic JSON...
+2025-12-26 11:46:58,235 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/Bolognia 5th Edition 2024 (1)-29-6-22 (1)_final_output_final_points_filepic.json
+2025-12-26 11:46:58,235 - INFO - Found 19 records in filepic JSON
+2025-12-26 11:46:58,236 - INFO - Loaded 19 descriptions from filepic JSON
+2025-12-26 11:46:58,236 - INFO - Found 19 non-empty captions out of 19
+2025-12-26 11:46:58,236 - INFO - Processing image records...
+2025-12-26 11:46:58,237 - INFO - Generated 19 image records
+2025-12-26 11:46:58,237 - INFO - Saving image file JSON to: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 11:46:58,240 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/f.json (19 records)
+2025-12-26 11:46:58,241 - INFO - Stage F completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 12:03:36,922 - INFO - Starting Stage J processing...
+2025-12-26 12:03:36,923 - INFO - Loading Stage E JSON...
+2025-12-26 12:03:36,928 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/e120134.json
+2025-12-26 12:03:36,929 - INFO - Loaded 806 records from Stage E
+2025-12-26 12:03:36,930 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 12:03:36,931 - INFO - Reading Word file...
+2025-12-26 12:03:36,957 - INFO - Successfully read Word file using python-docx: /home/shahmir/Downloads/تست ها 134.docx (6930 chars)
+2025-12-26 12:03:36,958 - INFO - Read Word file: 6930 characters
+2025-12-26 12:03:36,958 - INFO - No Stage F JSON provided, continuing without it
+2025-12-26 12:03:36,958 - INFO - Splitting Stage E data into 2 parts: Part 1 (403 records), Part 2 (403 records)
+2025-12-26 12:03:36,958 - INFO - Processing Part 1...
+2025-12-26 12:06:13,177 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:06:13,178 - INFO - Part 1 response received (28243 characters)
+2025-12-26 12:06:13,179 - INFO - Processing Part 2...
+2025-12-26 12:08:53,846 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:08:53,847 - INFO - Part 2 response received (32319 characters)
+2025-12-26 12:08:53,848 - INFO - Combining responses from both parts...
+2025-12-26 12:08:53,851 - INFO - Saved combined response to: /media/shahmir/Program/automation_pileh/content_automation_project/e120134_stage_j.txt
+2025-12-26 12:08:53,852 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 12:08:53,853 - INFO - Successfully extracted JSON from response
+2025-12-26 12:08:53,854 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 12:08:53,855 - INFO - Successfully extracted JSON from response
+2025-12-26 12:08:53,855 - INFO - Combining JSON from both parts...
+2025-12-26 12:08:53,856 - WARNING - No data/points/rows found in JSON, returning empty list
+2025-12-26 12:08:53,856 - INFO - Extracted 403 records from combined model output (Part 1: 0, Part 2: 403)
+2025-12-26 12:08:53,857 - INFO - Created mapping for 403 PointIds
+2025-12-26 12:08:53,857 - INFO - Merging Stage E data with Imp and Type columns...
+2025-12-26 12:08:53,859 - INFO - Merged 806 records
+2025-12-26 12:08:53,860 - INFO - Matched 403 records with Imp/Type data
+2025-12-26 12:08:53,861 - INFO - Saving Stage J output to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 12:08:53,883 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json (806 records)
+2025-12-26 12:08:53,883 - INFO - Stage J completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 12:12:45,678 - INFO - Starting Stage H processing...
+2025-12-26 12:12:45,679 - INFO - Loading Stage J JSON...
+2025-12-26 12:12:45,685 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 12:12:45,686 - INFO - Loaded 806 records from Stage J
+2025-12-26 12:12:45,687 - INFO - Prepared 806 records from Stage J for prompt (without Imp column)
+2025-12-26 12:12:45,688 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 12:12:45,688 - INFO - Loading Stage F JSON...
+2025-12-26 12:12:45,689 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 12:12:45,689 - INFO - Loaded 19 records from Stage F
+2025-12-26 12:12:45,690 - INFO - Splitting Stage J data into 3 parts: Part 1 (268 records), Part 2 (268 records), Part 3 (270 records)
+2025-12-26 12:12:45,691 - INFO - Processing Part 1...
+2025-12-26 12:16:35,303 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:16:35,304 - INFO - Part 1 response received (65198 characters)
+2025-12-26 12:16:35,305 - INFO - Processing Part 2...
+2025-12-26 12:20:28,333 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:20:28,334 - INFO - Part 2 response received (71969 characters)
+2025-12-26 12:20:28,334 - INFO - Processing Part 3...
+2025-12-26 12:24:19,309 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:24:19,311 - INFO - Part 3 response received (72630 characters)
+2025-12-26 12:24:19,319 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 12:24:19,320 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 12:24:19,320 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 12:24:19,322 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1889 column 18 (char 65178). Trying fallback extraction...
+2025-12-26 12:24:19,324 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1883 column 6 (char 64956)
+2025-12-26 12:24:19,338 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,346 - WARNING - Repair method returned None
+2025-12-26 12:24:19,346 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,346 - WARNING - Failed to extract JSON from response
+2025-12-26 12:24:19,346 - INFO - Trying to extract Part 1 JSON from text...
+2025-12-26 12:24:19,346 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 12:24:19,346 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1889 column 18 (char 65178). Trying fallback extraction...
+2025-12-26 12:24:19,346 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1883 column 6 (char 64956)
+2025-12-26 12:24:19,348 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,355 - WARNING - Repair method returned None
+2025-12-26 12:24:19,355 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,355 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 12:24:19,355 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 12:24:19,355 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 2110 column 18 (char 71952). Trying fallback extraction...
+2025-12-26 12:24:19,356 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 2108 column 6 (char 71927)
+2025-12-26 12:24:19,358 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,365 - WARNING - Repair method returned None
+2025-12-26 12:24:19,365 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,365 - WARNING - Failed to extract JSON from response
+2025-12-26 12:24:19,365 - INFO - Trying to extract Part 2 JSON from text...
+2025-12-26 12:24:19,365 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 12:24:19,365 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 2110 column 18 (char 71952). Trying fallback extraction...
+2025-12-26 12:24:19,365 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 2108 column 6 (char 71927)
+2025-12-26 12:24:19,368 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,375 - WARNING - Repair method returned None
+2025-12-26 12:24:19,375 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,375 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 12:24:19,375 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 12:24:19,375 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 2182 column 18 (char 72614). Trying fallback extraction...
+2025-12-26 12:24:19,375 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 2180 column 6 (char 72589)
+2025-12-26 12:24:19,378 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,385 - WARNING - Repair method returned None
+2025-12-26 12:24:19,385 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,385 - WARNING - Failed to extract JSON from response
+2025-12-26 12:24:19,385 - INFO - Trying to extract Part 3 JSON from text...
+2025-12-26 12:24:19,385 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 12:24:19,385 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 2182 column 18 (char 72614). Trying fallback extraction...
+2025-12-26 12:24:19,386 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 2180 column 6 (char 72589)
+2025-12-26 12:24:19,388 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,395 - WARNING - Repair method returned None
+2025-12-26 12:24:19,395 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,395 - INFO - Combining JSON from all three parts...
+2025-12-26 12:24:19,395 - ERROR - Failed to extract JSON from model responses
+2025-12-26 12:24:19,395 - INFO - Trying to load JSON from TXT file as fallback...
+2025-12-26 12:24:19,396 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1889 column 18 (char 65178). Trying fallback extraction...
+2025-12-26 12:24:19,396 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1883 column 6 (char 64956)
+2025-12-26 12:24:19,398 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 12:24:19,405 - WARNING - Repair method returned None
+2025-12-26 12:24:19,405 - ERROR - All JSON extraction methods failed
+2025-12-26 12:24:19,405 - INFO - Falling back to manual JSON extraction for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 12:24:19,415 - INFO - Extracted 209 complete objects from incomplete JSON array for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 12:24:19,415 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 12:24:19,415 - INFO - Extracted 209 records from combined model output (Part 1: 0, Part 2: 0, Part 3: 0)
+2025-12-26 12:24:19,416 - INFO - Created mapping for 209 PointIds from model output
+2025-12-26 12:24:19,416 - INFO - Merging Stage J data with model output...
+2025-12-26 12:24:19,416 - INFO - Generated 806 flashcard records
+2025-12-26 12:24:19,416 - INFO - Matched 209 records with flashcard data from model
+2025-12-26 12:24:19,416 - INFO - Saving Stage H output to: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 12:24:19,425 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json (806 records)
+2025-12-26 12:24:19,425 - INFO - Stage H completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 12:46:30,569 - INFO - Loaded 14 predefined prompts
+2025-12-26 12:46:30,620 - INFO - python-docx library is available
+2025-12-26 12:46:30,620 - INFO - python-docx library is available
+2025-12-26 12:47:02,010 - INFO - Loaded 3 API keys
+2025-12-26 12:48:32,208 - INFO - Starting Stage J processing...
+2025-12-26 12:48:32,209 - INFO - Loading Stage E JSON...
+2025-12-26 12:48:32,215 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/e120134.json
+2025-12-26 12:48:32,216 - INFO - Loaded 806 records from Stage E
+2025-12-26 12:48:32,217 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 12:48:32,218 - INFO - Reading Word file...
+2025-12-26 12:48:32,242 - INFO - Successfully read Word file using python-docx: /home/shahmir/Downloads/تست ها 134.docx (6930 chars)
+2025-12-26 12:48:32,242 - INFO - Read Word file: 6930 characters
+2025-12-26 12:48:32,242 - INFO - Loading Stage F JSON...
+2025-12-26 12:48:32,243 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 12:48:32,243 - INFO - Loaded 19 records from Stage F
+2025-12-26 12:48:32,243 - INFO - Splitting Stage E data into 4 parts: Part 1 (201 records), Part 2 (201 records), Part 3 (201 records), Part 4 (203 records)
+2025-12-26 12:48:32,244 - INFO - Processing Part 1...
+2025-12-26 12:50:26,510 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:50:26,512 - INFO - Part 1 response received (17683 characters)
+2025-12-26 12:50:26,514 - INFO - Processing Part 2...
+2025-12-26 12:52:28,266 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:52:28,267 - INFO - Part 2 response received (17692 characters)
+2025-12-26 12:52:28,268 - INFO - Processing Part 3...
+2025-12-26 12:54:45,716 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:54:45,717 - INFO - Part 3 response received (16138 characters)
+2025-12-26 12:54:45,718 - INFO - Processing Part 4...
+2025-12-26 12:56:34,087 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 12:56:34,088 - INFO - Part 4 response received (16296 characters)
+2025-12-26 12:56:34,089 - INFO - Combining responses from all parts...
+2025-12-26 12:56:34,091 - INFO - Saved combined response to: /media/shahmir/Program/automation_pileh/content_automation_project/e120134_stage_j.txt
+2025-12-26 12:56:34,091 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 12:56:34,092 - INFO - Successfully extracted JSON from response
+2025-12-26 12:56:34,092 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 12:56:34,093 - INFO - Successfully extracted JSON from response
+2025-12-26 12:56:34,093 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 12:56:34,094 - INFO - Successfully extracted JSON from response
+2025-12-26 12:56:34,094 - INFO - Extracting JSON from Part 4 response...
+2025-12-26 12:56:34,094 - INFO - Successfully extracted JSON from response
+2025-12-26 12:56:34,095 - INFO - Combining JSON from all four parts...
+2025-12-26 12:56:34,095 - INFO - Extracted 844 records from combined model output (Part 1: 220, Part 2: 220, Part 3: 201, Part 4: 203)
+2025-12-26 12:56:34,098 - INFO - Created mapping for 806 PointIds
+2025-12-26 12:56:34,099 - INFO - Merging Stage E data with Imp and Type columns...
+2025-12-26 12:56:34,101 - INFO - Merged 806 records
+2025-12-26 12:56:34,102 - INFO - Matched 806 records with Imp/Type data
+2025-12-26 12:56:34,104 - INFO - Saving Stage J output to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 12:56:34,116 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json (806 records)
+2025-12-26 12:56:34,116 - INFO - Stage J completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 12:57:56,306 - INFO - Starting Stage H processing...
+2025-12-26 12:57:56,307 - INFO - Loading Stage J JSON...
+2025-12-26 12:57:56,315 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 12:57:56,315 - INFO - Loaded 806 records from Stage J
+2025-12-26 12:57:56,316 - INFO - Prepared 806 records from Stage J for prompt (without Imp column)
+2025-12-26 12:57:56,316 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 12:57:56,316 - INFO - Loading Stage F JSON...
+2025-12-26 12:57:56,316 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 12:57:56,316 - INFO - Loaded 19 records from Stage F
+2025-12-26 12:57:56,316 - INFO - Splitting Stage J data into 4 parts: Part 1 (201 records), Part 2 (201 records), Part 3 (201 records), Part 4 (203 records)
+2025-12-26 12:57:56,317 - INFO - Processing Part 1...
+2025-12-26 13:01:42,908 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 13:01:42,909 - INFO - Part 1 response received (58631 characters)
+2025-12-26 13:01:42,910 - INFO - Processing Part 2...
+2025-12-26 13:05:34,763 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 13:05:34,764 - INFO - Part 2 response received (62701 characters)
+2025-12-26 13:05:34,765 - INFO - Processing Part 3...
+2025-12-26 13:08:59,682 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 13:08:59,683 - INFO - Part 3 response received (35480 characters)
+2025-12-26 13:08:59,683 - INFO - Processing Part 4...
+2025-12-26 13:12:34,671 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 13:12:34,671 - INFO - Part 4 response received (60925 characters)
+2025-12-26 13:12:34,680 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 13:12:34,681 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 13:12:34,682 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 13:12:34,683 - WARNING - Direct JSON parse failed: Expecting property name enclosed in double quotes: line 1759 column 31 (char 58623). Trying fallback extraction...
+2025-12-26 13:12:34,684 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1757 column 6 (char 58585)
+2025-12-26 13:12:34,692 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 13:12:34,703 - WARNING - Repair method returned None
+2025-12-26 13:12:34,704 - ERROR - All JSON extraction methods failed
+2025-12-26 13:12:34,704 - WARNING - Failed to extract JSON from response
+2025-12-26 13:12:34,704 - INFO - Trying to extract Part 1 JSON from text...
+2025-12-26 13:12:34,704 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 13:12:34,704 - WARNING - Direct JSON parse failed: Expecting property name enclosed in double quotes: line 1759 column 31 (char 58623). Trying fallback extraction...
+2025-12-26 13:12:34,704 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1757 column 6 (char 58585)
+2025-12-26 13:12:34,706 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 13:12:34,715 - WARNING - Repair method returned None
+2025-12-26 13:12:34,715 - ERROR - All JSON extraction methods failed
+2025-12-26 13:12:34,715 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 13:12:34,716 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 13:12:34,716 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1952 column 18 (char 62683). Trying fallback extraction...
+2025-12-26 13:12:34,716 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1946 column 6 (char 62498)
+2025-12-26 13:12:34,720 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 13:12:34,726 - WARNING - Repair method returned None
+2025-12-26 13:12:34,726 - ERROR - All JSON extraction methods failed
+2025-12-26 13:12:34,726 - WARNING - Failed to extract JSON from response
+2025-12-26 13:12:34,726 - INFO - Trying to extract Part 2 JSON from text...
+2025-12-26 13:12:34,726 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 13:12:34,727 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1952 column 18 (char 62683). Trying fallback extraction...
+2025-12-26 13:12:34,727 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1946 column 6 (char 62498)
+2025-12-26 13:12:34,729 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 13:12:34,735 - WARNING - Repair method returned None
+2025-12-26 13:12:34,735 - ERROR - All JSON extraction methods failed
+2025-12-26 13:12:34,735 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 13:12:34,735 - INFO - Successfully extracted JSON from response
+2025-12-26 13:12:34,735 - INFO - Extracting JSON from Part 4 response...
+2025-12-26 13:12:34,735 - INFO - Successfully extracted JSON from response
+2025-12-26 13:12:34,735 - INFO - Combining JSON from all four parts...
+2025-12-26 13:12:34,735 - INFO - Extracted 327 records from combined model output (Part 1: 0, Part 2: 0, Part 3: 124, Part 4: 203)
+2025-12-26 13:12:34,735 - INFO - Created mapping for 327 PointIds from model output
+2025-12-26 13:12:34,735 - INFO - Merging Stage J data with model output...
+2025-12-26 13:12:34,736 - INFO - Generated 806 flashcard records
+2025-12-26 13:12:34,736 - INFO - Matched 327 records with flashcard data from model
+2025-12-26 13:12:34,736 - INFO - Saving Stage H output to: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 13:12:34,744 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json (806 records)
+2025-12-26 13:12:34,744 - INFO - Stage H completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 13:57:38,664 - INFO - Starting Stage H processing...
+2025-12-26 13:57:38,665 - INFO - Loading Stage J JSON...
+2025-12-26 13:57:38,669 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 13:57:38,670 - INFO - Loaded 806 records from Stage J
+2025-12-26 13:57:38,671 - INFO - Prepared 806 records from Stage J for prompt (without Imp column)
+2025-12-26 13:57:38,671 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 13:57:38,672 - INFO - Loading Stage F JSON...
+2025-12-26 13:57:38,672 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 13:57:38,672 - INFO - Loaded 19 records from Stage F
+2025-12-26 13:57:38,673 - INFO - Splitting Stage J data into 4 parts: Part 1 (201 records), Part 2 (201 records), Part 3 (201 records), Part 4 (203 records)
+2025-12-26 13:57:38,673 - INFO - Processing Part 1...
+2025-12-26 14:01:32,015 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:01:32,016 - INFO - Part 1 response received (62360 characters)
+2025-12-26 14:01:32,017 - INFO - Processing Part 2...
+2025-12-26 14:06:10,348 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:06:10,350 - INFO - Part 2 response received (59461 characters)
+2025-12-26 14:06:10,350 - INFO - Processing Part 3...
+2025-12-26 14:09:53,486 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:09:53,487 - INFO - Part 3 response received (60511 characters)
+2025-12-26 14:09:53,487 - INFO - Processing Part 4...
+2025-12-26 14:13:43,449 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:13:43,450 - INFO - Part 4 response received (61018 characters)
+2025-12-26 14:13:43,460 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 14:13:43,460 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 14:13:43,461 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 14:13:43,463 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1851 column 18 (char 62341). Trying fallback extraction...
+2025-12-26 14:13:43,464 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1847 column 6 (char 62206)
+2025-12-26 14:13:43,473 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 14:13:43,490 - WARNING - Repair method returned None
+2025-12-26 14:13:43,490 - ERROR - All JSON extraction methods failed
+2025-12-26 14:13:43,490 - WARNING - Failed to extract JSON from response
+2025-12-26 14:13:43,490 - INFO - Trying to extract Part 1 JSON from text...
+2025-12-26 14:13:43,491 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 14:13:43,491 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 1851 column 18 (char 62341). Trying fallback extraction...
+2025-12-26 14:13:43,492 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 1847 column 6 (char 62206)
+2025-12-26 14:13:43,497 - INFO - Attempting to repair incomplete JSON...
+2025-12-26 14:13:43,506 - WARNING - Repair method returned None
+2025-12-26 14:13:43,506 - ERROR - All JSON extraction methods failed
+2025-12-26 14:13:43,506 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 14:13:43,506 - INFO - Successfully extracted JSON from response
+2025-12-26 14:13:43,506 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 14:13:43,506 - INFO - Successfully extracted JSON from response
+2025-12-26 14:13:43,506 - INFO - Extracting JSON from Part 4 response...
+2025-12-26 14:13:43,507 - INFO - Successfully extracted JSON from response
+2025-12-26 14:13:43,507 - INFO - Combining JSON from all four parts...
+2025-12-26 14:13:43,507 - INFO - Extracted 617 records from combined model output (Part 1: 0, Part 2: 201, Part 3: 213, Part 4: 203)
+2025-12-26 14:13:43,507 - INFO - Created mapping for 605 PointIds from model output
+2025-12-26 14:13:43,507 - INFO - Merging Stage J data with model output...
+2025-12-26 14:13:43,508 - INFO - Generated 806 flashcard records
+2025-12-26 14:13:43,508 - INFO - Matched 604 records with flashcard data from model
+2025-12-26 14:13:43,508 - INFO - Saving Stage H output to: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 14:13:43,515 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json (806 records)
+2025-12-26 14:13:43,515 - INFO - Stage H completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 14:24:05,091 - INFO - Loaded 14 predefined prompts
+2025-12-26 14:24:05,137 - INFO - python-docx library is available
+2025-12-26 14:24:05,137 - INFO - python-docx library is available
+2025-12-26 14:24:34,620 - INFO - Loaded 3 API keys
+2025-12-26 14:25:17,473 - INFO - Starting Stage H processing...
+2025-12-26 14:25:17,473 - INFO - Loading Stage J JSON...
+2025-12-26 14:25:17,478 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 14:25:17,479 - INFO - Loaded 806 records from Stage J
+2025-12-26 14:25:17,481 - INFO - Prepared 806 records from Stage J for prompt (without Imp column)
+2025-12-26 14:25:17,482 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 14:25:17,482 - INFO - Loading Stage F JSON...
+2025-12-26 14:25:17,483 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/f.json
+2025-12-26 14:25:17,483 - INFO - Loaded 19 records from Stage F
+2025-12-26 14:25:17,484 - INFO - Splitting Stage J data into 4 parts: Part 1 (201 records), Part 2 (201 records), Part 3 (201 records), Part 4 (203 records)
+2025-12-26 14:25:17,485 - INFO - Processing Part 1...
+2025-12-26 14:29:00,638 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:29:00,639 - INFO - Part 1 response received (61710 characters)
+2025-12-26 14:29:00,640 - INFO - Processing Part 2...
+2025-12-26 14:32:01,781 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:32:01,782 - INFO - Part 2 response received (59161 characters)
+2025-12-26 14:32:01,782 - INFO - Processing Part 3...
+2025-12-26 14:35:26,426 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:35:26,427 - INFO - Part 3 response received (57058 characters)
+2025-12-26 14:35:26,428 - INFO - Processing Part 4...
+2025-12-26 14:38:37,784 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 14:38:37,785 - INFO - Part 4 response received (60855 characters)
+2025-12-26 14:38:37,792 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_h.txt
+2025-12-26 14:38:37,792 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 14:38:37,793 - INFO - Successfully extracted JSON from response
+2025-12-26 14:38:37,794 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 14:38:37,795 - INFO - Successfully extracted JSON from response
+2025-12-26 14:38:37,796 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 14:38:37,797 - INFO - Successfully extracted JSON from response
+2025-12-26 14:38:37,797 - INFO - Extracting JSON from Part 4 response...
+2025-12-26 14:38:37,799 - INFO - Successfully extracted JSON from response
+2025-12-26 14:38:37,800 - INFO - Combining JSON from all four parts...
+2025-12-26 14:38:37,800 - INFO - Extracted 810 records from combined model output (Part 1: 205, Part 2: 201, Part 3: 201, Part 4: 203)
+2025-12-26 14:38:37,801 - INFO - Created mapping for 806 PointIds from model output
+2025-12-26 14:38:37,802 - INFO - Merging Stage J data with model output...
+2025-12-26 14:38:37,805 - INFO - Generated 806 flashcard records
+2025-12-26 14:38:37,806 - INFO - Matched 806 records with flashcard data from model
+2025-12-26 14:38:37,807 - INFO - Saving Stage H output to: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 14:38:37,839 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json (806 records)
+2025-12-26 14:38:37,839 - INFO - Stage H completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 14:42:44,998 - INFO - Starting Stage V processing...
+2025-12-26 14:42:45,007 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 14:42:45,008 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 14:42:45,008 - INFO - ============================================================
+2025-12-26 14:42:45,009 - INFO - STEP 1: Generating initial test questions...
+2025-12-26 14:42:45,009 - INFO - ============================================================
+2025-12-26 14:42:45,009 - INFO - Loading Stage J JSON for Step 1...
+2025-12-26 14:42:45,015 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 14:42:45,016 - INFO - Loaded 806 records from Stage J
+2025-12-26 14:42:45,017 - INFO - Loading Word document...
+2025-12-26 14:42:45,034 - INFO - Successfully read Word file using python-docx: /home/shahmir/Downloads/تست ها 134.docx (6930 chars)
+2025-12-26 14:42:45,037 - INFO - Processing Stage V - Step 1 (single part)...
+2025-12-26 15:00:38,794 - WARNING - ⚠️ Timeout error (504) - Attempt 1/3
+2025-12-26 15:00:38,794 - WARNING -    Waiting 10.0s before retry...
+2025-12-26 15:04:58,975 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 15:04:58,975 - INFO - Step 1 response received (47967 characters)
+2025-12-26 15:04:58,979 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:04:58,980 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 15:04:58,980 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 15:04:58,981 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 667 column 14 (char 47903). Trying fallback extraction...
+2025-12-26 15:04:58,981 - ERROR - All JSON extraction methods failed
+2025-12-26 15:04:58,981 - WARNING - Failed to extract JSON from response
+2025-12-26 15:04:58,982 - INFO - Trying to extract Part 1 JSON from text...
+2025-12-26 15:04:58,982 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 15:04:58,983 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 667 column 14 (char 47903). Trying fallback extraction...
+2025-12-26 15:04:58,983 - ERROR - All JSON extraction methods failed
+2025-12-26 15:04:58,983 - ERROR - Failed to extract JSON from model responses
+2025-12-26 15:04:58,984 - INFO - Trying to load JSON from TXT file as fallback...
+2025-12-26 15:04:58,985 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 15:04:58,986 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 667 column 14 (char 47903). Trying fallback extraction...
+2025-12-26 15:04:58,986 - ERROR - All JSON extraction methods failed
+2025-12-26 15:04:58,986 - INFO - Falling back to manual JSON extraction for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:04:58,998 - INFO - Extracted 39 complete objects from incomplete JSON array for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:04:58,999 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:04:59,000 - INFO - Total questions generated in Step 1: 39
+2025-12-26 15:04:59,004 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.json (39 records)
+2025-12-26 15:04:59,004 - INFO - Step 1 output saved to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.json
+2025-12-26 15:04:59,006 - INFO - Step 1 completed. Output saved to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.json
+2025-12-26 15:04:59,006 - INFO - ============================================================
+2025-12-26 15:04:59,006 - INFO - STEP 2: Refining questions (without QId mapping)...
+2025-12-26 15:04:59,006 - INFO - ============================================================
+2025-12-26 15:04:59,006 - INFO - Loading Stage J JSON for Step 2...
+2025-12-26 15:04:59,009 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 15:04:59,010 - INFO - Prepared 806 Stage J records (without Type column)
+2025-12-26 15:04:59,010 - INFO - Loading Word document...
+2025-12-26 15:04:59,026 - INFO - Successfully read Word file using python-docx: /home/shahmir/Downloads/تست ها 134.docx (6930 chars)
+2025-12-26 15:04:59,026 - INFO - Loading Step 1 output to include in Step 2 output...
+2025-12-26 15:04:59,026 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.json
+2025-12-26 15:04:59,026 - INFO - Loaded 39 questions from Step 1
+2025-12-26 15:04:59,029 - INFO - Processing Stage V - Step 2
+2025-12-26 15:07:50,962 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 15:07:50,964 - INFO - Step 2 response received (18505 characters)
+2025-12-26 15:07:50,966 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.txt
+2025-12-26 15:07:50,967 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 15:07:50,967 - INFO - Successfully extracted JSON from response
+2025-12-26 15:07:50,968 - INFO - Extracted 15 refined questions from Part 1
+2025-12-26 15:07:50,969 - INFO - Total refined questions from Step 2: 15
+2025-12-26 15:07:50,970 - INFO - Total combined questions (Step 1 + Step 2): 54
+2025-12-26 15:07:50,979 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.json (54 records)
+2025-12-26 15:07:50,979 - INFO - Step 2 output saved to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.json
+2025-12-26 15:07:50,980 - INFO - Step 2 completed. Output saved to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.json
+2025-12-26 15:07:50,980 - INFO - ============================================================
+2025-12-26 15:07:50,980 - INFO - STEP 3: Adding QId mapping...
+2025-12-26 15:07:50,981 - INFO - ============================================================
+2025-12-26 15:07:50,981 - INFO - Loading Stage J JSON for PointId reference...
+2025-12-26 15:07:50,987 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 15:07:50,989 - INFO - Prepared 806 Stage J records for reference
+2025-12-26 15:07:50,989 - INFO - Processing Stage V - Step 3
+2025-12-26 15:08:33,256 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 15:08:33,257 - INFO - Step 3 response received (4327 characters)
+2025-12-26 15:08:33,259 - INFO - Saved raw model responses to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step3.txt
+2025-12-26 15:08:33,260 - INFO - ============================================================
+2025-12-26 15:08:33,260 - INFO - Loading and extracting JSON from all three TXT files...
+2025-12-26 15:08:33,261 - INFO - ============================================================
+2025-12-26 15:08:33,262 - INFO - Loading Step 1 TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:08:33,264 - WARNING - No closing markdown marker found, JSON may be incomplete
+2025-12-26 15:08:33,265 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 667 column 14 (char 47903). Trying fallback extraction...
+2025-12-26 15:08:33,265 - ERROR - All JSON extraction methods failed
+2025-12-26 15:08:33,265 - INFO - Falling back to manual JSON extraction for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:08:33,275 - INFO - Extracted 39 complete objects from incomplete JSON array for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:08:33,275 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step1.txt
+2025-12-26 15:08:33,276 - INFO - Extracted 39 questions from Step 1 TXT
+2025-12-26 15:08:33,276 - INFO - Loading Step 2 TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.txt
+2025-12-26 15:08:33,276 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.txt
+2025-12-26 15:08:33,276 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step2.txt
+2025-12-26 15:08:33,276 - INFO - Extracted 15 questions from Step 2 TXT
+2025-12-26 15:08:33,276 - INFO - Loading Step 3 TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step3.txt
+2025-12-26 15:08:33,276 - INFO - Successfully extracted JSON from TXT using ThirdStageConverter for /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step3.txt
+2025-12-26 15:08:33,276 - INFO - Successfully loaded JSON from TXT: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_v_step3.txt
+2025-12-26 15:08:33,276 - INFO - Extracted 3 questions from Step 3 TXT
+2025-12-26 15:08:33,276 - INFO - Combining questions and removing duplicate TestIDs (priority: Step 3 > Step 2 > Step 1)...
+2025-12-26 15:08:33,276 - INFO - Added 39 questions from Step 1
+2025-12-26 15:08:33,277 - INFO - Added 15 questions from Step 2 (15 overwrote Step 1)
+2025-12-26 15:08:33,277 - INFO - Added 3 questions from Step 3 (3 overwrote previous steps)
+2025-12-26 15:08:33,277 - INFO - Total unique questions after removing duplicates: 39 (Step 1: 39, Step 2: 15, Step 3: 3)
+2025-12-26 15:08:33,277 - INFO - Reassigning TestIDs sequentially and fixing QIds...
+2025-12-26 15:08:33,278 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/b120134.json (39 records)
+2025-12-26 15:08:33,278 - INFO - Final output saved to: /media/shahmir/Program/automation_pileh/content_automation_project/b120134.json
+2025-12-26 15:08:33,278 - INFO - Stage V completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/b120134.json
+2025-12-26 15:16:18,733 - INFO - Starting Stage M processing...
+2025-12-26 15:16:18,733 - INFO - Loading Stage H JSON...
+2025-12-26 15:16:18,737 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/ac120134.json
+2025-12-26 15:16:18,737 - INFO - Loaded 806 records from Stage H
+2025-12-26 15:16:18,737 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 15:16:18,737 - INFO - Extracting unique (chapter, subchapter, topic) combinations...
+2025-12-26 15:16:18,738 - INFO - Extracted 28 unique topics
+2025-12-26 15:16:18,738 - INFO - Saving Stage M output to: /media/shahmir/Program/automation_pileh/content_automation_project/i120134.json
+2025-12-26 15:16:18,738 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/i120134.json (28 records)
+2025-12-26 15:16:18,739 - INFO - Stage M completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/i120134.json
+2025-12-26 15:17:50,562 - INFO - Starting Stage L processing...
+2025-12-26 15:17:50,562 - INFO - Loading Stage J JSON...
+2025-12-26 15:17:50,571 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 15:17:50,572 - INFO - Loaded 806 records from Stage J
+2025-12-26 15:17:50,573 - INFO - Detected Book ID: 120, Chapter ID: 134
+2025-12-26 15:17:50,573 - INFO - Loading Stage V JSON...
+2025-12-26 15:17:50,575 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/b120134.json
+2025-12-26 15:17:50,575 - INFO - Loaded 39 records from Stage V
+2025-12-26 15:17:50,575 - INFO - Building overview context from Stage J and Stage V...
+2025-12-26 15:17:50,577 - INFO - Calling model for Stage L overview...
+2025-12-26 15:18:42,547 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 15:18:42,548 - INFO - Model response received (3459 characters)
+2025-12-26 15:18:42,549 - INFO - Saved raw model response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_l.txt
+2025-12-26 15:18:42,550 - INFO - Extracting JSON from model response...
+2025-12-26 15:18:42,550 - INFO - Successfully extracted JSON from response
+2025-12-26 15:18:42,551 - WARNING - No data/points/rows found in JSON, returning empty list
+2025-12-26 15:18:42,551 - INFO - Detected direct chapter overview structure, wrapping as single record
+2025-12-26 15:18:42,552 - INFO - Extracted 1 overview record(s) from model
+2025-12-26 15:18:42,553 - INFO - Saving Stage L output to: /media/shahmir/Program/automation_pileh/content_automation_project/o120134.json
+2025-12-26 15:18:42,555 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/o120134.json (1 records)
+2025-12-26 15:18:42,555 - INFO - Stage L completed successfully: /media/shahmir/Program/automation_pileh/content_automation_project/o120134.json
+2025-12-26 16:12:46,828 - INFO - Loaded 14 predefined prompts
+2025-12-26 16:12:46,889 - INFO - python-docx library is available
+2025-12-26 16:12:46,890 - INFO - python-docx library is available
+2025-12-26 16:13:20,034 - INFO - Loaded 3 API keys
+2025-12-26 16:14:49,237 - INFO - Starting Stage X processing...
+2025-12-26 16:14:49,259 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 16:14:49,260 - INFO - Part 1: Extracting text from old book PDF...
+2025-12-26 16:14:49,270 - INFO - PDF has 16 pages. Part 1: pages 1-8, Part 2: pages 9-16
+2025-12-26 16:14:49,270 - INFO - Text client initialized with model: gemini-2.5-pro
+2025-12-26 16:15:15,242 - INFO - Processing Part 1 (pages 1-8)...
+2025-12-26 16:15:15,242 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-26 16:17:01,346 - INFO - Saved Part 1 TXT: oldpdf_stage_x_part1_part1.txt
+2025-12-26 16:17:01,347 - INFO - Extracting JSON from Part 1...
+2025-12-26 16:17:01,347 - INFO - Successfully extracted JSON from response
+2025-12-26 16:17:01,349 - INFO - Part 1: Extracted 20 rows
+2025-12-26 16:17:01,349 - INFO - Processing Part 2 (pages 9-16)...
+2025-12-26 16:17:01,350 - INFO - Model: gemini-2.5-pro, Max tokens for model: 32768
+2025-12-26 16:18:59,374 - INFO - Saved Part 2 TXT: oldpdf_stage_x_part1_part2.txt
+2025-12-26 16:18:59,375 - INFO - Extracting JSON from Part 2...
+2025-12-26 16:18:59,376 - INFO - Successfully extracted JSON from response
+2025-12-26 16:18:59,377 - INFO - Part 2: Extracted 16 rows
+2025-12-26 16:19:00,444 - INFO - Saved combined TXT file: oldpdf_stage_x_part1_all_parts.txt
+2025-12-26 16:19:00,449 - INFO - Saved extracted JSON: oldpdf_stage_x_part1_extracted.json
+2025-12-26 16:19:00,459 - INFO - Part 1 completed: oldpdf_stage_x_part1_extracted.json
+2025-12-26 16:19:00,459 - INFO - Part 2: Detecting changes...
+2025-12-26 16:19:00,460 - INFO - Loaded 806 records from Stage A (Imp column removed)
+2025-12-26 16:19:00,462 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/oldpdf_stage_x_part1_extracted.json
+2025-12-26 16:19:00,462 - INFO - Loaded 36 rows from extracted PDF
+2025-12-26 16:19:00,463 - INFO - Divided Stage A into 3 parts: Part 1 (268 records), Part 2 (268 records), Part 3 (270 records)
+2025-12-26 16:19:00,463 - INFO - ============================================================
+2025-12-26 16:19:00,463 - INFO - Processing Part 1 of Stage A for change detection...
+2025-12-26 16:19:00,464 - INFO - ============================================================
+2025-12-26 16:20:56,592 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 16:20:56,594 - INFO - Saved Part 1 raw response to: a120134_stage_x_part2_part1.txt
+2025-12-26 16:20:56,595 - INFO - Saved Stage X Part 2 Part 1 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_x_part2_part1.txt
+2025-12-26 16:20:56,595 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 16:20:56,596 - INFO - Successfully extracted JSON from response
+2025-12-26 16:20:56,596 - INFO - Part 1: Extracted 268 changes
+2025-12-26 16:20:56,597 - INFO - ============================================================
+2025-12-26 16:20:56,598 - INFO - Processing Part 2 of Stage A for change detection...
+2025-12-26 16:20:56,599 - INFO - ============================================================
+2025-12-26 16:23:46,630 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 16:23:46,632 - INFO - Saved Part 2 raw response to: a120134_stage_x_part2_part2.txt
+2025-12-26 16:23:46,632 - INFO - Saved Stage X Part 2 Part 2 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_x_part2_part2.txt
+2025-12-26 16:23:46,633 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 16:23:46,634 - INFO - Successfully extracted JSON from response
+2025-12-26 16:23:46,635 - INFO - Part 2: Extracted 268 changes
+2025-12-26 16:23:46,636 - INFO - ============================================================
+2025-12-26 16:23:46,636 - INFO - Processing Part 3 of Stage A for change detection...
+2025-12-26 16:23:46,636 - INFO - ============================================================
+2025-12-26 16:25:46,641 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 16:25:46,643 - INFO - Saved Part 3 raw response to: a120134_stage_x_part2_part3.txt
+2025-12-26 16:25:46,643 - INFO - Saved Stage X Part 2 Part 3 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_x_part2_part3.txt
+2025-12-26 16:25:46,644 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 16:25:46,645 - INFO - Successfully extracted JSON from response
+2025-12-26 16:25:46,646 - INFO - Part 3: Extracted 270 changes
+2025-12-26 16:25:46,650 - INFO - Saved combined TXT: a120134_stage_x_part2_all_parts.txt
+2025-12-26 16:25:46,651 - INFO - Total validated changes: 806
+2025-12-26 16:25:46,660 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/x120134.json (806 records)
+2025-12-26 16:25:46,661 - INFO - Stage X completed: /media/shahmir/Program/automation_pileh/content_automation_project/x120134.json
+2025-12-26 16:32:53,519 - INFO - Starting Stage Y processing...
+2025-12-26 16:32:53,532 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 16:32:53,533 - INFO - Loaded 806 records from Stage A (Imp column removed)
+2025-12-26 16:32:53,535 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/oldpdf_stage_x_part1_extracted.json
+2025-12-26 16:32:53,535 - INFO - Loaded 36 rows from PDF extracted JSON
+2025-12-26 16:32:53,537 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/x120134.json
+2025-12-26 16:32:53,538 - INFO - Loaded 806 changes from Stage X
+2025-12-26 16:32:53,539 - INFO - Divided Stage A into 3 parts: Part 1 (268 records), Part 2 (268 records), Part 3 (270 records)
+2025-12-26 16:32:53,539 - INFO - ============================================================
+2025-12-26 16:32:53,540 - INFO - Processing Part 1 of Stage A for deletion detection...
+2025-12-26 16:32:53,540 - INFO - ============================================================
+2025-12-26 16:35:12,384 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 16:35:12,386 - INFO - Saved Part 1 raw response to: a120134_stage_y_part1.txt
+2025-12-26 16:35:12,387 - INFO - Saved Stage Y Part 1 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_y_part1.txt
+2025-12-26 16:35:12,387 - INFO - Extracting JSON from Part 1 response...
+2025-12-26 16:35:12,388 - INFO - Successfully extracted JSON from response
+2025-12-26 16:35:12,388 - INFO - Part 1: Extracted 44 deletions
+2025-12-26 16:35:12,388 - INFO - ============================================================
+2025-12-26 16:35:12,389 - INFO - Processing Part 2 of Stage A for deletion detection...
+2025-12-26 16:35:12,389 - INFO - ============================================================
+2025-12-26 16:37:13,436 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 16:37:13,437 - INFO - Saved Part 2 raw response to: a120134_stage_y_part2.txt
+2025-12-26 16:37:13,438 - INFO - Saved Stage Y Part 2 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_y_part2.txt
+2025-12-26 16:37:13,438 - INFO - Extracting JSON from Part 2 response...
+2025-12-26 16:37:13,439 - INFO - Successfully extracted JSON from response
+2025-12-26 16:37:13,441 - INFO - Part 2: Extracted 32 deletions
+2025-12-26 16:37:13,441 - INFO - ============================================================
+2025-12-26 16:37:13,442 - INFO - Processing Part 3 of Stage A for deletion detection...
+2025-12-26 16:37:13,443 - INFO - ============================================================
+2025-12-26 16:38:45,676 - INFO - Text processed successfully with gemini-2.5-pro
+2025-12-26 16:38:45,679 - INFO - Saved Part 3 raw response to: a120134_stage_y_part3.txt
+2025-12-26 16:38:45,679 - INFO - Saved Stage Y Part 3 raw response to: /media/shahmir/Program/automation_pileh/content_automation_project/a120134_stage_y_part3.txt
+2025-12-26 16:38:45,681 - INFO - Extracting JSON from Part 3 response...
+2025-12-26 16:38:45,681 - INFO - Successfully extracted JSON from response
+2025-12-26 16:38:45,682 - INFO - Part 3: Extracted 36 deletions
+2025-12-26 16:38:45,684 - INFO - Saved combined TXT: a120134_stage_y_all_parts.txt
+2025-12-26 16:38:45,685 - INFO - Total validated deletions: 112 (Numbers auto-assigned 1-112)
+2025-12-26 16:38:45,689 - INFO - Successfully saved JSON: /media/shahmir/Program/automation_pileh/content_automation_project/y120134.json (112 records)
+2025-12-26 16:38:45,690 - INFO - Stage Y completed: /media/shahmir/Program/automation_pileh/content_automation_project/y120134.json
+2025-12-26 17:02:16,748 - INFO - Starting Stage Z processing...
+2025-12-26 17:02:16,755 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/a120134.json
+2025-12-26 17:02:16,756 - INFO - Loaded 806 records from Stage A (Imp column removed)
+2025-12-26 17:02:16,758 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/x120134.json
+2025-12-26 17:02:16,759 - INFO - Loaded 806 changes from Stage X
+2025-12-26 17:02:16,760 - INFO - Successfully loaded JSON: /media/shahmir/Program/automation_pileh/content_automation_project/y120134.json
+2025-12-26 17:02:16,761 - INFO - Loaded 112 deletions from Stage Y
+2025-12-26 17:02:16,761 - INFO - Processing Stage A as a whole (806 records)
+2025-12-26 17:02:16,776 - INFO - Calling model for RichText generation...
+2025-12-26 17:12:16,783 - WARNING - ⚠️ Timeout error (504) - Attempt 1/3
+2025-12-26 17:12:16,784 - WARNING -    Waiting 10.0s before retry...
+2025-12-26 17:12:51,809 - ERROR - Text processing failed: 429 Resource has been exhausted (e.g. check quota).
+2025-12-26 17:12:51,810 - ERROR - Model returned no response

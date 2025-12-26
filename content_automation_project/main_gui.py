@@ -23,6 +23,17 @@ from multi_part_processor import MultiPartProcessor
 from multi_part_post_processor import MultiPartPostProcessor
 from third_stage_converter import ThirdStageConverter
 from txt_stage_json_utils import load_stage_txt_as_json
+from stage_e_processor import StageEProcessor
+from stage_f_processor import StageFProcessor
+from stage_j_processor import StageJProcessor
+from stage_h_processor import StageHProcessor
+from stage_m_processor import StageMProcessor
+from stage_l_processor import StageLProcessor
+from stage_v_processor import StageVProcessor
+from stage_x_processor import StageXProcessor
+from stage_y_processor import StageYProcessor
+from stage_z_processor import StageZProcessor
+from automated_pipeline_orchestrator import AutomatedPipelineOrchestrator
 
 
 class ContentAutomationGUI:
@@ -35,16 +46,16 @@ class ContentAutomationGUI:
         
         # Initialize main window
         self.root = ctk.CTk()
-        self.root.title("Content Automation - Part 1")
+        self.root.title("Content Automation - Pileh")
         self.root.geometry("1000x800")
-        self.root.minsize(900, 700)
+        self.root.minsize(1024, 768)
 
         # Common Farsi-friendly font for textboxes
         try:
-            self.farsi_text_font = ctk.CTkFont(family="Tahoma", size=11)
+            self.farsi_text_font = ctk.CTkFont(family="Tahoma", size=13)
         except Exception:
             # Fallback if Tahoma is not available
-            self.farsi_text_font = ctk.CTkFont(size=11)
+            self.farsi_text_font = ctk.CTkFont(size=14)
         
         # Setup logging
         self.setup_logging()
@@ -56,6 +67,16 @@ class ContentAutomationGUI:
         self.api_client = GeminiAPIClient(self.api_key_manager)
         self.multi_part_processor = MultiPartProcessor(self.api_client)
         self.multi_part_post_processor = MultiPartPostProcessor(self.api_client)
+        self.stage_e_processor = StageEProcessor(self.api_client)
+        self.stage_f_processor = StageFProcessor(self.api_client)
+        self.stage_j_processor = StageJProcessor(self.api_client)
+        self.stage_h_processor = StageHProcessor(self.api_client)
+        self.stage_m_processor = StageMProcessor(self.api_client)
+        self.stage_l_processor = StageLProcessor(self.api_client)
+        self.stage_v_processor = StageVProcessor(self.api_client)
+        self.stage_x_processor = StageXProcessor(self.api_client)
+        self.stage_y_processor = StageYProcessor(self.api_client)
+        self.stage_z_processor = StageZProcessor(self.api_client)
         
         # Variables
         self.pdf_path = None
@@ -67,6 +88,13 @@ class ContentAutomationGUI:
         self.last_corrected_path = None          # Stage 3 JSON (with PointId)
         self.last_stage3_raw_path = None         # Stage 3 raw JSON (new intermediate stage)
         self.last_stage4_raw_path = None         # Stage 4 raw JSON (chunked model output)
+        self.last_stage_e_path = None            # Stage E JSON
+        self.last_stage_j_path = None            # Stage J JSON
+        self.last_stage_f_path = None            # Stage F JSON
+        self.last_stage_h_path = None            # Stage H JSON
+        self.last_stage_v_path = None            # Stage V JSON
+        self.last_stage_m_path = None            # Stage M JSON
+        self.last_stage_l_path = None            # Stage L JSON
         
         # Setup UI
         self.setup_ui()
@@ -85,15 +113,94 @@ class ContentAutomationGUI:
     
     def setup_ui(self):
         """Setup the main user interface"""
+        # Create TabView for all stages (including Stages 1-4)
+        self.main_tabview = ctk.CTkTabview(self.root)
+        # Initially hide tabview - show main frame first
+        self.main_tabview.pack_forget()
+        
+        # Tab 1: Document Processing (for tabview access) - MUST be first to be default
+        self.tab_stages_1_4 = self.main_tabview.add("Document Processing")
+        
+        # Main page: Stages 1-4 (Original UI) - shown directly on root
+        # This is the Part 1 form (Stage 1 only)
+        self.main_stages_1_4_frame = ctk.CTkFrame(self.root)
+        self.main_stages_1_4_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.setup_stages_1_4_ui(self.main_stages_1_4_frame)
+        
+        # Now setup Stages 2-3-4 UI in tabview (the actual Stages 1-4 form)
+        self.setup_stages_2_3_4_ui(self.tab_stages_1_4)
+        
+        # Tab 2: Image Notes Generation
+        self.tab_stage_e = self.main_tabview.add("Image Notes Generation")
+        self.setup_stage_e_ui(self.tab_stage_e)
+        
+        # Tab 3: Image File Catalog
+        self.tab_stage_f = self.main_tabview.add("Image File Catalog")
+        self.setup_stage_f_ui(self.tab_stage_f)
+        
+        # Tab 4: Importance & Type Tagging
+        self.tab_stage_j = self.main_tabview.add("Importance & Type Tagging")
+        self.setup_stage_j_ui(self.tab_stage_j)
+        
+        # Tab 5: Flashcard Generation
+        self.tab_stage_h = self.main_tabview.add("Flashcard Generation")
+        self.setup_stage_h_ui(self.tab_stage_h)
+        
+        # Tab 6: Test Bank Generation
+        self.tab_stage_v = self.main_tabview.add("Test Bank Generation")
+        self.setup_stage_v_ui(self.tab_stage_v)
+        
+        # Tab 7: Topic List Extraction
+        self.tab_stage_m = self.main_tabview.add("Topic List Extraction")
+        self.setup_stage_m_ui(self.tab_stage_m)
+        
+        # Tab 8: Chapter Summary
+        self.tab_stage_l = self.main_tabview.add("Chapter Summary")
+        self.setup_stage_l_ui(self.tab_stage_l)
+        
+        # Tab 9: Book Changes Detection
+        self.tab_stage_x = self.main_tabview.add("Book Changes Detection")
+        self.setup_stage_x_ui(self.tab_stage_x)
+        
+        # Tab 10: Deletion Detection
+        self.tab_stage_y = self.main_tabview.add("Deletion Detection")
+        self.setup_stage_y_ui(self.tab_stage_y)
+        
+        # Tab 11: RichText Generation
+        self.tab_stage_z = self.main_tabview.add("RichText Generation")
+        self.setup_stage_z_ui(self.tab_stage_z)
+        
+        # Ensure Document Processing is the default/selected tab
+        self.main_tabview.set("Document Processing")
+        
+        # Pipeline Status Bar (shown on all tabs)
+        self.setup_pipeline_status_bar()
+    
+    def setup_stages_1_4_ui(self, parent):
+        """Setup UI for Document Processing (original functionality)"""
+        # Check if this is the tabview version (not main view)
+        is_tabview = hasattr(self, 'main_stages_1_4_frame') and parent != self.main_stages_1_4_frame
+        
         # Create main container with scrollable frame
-        main_frame = ctk.CTkScrollableFrame(self.root)
+        main_frame = ctk.CTkScrollableFrame(parent)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title
-        title = ctk.CTkLabel(main_frame, text="Content Automation - Part 1", 
-                            font=ctk.CTkFont(size=24, weight="bold"))
-        title.pack(pady=(0, 20))
+        # Add navigation button only in tabview version
+        if is_tabview:
+            nav_frame = ctk.CTkFrame(main_frame)
+            nav_frame.pack(fill="x", pady=(0, 10))
+            ctk.CTkButton(
+                nav_frame,
+                text="< Back to Main View",
+                command=self.show_main_view,
+                width=150,
+                height=30,
+                font=ctk.CTkFont(size=12),
+                fg_color="gray",
+                hover_color="darkgray"
+            ).pack(side="left", padx=10, pady=5)
         
+        # Setup all sections - widgets will be shared via StringVar and other variables
         # API Configuration Section
         self.setup_api_section(main_frame)
         
@@ -109,6 +216,9 @@ class ContentAutomationGUI:
         # Output Section
         self.setup_output_section(main_frame)
         
+        # Automated Pipeline Section
+        self.setup_automated_pipeline_section(main_frame)
+        
         # Control Buttons
         self.setup_controls(main_frame)
         
@@ -120,7 +230,7 @@ class ContentAutomationGUI:
         api_frame = ctk.CTkFrame(parent)
         api_frame.pack(fill="x", pady=(0, 20))
         
-        api_label = ctk.CTkLabel(api_frame, text="🔑 API Configuration", 
+        api_label = ctk.CTkLabel(api_frame, text="API Configuration", 
                                 font=ctk.CTkFont(size=18, weight="bold"))
         api_label.pack(pady=(15, 10))
         
@@ -131,7 +241,9 @@ class ContentAutomationGUI:
         ctk.CTkLabel(key_frame, text="API Key CSV File:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.api_key_file_var = ctk.StringVar()
+        # Only create StringVar if it doesn't exist (for main view)
+        if not hasattr(self, 'api_key_file_var'):
+            self.api_key_file_var = ctk.StringVar()
         api_key_entry = ctk.CTkEntry(key_frame, textvariable=self.api_key_file_var, width=400)
         api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
         
@@ -141,10 +253,17 @@ class ContentAutomationGUI:
         ctk.CTkLabel(key_frame, text="CSV format: account;project;api_key (API keys will be used in rotation)", 
                     font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
         
-        # API keys status
-        self.api_keys_status_label = ctk.CTkLabel(key_frame, text="No API keys loaded", 
-                                                  font=ctk.CTkFont(size=10), text_color="gray")
-        self.api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        # API keys status - only create for main view
+        if not hasattr(self, 'api_keys_status_label') or parent == self.main_stages_1_4_frame:
+            if not hasattr(self, 'api_keys_status_label'):
+                self.api_keys_status_label = ctk.CTkLabel(key_frame, text="No API keys loaded", 
+                                                          font=ctk.CTkFont(size=10), text_color="gray")
+                self.api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        else:
+            # For tabview, create a separate label that syncs with main
+            api_keys_status_label_tab = ctk.CTkLabel(key_frame, text="No API keys loaded", 
+                                                      font=ctk.CTkFont(size=10), text_color="gray")
+            api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_pdf_section(self, parent):
         """Setup PDF upload section"""
@@ -212,12 +331,7 @@ class ContentAutomationGUI:
         
         # Prompt preview
         self.prompt_preview = ctk.CTkTextbox(predefined_frame, height=100, font=self.farsi_text_font)
-        self.prompt_preview.pack(fill="x", padx=10, pady=(0, 5))
-        if prompt_names and default_value:
-            preview_text = self.prompt_manager.get_prompt(default_value) or ""
-            self.prompt_preview.insert("1.0", preview_text)
-            self.selected_prompt_name = default_value
-        self.prompt_preview.configure(state="disabled")
+        # Don't pack yet - will be packed by on_prompt_type_change
         
         # Custom prompt input
         self.custom_frame = ctk.CTkFrame(prompt_frame)
@@ -228,8 +342,15 @@ class ContentAutomationGUI:
         self.custom_prompt_text = ctk.CTkTextbox(self.custom_frame, height=120, font=self.farsi_text_font)
         self.custom_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
         
-        # Update visibility based on initial selection
+        # Initialize use_custom_prompt flag
+        self.use_custom_prompt = False
+        
+        # Update visibility based on initial selection (this will pack/unpack widgets)
         self.on_prompt_type_change()
+        
+        # Load default prompt into preview after visibility is set
+        if prompt_names and default_value:
+            self.on_prompt_selected(default_value)
     
     def setup_model_section(self, parent):
         """Setup model selection section"""
@@ -246,7 +367,9 @@ class ContentAutomationGUI:
         ctk.CTkLabel(model_select_frame, text="Select Gemini Model:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.model_var = ctk.StringVar(value=APIConfig.TEXT_MODELS[0])
+        # Only create StringVar if it doesn't exist (for main view)
+        if not hasattr(self, 'model_var'):
+            self.model_var = ctk.StringVar(value="gemini-2.5-pro")
         self.model_combo = ctk.CTkComboBox(model_select_frame, values=APIConfig.TEXT_MODELS, 
                                           variable=self.model_var, width=400)
         self.model_combo.pack(anchor="w", padx=10, pady=(0, 10))
@@ -260,7 +383,7 @@ class ContentAutomationGUI:
         output_frame = ctk.CTkFrame(parent)
         output_frame.pack(fill="x", pady=(0, 20))
         
-        output_label = ctk.CTkLabel(output_frame, text="💾 Output Configuration", 
+        output_label = ctk.CTkLabel(output_frame, text="Output Configuration", 
                                    font=ctk.CTkFont(size=18, weight="bold"))
         output_label.pack(pady=(15, 10))
         
@@ -312,17 +435,119 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=14),
         )
         self.view_stage1_json_btn.pack(side="left", padx=10)
-
-        # Next step button - go to second page (post-processing of final JSON by Part)
-        self.next_step_btn = ctk.CTkButton(
+        
+        # Navigation button to switch to tabview
+        self.show_tabview_btn = ctk.CTkButton(
             buttons_frame,
-            text="Next Step (Part Processing)",
-            command=self.open_part_processing_window,
-            width=220,
+            text="View Other Tools",
+            command=self.show_tabview,
+            width=200,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="purple",
+            hover_color="darkviolet"
         )
-        self.next_step_btn.pack(side="left", padx=10)
+        self.show_tabview_btn.pack(side="left", padx=10)
+        
+    
+    def setup_automated_pipeline_section(self, parent):
+        """Setup Automated Pipeline section in main page"""
+        pipeline_frame = ctk.CTkFrame(parent)
+        pipeline_frame.pack(fill="x", pady=(0, 20))
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            pipeline_frame,
+            text="Automated Pipeline",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        title_label.pack(pady=(15, 10))
+        
+        desc_label = ctk.CTkLabel(
+            pipeline_frame,
+            text="Run complete pipeline automatically: PDF -> Stage 1 -> Stage 2 -> Stage 3 -> Stage 4 -> Stage E -> Stage F -> Stage J -> Stage V -> Stage X -> Stage Y -> Stage Z\n"
+                 "If Word file is not provided, Stage J and V will fail but pipeline continues.\n"
+                 "If Old Book PDF is not provided, Stage X, Y, and Z will be skipped.",
+            font=ctk.CTkFont(size=11),
+            justify="left",
+            text_color="gray"
+        )
+        desc_label.pack(pady=(0, 15))
+        
+        # PointID input
+        pointid_frame = ctk.CTkFrame(pipeline_frame)
+        pointid_frame.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(pointid_frame, text="Start PointID (10 digits):", width=180).pack(side="left", padx=5)
+        self.auto_pipeline_pointid_var = ctk.StringVar(value="1050030001")
+        ctk.CTkEntry(pointid_frame, textvariable=self.auto_pipeline_pointid_var, width=200).pack(side="left", padx=5)
+        ctk.CTkLabel(pointid_frame, text="Example: 1050030001", font=ctk.CTkFont(size=10), text_color="gray").pack(side="left", padx=5)
+        
+        # Chapter name
+        chapter_frame = ctk.CTkFrame(pipeline_frame)
+        chapter_frame.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(chapter_frame, text="Chapter Name:", width=180).pack(side="left", padx=5)
+        self.auto_pipeline_chapter_var = ctk.StringVar(value="")
+        ctk.CTkEntry(chapter_frame, textvariable=self.auto_pipeline_chapter_var, width=400).pack(side="left", padx=5, fill="x", expand=True)
+        
+        # Word file (optional)
+        word_frame = ctk.CTkFrame(pipeline_frame)
+        word_frame.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(word_frame, text="Word File (for Stage J & V):", width=180).pack(side="left", padx=5)
+        self.auto_pipeline_word_var = ctk.StringVar(value="")
+        ctk.CTkEntry(word_frame, textvariable=self.auto_pipeline_word_var, width=300).pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkButton(
+            word_frame,
+            text="Browse",
+            width=100,
+            command=lambda: self.auto_pipeline_word_var.set(filedialog.askopenfilename(filetypes=[("Word files", "*.docx *.doc"), ("All files", "*.*")]))
+        ).pack(side="left", padx=5)
+        ctk.CTkLabel(
+            word_frame,
+            text="(Optional - required for Stage J and V)",
+            font=ctk.CTkFont(size=10),
+            text_color="orange"
+        ).pack(side="left", padx=5)
+        
+        # Old Book PDF (for Stage X)
+        old_pdf_frame = ctk.CTkFrame(pipeline_frame)
+        old_pdf_frame.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(old_pdf_frame, text="Old Book PDF (for Stage X):", width=180).pack(side="left", padx=5)
+        self.auto_pipeline_old_pdf_var = ctk.StringVar(value="")
+        ctk.CTkEntry(old_pdf_frame, textvariable=self.auto_pipeline_old_pdf_var, width=300).pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkButton(
+            old_pdf_frame,
+            text="Browse",
+            width=100,
+            command=lambda: self.auto_pipeline_old_pdf_var.set(filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]))
+        ).pack(side="left", padx=5)
+        ctk.CTkLabel(
+            old_pdf_frame,
+            text="(Optional - required for Stage X, Y, Z)",
+            font=ctk.CTkFont(size=10),
+            text_color="orange"
+        ).pack(side="left", padx=5)
+        
+        # Progress label
+        self.auto_pipeline_progress_label = ctk.CTkLabel(
+            pipeline_frame,
+            text="Ready to start automated pipeline...",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        self.auto_pipeline_progress_label.pack(pady=(10, 5))
+        
+        # Start button
+        self.auto_pipeline_start_btn = ctk.CTkButton(
+            pipeline_frame,
+            text="Start Automated Pipeline",
+            command=self.start_automated_pipeline_from_main,
+            width=300,
+            height=45,
+            font=ctk.CTkFont(size=15, weight="bold"),
+            fg_color="orange",
+            hover_color="darkorange"
+        )
+        self.auto_pipeline_start_btn.pack(pady=(5, 15))
     
     def setup_status_section(self, parent):
         """Setup status section"""
@@ -354,7 +579,7 @@ class ContentAutomationGUI:
                 self.update_status(f"Loaded {num_keys} API key(s) from: {os.path.basename(filename)}")
             else:
                 self.api_keys_status_label.configure(
-                    text="✗ Failed to load API keys",
+                    text="X Failed to load API keys",
                     text_color="red"
                 )
                 messagebox.showerror("Error", "Failed to load API keys from file")
@@ -392,7 +617,7 @@ class ContentAutomationGUI:
             self.update_status(f"PDF validated: {os.path.basename(file_path)} ({page_count} pages)")
         else:
             self.pdf_info_label.configure(
-                text=f"✗ {error_msg}",
+                text=f"X {error_msg}",
                 text_color="red"
             )
             self.pdf_path = None
@@ -432,7 +657,526 @@ class ContentAutomationGUI:
             return prompt if prompt else None
         else:
             return self.prompt_manager.get_prompt(self.prompt_combo_var.get())
+
+    def on_second_stage_default_prompt_selected(self, selected_name: str):
+        """When default Stage 2 prompt combobox changes, fill the Stage 2 prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'second_stage_prompt_text'):
+            # Ensure textbox is writable for programmatic updates
+            try:
+                self.second_stage_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.second_stage_prompt_text.delete("1.0", tk.END)
+            self.second_stage_prompt_text.insert("1.0", prompt_text)
+            # Restore disabled state if we are in default mode
+            if hasattr(self, 'second_stage_prompt_type_var') and self.second_stage_prompt_type_var.get() == "default":
+                try:
+                    self.second_stage_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_auto_stage3_default_prompt_selected(self, selected_name: str):
+        """When default Stage 3 prompt combobox changes, fill the Stage 3 prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'auto_stage3_prompt_text'):
+            try:
+                self.auto_stage3_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.auto_stage3_prompt_text.delete("1.0", tk.END)
+            self.auto_stage3_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'auto_stage3_prompt_type_var') and self.auto_stage3_prompt_type_var.get() == "default":
+                try:
+                    self.auto_stage3_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_auto_stage4_default_prompt_selected(self, selected_name: str):
+        """When default Stage 4 prompt combobox changes, fill the Stage 4 prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'auto_stage4_prompt_text'):
+            try:
+                self.auto_stage4_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.auto_stage4_prompt_text.delete("1.0", tk.END)
+            self.auto_stage4_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'auto_stage4_prompt_type_var') and self.auto_stage4_prompt_type_var.get() == "default":
+                try:
+                    self.auto_stage4_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_e_default_prompt_selected(self, selected_name: str):
+        """When default Stage E prompt combobox changes, fill the Stage E prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_e_prompt_text'):
+            try:
+                self.stage_e_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_e_prompt_text.delete("1.0", tk.END)
+            self.stage_e_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_e_prompt_type_var') and self.stage_e_prompt_type_var.get() == "default":
+                try:
+                    self.stage_e_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_j_default_prompt_selected(self, selected_name: str):
+        """When default Stage J prompt combobox changes, fill the Stage J prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_j_prompt_text'):
+            try:
+                self.stage_j_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_j_prompt_text.delete("1.0", tk.END)
+            self.stage_j_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_j_prompt_type_var') and self.stage_j_prompt_type_var.get() == "default":
+                try:
+                    self.stage_j_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_h_default_prompt_selected(self, selected_name: str):
+        """When default Stage H prompt combobox changes, fill the Stage H prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_h_prompt_text'):
+            try:
+                self.stage_h_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_h_prompt_text.delete("1.0", tk.END)
+            self.stage_h_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_h_prompt_type_var') and self.stage_h_prompt_type_var.get() == "default":
+                try:
+                    self.stage_h_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_v_prompt1_default_selected(self, selected_name: str):
+        """When default Step 1 prompt combobox changes, fill the Step 1 prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_v_prompt1_text'):
+            try:
+                self.stage_v_prompt1_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_v_prompt1_text.delete("1.0", tk.END)
+            self.stage_v_prompt1_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_v_prompt1_type_var') and self.stage_v_prompt1_type_var.get() == "default":
+                try:
+                    self.stage_v_prompt1_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_v_prompt2_default_selected(self, selected_name: str):
+        """When default Step 2 prompt combobox changes, fill the Step 2 prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_v_prompt2_text'):
+            try:
+                self.stage_v_prompt2_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_v_prompt2_text.delete("1.0", tk.END)
+            self.stage_v_prompt2_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_v_prompt2_type_var') and self.stage_v_prompt2_type_var.get() == "default":
+                try:
+                    self.stage_v_prompt2_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_v_prompt3_default_selected(self, selected_name: str):
+        """When default Step 3 prompt combobox changes, fill the Step 3 prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_v_prompt3_text'):
+            try:
+                self.stage_v_prompt3_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_v_prompt3_text.delete("1.0", tk.END)
+            self.stage_v_prompt3_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_v_prompt3_type_var') and self.stage_v_prompt3_type_var.get() == "default":
+                try:
+                    self.stage_v_prompt3_text.configure(state="disabled")
+                except Exception:
+                    pass
+    def on_second_stage_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage 2."""
+        # Safety: if widgets/vars not created yet, do nothing
+        if not hasattr(self, 'second_stage_prompt_type_var') \
+           or not hasattr(self, 'second_stage_default_prompt_combo') \
+           or not hasattr(self, 'second_stage_prompt_text'):
+            return
+        mode = self.second_stage_prompt_type_var.get()
+        if mode == "default":
+            # Enable combobox, show read-only textbox with default prompt
+            self.second_stage_default_prompt_combo.configure(state="normal")
+            selected_name = self.second_stage_default_prompt_var.get()
+            self.on_second_stage_default_prompt_selected(selected_name)
+            self.second_stage_prompt_text.configure(state="disabled")
+        else:
+            # Disable combobox, enable free editing
+            self.second_stage_default_prompt_combo.configure(state="disabled")
+            self.second_stage_prompt_text.configure(state="normal")
+
+    def on_auto_stage3_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage 3."""
+        if not hasattr(self, 'auto_stage3_prompt_type_var') \
+           or not hasattr(self, 'auto_stage3_default_prompt_combo') \
+           or not hasattr(self, 'auto_stage3_prompt_text'):
+            return
+        mode = self.auto_stage3_prompt_type_var.get()
+        if mode == "default":
+            self.auto_stage3_default_prompt_combo.configure(state="normal")
+            selected_name = self.auto_stage3_default_prompt_var.get()
+            self.on_auto_stage3_default_prompt_selected(selected_name)
+            self.auto_stage3_prompt_text.configure(state="disabled")
+        else:
+            self.auto_stage3_default_prompt_combo.configure(state="disabled")
+            self.auto_stage3_prompt_text.configure(state="normal")
+
+    def on_auto_stage4_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage 4."""
+        if not hasattr(self, 'auto_stage4_prompt_type_var') \
+           or not hasattr(self, 'auto_stage4_default_prompt_combo') \
+           or not hasattr(self, 'auto_stage4_prompt_text'):
+            return
+        mode = self.auto_stage4_prompt_type_var.get()
+        if mode == "default":
+            self.auto_stage4_default_prompt_combo.configure(state="normal")
+            selected_name = self.auto_stage4_default_prompt_var.get()
+            self.on_auto_stage4_default_prompt_selected(selected_name)
+            self.auto_stage4_prompt_text.configure(state="disabled")
+        else:
+            self.auto_stage4_default_prompt_combo.configure(state="disabled")
+            self.auto_stage4_prompt_text.configure(state="normal")
+
+    def on_stage_e_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage E."""
+        if not hasattr(self, 'stage_e_prompt_type_var') \
+           or not hasattr(self, 'stage_e_default_prompt_combo') \
+           or not hasattr(self, 'stage_e_prompt_text'):
+            return
+        mode = self.stage_e_prompt_type_var.get()
+        if mode == "default":
+            self.stage_e_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_e_default_prompt_var.get()
+            self.on_stage_e_default_prompt_selected(selected_name)
+            try:
+                self.stage_e_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_e_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_e_prompt_text.configure(state="normal")
+            except Exception:
+                pass
     
+    def on_stage_j_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage J (Importance & Type)."""
+        if not hasattr(self, 'stage_j_prompt_type_var') \
+           or not hasattr(self, 'stage_j_default_prompt_combo') \
+           or not hasattr(self, 'stage_j_prompt_text'):
+            return
+        mode = self.stage_j_prompt_type_var.get()
+        if mode == "default":
+            # Enable combobox, show read-only textbox with default prompt
+            self.stage_j_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_j_default_prompt_var.get()
+            self.on_stage_j_default_prompt_selected(selected_name)
+            try:
+                self.stage_j_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            # Disable combobox, enable free editing
+            self.stage_j_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_j_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+
+    def on_stage_l_default_prompt_selected(self, selected_name: str):
+        """When default Stage L prompt combobox changes, fill the Stage L prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_l_prompt_text'):
+            try:
+                self.stage_l_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_l_prompt_text.delete("1.0", tk.END)
+            self.stage_l_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_l_prompt_type_var') and self.stage_l_prompt_type_var.get() == "default":
+                try:
+                    self.stage_l_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_l_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage L."""
+        if not hasattr(self, 'stage_l_prompt_type_var') \
+           or not hasattr(self, 'stage_l_default_prompt_combo') \
+           or not hasattr(self, 'stage_l_prompt_text'):
+            return
+        mode = self.stage_l_prompt_type_var.get()
+        if mode == "default":
+            self.stage_l_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_l_default_prompt_var.get()
+            self.on_stage_l_default_prompt_selected(selected_name)
+            try:
+                self.stage_l_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_l_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_l_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    # Stage X PDF Extraction Prompt handlers
+    def on_stage_x_pdf_default_prompt_selected(self, selected_name: str):
+        """Load default PDF extraction prompt when selected from combobox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_x_pdf_prompt_text'):
+            try:
+                self.stage_x_pdf_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_x_pdf_prompt_text.delete("1.0", tk.END)
+            self.stage_x_pdf_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_x_pdf_prompt_type_var') and self.stage_x_pdf_prompt_type_var.get() == "default":
+                try:
+                    self.stage_x_pdf_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+    
+    def on_stage_x_pdf_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage X PDF Extraction."""
+        if not hasattr(self, 'stage_x_pdf_prompt_type_var') \
+           or not hasattr(self, 'stage_x_pdf_default_prompt_combo') \
+           or not hasattr(self, 'stage_x_pdf_prompt_text'):
+            return
+        mode = self.stage_x_pdf_prompt_type_var.get()
+        if mode == "default":
+            self.stage_x_pdf_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_x_pdf_default_prompt_var.get()
+            self.on_stage_x_pdf_default_prompt_selected(selected_name)
+            try:
+                self.stage_x_pdf_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_x_pdf_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_x_pdf_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    # Stage X Change Detection Prompt handlers
+    def on_stage_x_change_default_prompt_selected(self, selected_name: str):
+        """Load default change detection prompt when selected from combobox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_x_change_prompt_text'):
+            try:
+                self.stage_x_change_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_x_change_prompt_text.delete("1.0", tk.END)
+            self.stage_x_change_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_x_change_prompt_type_var') and self.stage_x_change_prompt_type_var.get() == "default":
+                try:
+                    self.stage_x_change_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+    
+    def on_stage_x_change_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage X Change Detection."""
+        if not hasattr(self, 'stage_x_change_prompt_type_var') \
+           or not hasattr(self, 'stage_x_change_default_prompt_combo') \
+           or not hasattr(self, 'stage_x_change_prompt_text'):
+            return
+        mode = self.stage_x_change_prompt_type_var.get()
+        if mode == "default":
+            self.stage_x_change_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_x_change_default_prompt_var.get()
+            self.on_stage_x_change_default_prompt_selected(selected_name)
+            try:
+                self.stage_x_change_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_x_change_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_x_change_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    # Stage Y Prompt handlers
+    def on_stage_y_default_prompt_selected(self, selected_name: str):
+        """Load default prompt when selected from combobox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_y_prompt_text'):
+            try:
+                self.stage_y_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_y_prompt_text.delete("1.0", tk.END)
+            self.stage_y_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_y_prompt_type_var') and self.stage_y_prompt_type_var.get() == "default":
+                try:
+                    self.stage_y_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+    
+    def on_stage_y_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage Y."""
+        if not hasattr(self, 'stage_y_prompt_type_var') \
+           or not hasattr(self, 'stage_y_default_prompt_combo') \
+           or not hasattr(self, 'stage_y_prompt_text'):
+            return
+        mode = self.stage_y_prompt_type_var.get()
+        if mode == "default":
+            self.stage_y_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_y_default_prompt_var.get()
+            self.on_stage_y_default_prompt_selected(selected_name)
+            try:
+                self.stage_y_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_y_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_y_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    # Stage Z Prompt handlers
+    def on_stage_z_default_prompt_selected(self, selected_name: str):
+        """Load default prompt when selected from combobox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_z_prompt_text'):
+            try:
+                self.stage_z_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_z_prompt_text.delete("1.0", tk.END)
+            self.stage_z_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_z_prompt_type_var') and self.stage_z_prompt_type_var.get() == "default":
+                try:
+                    self.stage_z_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+    
+    def on_stage_z_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage Z."""
+        if not hasattr(self, 'stage_z_prompt_type_var') \
+           or not hasattr(self, 'stage_z_default_prompt_combo') \
+           or not hasattr(self, 'stage_z_prompt_text'):
+            return
+        mode = self.stage_z_prompt_type_var.get()
+        if mode == "default":
+            self.stage_z_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_z_default_prompt_var.get()
+            self.on_stage_z_default_prompt_selected(selected_name)
+            try:
+                self.stage_z_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_z_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_z_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+
+    def on_stage_h_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage H (Flashcard Generation)."""
+        if not hasattr(self, 'stage_h_prompt_type_var') \
+           or not hasattr(self, 'stage_h_default_prompt_combo') \
+           or not hasattr(self, 'stage_h_prompt_text'):
+            return
+        mode = self.stage_h_prompt_type_var.get()
+        if mode == "default":
+            # Enable combobox, show read-only textbox with default prompt
+            self.stage_h_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_h_default_prompt_var.get()
+            self.on_stage_h_default_prompt_selected(selected_name)
+            try:
+                self.stage_h_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+
+    def on_stage_v_prompt1_type_change(self):
+        """Switch between default and custom prompt for Stage V Step 1."""
+        if not hasattr(self, 'stage_v_prompt1_type_var') \
+           or not hasattr(self, 'stage_v_prompt1_default_combo') \
+           or not hasattr(self, 'stage_v_prompt1_text'):
+            return
+        mode = self.stage_v_prompt1_type_var.get()
+        if mode == "default":
+            self.stage_v_prompt1_default_combo.configure(state="normal")
+            selected_name = self.stage_v_prompt1_default_var.get()
+            self.on_stage_v_prompt1_default_selected(selected_name)
+            try:
+                self.stage_v_prompt1_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_v_prompt1_default_combo.configure(state="disabled")
+            try:
+                self.stage_v_prompt1_text.configure(state="normal")
+            except Exception:
+                pass
+
+    def on_stage_v_prompt2_type_change(self):
+        """Switch between default and custom prompt for Stage V Step 2."""
+        if not hasattr(self, 'stage_v_prompt2_type_var') \
+           or not hasattr(self, 'stage_v_prompt2_default_combo') \
+           or not hasattr(self, 'stage_v_prompt2_text'):
+            return
+        mode = self.stage_v_prompt2_type_var.get()
+        if mode == "default":
+            self.stage_v_prompt2_default_combo.configure(state="normal")
+            selected_name = self.stage_v_prompt2_default_var.get()
+            self.on_stage_v_prompt2_default_selected(selected_name)
+            try:
+                self.stage_v_prompt2_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_v_prompt2_default_combo.configure(state="disabled")
+            try:
+                self.stage_v_prompt2_text.configure(state="normal")
+            except Exception:
+                pass
+
+    def on_stage_v_prompt3_type_change(self):
+        """Switch between default and custom prompt for Stage V Step 3."""
+        if not hasattr(self, 'stage_v_prompt3_type_var') \
+           or not hasattr(self, 'stage_v_prompt3_default_combo') \
+           or not hasattr(self, 'stage_v_prompt3_text'):
+            return
+        mode = self.stage_v_prompt3_type_var.get()
+        if mode == "default":
+            self.stage_v_prompt3_default_combo.configure(state="normal")
+            selected_name = self.stage_v_prompt3_default_var.get()
+            self.on_stage_v_prompt3_default_selected(selected_name)
+            try:
+                self.stage_v_prompt3_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_v_prompt3_default_combo.configure(state="disabled")
+            try:
+                self.stage_v_prompt3_text.configure(state="normal")
+            except Exception:
+                pass
+
     def process_pdf(self):
         """Process PDF with selected prompt and model"""
         def worker():
@@ -560,22 +1304,39 @@ class ContentAutomationGUI:
         # Run in separate thread to prevent UI blocking
         threading.Thread(target=worker, daemon=True).start()
     
-    def view_csv_from_json(self):
-        """Convert the last processed JSON file to CSV format and display it"""
-        if not self.last_final_output_path or not os.path.exists(self.last_final_output_path):
-            messagebox.showerror("Error", "No JSON file available. Please process a PDF first.")
-            return
+    def convert_json_to_csv(self, json_file_path: str) -> Optional[str]:
+        """
+        Convert JSON file to CSV format with ";;;" delimiter.
+        Supports multiple JSON structures: {rows: [...]}, {data: [...]}, {points: [...]}
         
+        Args:
+            json_file_path: Path to JSON file
+            
+        Returns:
+            CSV text string or None on error
+        """
         try:
             # Load JSON file
-            with open(self.last_final_output_path, 'r', encoding='utf-8') as f:
+            with open(json_file_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
             
-            # Extract rows from JSON
-            rows = json_data.get('rows', [])
+            # Extract rows from JSON (support multiple structures)
+            rows = []
+            if 'rows' in json_data:
+                rows = json_data.get('rows', [])
+            elif 'data' in json_data:
+                rows = json_data.get('data', [])
+            elif 'points' in json_data:
+                rows = json_data.get('points', [])
+            elif isinstance(json_data, list):
+                rows = json_data
+            else:
+                messagebox.showwarning("No Data", "The JSON file contains no recognizable data structure.")
+                return None
+            
             if not rows:
-                messagebox.showwarning("No Data", "The JSON file contains no rows.")
-                return
+                messagebox.showwarning("No Data", "The JSON file contains no data rows.")
+                return None
             
             # Convert to CSV format with ";;;" delimiter
             delimiter = ";;;"
@@ -583,7 +1344,7 @@ class ContentAutomationGUI:
             # Get headers from first row
             if not isinstance(rows, list) or len(rows) == 0:
                 messagebox.showerror("Error", "Invalid JSON format: no rows found")
-                return
+                return None
             
             headers = list(rows[0].keys())
             
@@ -596,17 +1357,104 @@ class ContentAutomationGUI:
                 csv_lines.append(csv_line)
             
             csv_text = "\n".join(csv_lines)
-            
-            # Display CSV in response window
-            csv_file_path = self.last_final_output_path.replace('.json', '.csv')
-            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+            return csv_text
             
         except json.JSONDecodeError as e:
             messagebox.showerror("Error", f"Failed to parse JSON file:\n{str(e)}")
             self.logger.error(f"Failed to parse JSON: {str(e)}")
+            return None
         except Exception as e:
             messagebox.showerror("Error", f"Error converting JSON to CSV:\n{str(e)}")
             self.logger.error(f"Error converting JSON to CSV: {str(e)}", exc_info=True)
+            return None
+    
+    def view_csv_from_json(self):
+        """Convert the last processed JSON file (Document Processing) to CSV format and display it"""
+        if not self.last_final_output_path or not os.path.exists(self.last_final_output_path):
+            messagebox.showerror("Error", "No JSON file available. Please process a PDF first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_final_output_path)
+        if csv_text:
+            csv_file_path = self.last_final_output_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_e(self):
+        """Convert Image Notes JSON to CSV format and display it"""
+        if not self.last_stage_e_path or not os.path.exists(self.last_stage_e_path):
+            messagebox.showerror("Error", "No Image Notes JSON file available. Please process Image Notes Generation first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_e_path)
+        if csv_text:
+            csv_file_path = self.last_stage_e_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_f(self):
+        """Convert Image File Catalog JSON to CSV format and display it"""
+        if not self.last_stage_f_path or not os.path.exists(self.last_stage_f_path):
+            messagebox.showerror("Error", "No Image File Catalog JSON file available. Please process Image File Catalog first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_f_path)
+        if csv_text:
+            csv_file_path = self.last_stage_f_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_j(self):
+        """Convert Tagged Data JSON to CSV format and display it"""
+        if not self.last_stage_j_path or not os.path.exists(self.last_stage_j_path):
+            messagebox.showerror("Error", "No Tagged Data JSON file available. Please process Importance & Type Tagging first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_j_path)
+        if csv_text:
+            csv_file_path = self.last_stage_j_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_h(self):
+        """Convert Flashcard JSON to CSV format and display it"""
+        if not self.last_stage_h_path or not os.path.exists(self.last_stage_h_path):
+            messagebox.showerror("Error", "No Flashcard JSON file available. Please process Flashcard Generation first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_h_path)
+        if csv_text:
+            csv_file_path = self.last_stage_h_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_v(self):
+        """Convert Test Bank JSON to CSV format and display it"""
+        if not self.last_stage_v_path or not os.path.exists(self.last_stage_v_path):
+            messagebox.showerror("Error", "No Test Bank JSON file available. Please process Test Bank Generation first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_v_path)
+        if csv_text:
+            csv_file_path = self.last_stage_v_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_m(self):
+        """Convert Topic List JSON to CSV format and display it"""
+        if not self.last_stage_m_path or not os.path.exists(self.last_stage_m_path):
+            messagebox.showerror("Error", "No Topic List JSON file available. Please process Topic List Extraction first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_m_path)
+        if csv_text:
+            csv_file_path = self.last_stage_m_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
+    
+    def view_csv_stage_l(self):
+        """Convert Chapter Summary JSON to CSV format and display it"""
+        if not self.last_stage_l_path or not os.path.exists(self.last_stage_l_path):
+            messagebox.showerror("Error", "No Chapter Summary JSON file available. Please process Chapter Summary first.")
+            return
+        
+        csv_text = self.convert_json_to_csv(self.last_stage_l_path)
+        if csv_text:
+            csv_file_path = self.last_stage_l_path.replace('.json', '.csv')
+            self.show_response_window(csv_text, csv_file_path, is_csv=True, is_json=False)
     
     def update_status(self, message: str):
         """Update status text"""
@@ -632,7 +1480,7 @@ class ContentAutomationGUI:
         
         title = ctk.CTkLabel(
             main_frame,
-            text="Second Stage & Automatic Pipeline (Stages 2 → 3 → 4)",
+            text="Second Stage & Automatic Pipeline (Stages 2 to 3 to 4)",
             font=ctk.CTkFont(size=22, weight="bold"),
         )
         title.pack(pady=(0, 20))
@@ -656,14 +1504,66 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=11),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 10))
-        
+
+        # Stage 2 prompt mode (default vs custom)
+        stage2_mode_frame = ctk.CTkFrame(stage2_frame)
+        stage2_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'second_stage_prompt_type_var'):
+            self.second_stage_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage2_mode_frame,
+            text="Use Default Prompt",
+            variable=self.second_stage_prompt_type_var,
+            value="default",
+            command=self.on_second_stage_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage2_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.second_stage_prompt_type_var,
+            value="custom",
+            command=self.on_second_stage_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage 2 prompt combobox (predefined prompts)
+        stage2_default_frame = ctk.CTkFrame(stage2_frame)
+        stage2_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage2_default_frame,
+            text="Default Stage 2 Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage2_prompt_names = self.prompt_manager.get_prompt_names()
+        # Prefer the dedicated Stage 2 prompt if available
+        preferred_stage2_name = "Stage 2 - Structured Clinical Lesson (JSON)"
+        if preferred_stage2_name in stage2_prompt_names:
+            stage2_default_value = preferred_stage2_name
+        else:
+            stage2_default_value = stage2_prompt_names[0] if stage2_prompt_names else ""
+        self.second_stage_default_prompt_var = ctk.StringVar(value=stage2_default_value)
+        self.second_stage_default_prompt_combo = ctk.CTkComboBox(
+            stage2_default_frame,
+            values=stage2_prompt_names,
+            variable=self.second_stage_default_prompt_var,
+            width=400,
+            command=self.on_second_stage_default_prompt_selected,
+        )
+        self.second_stage_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage 2 prompt (default-filled or custom)
         self.second_stage_prompt_text = ctk.CTkTextbox(stage2_frame, height=140, font=self.farsi_text_font)
         self.second_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        # پر کردن خودکار با پرامپت پیش‌فرض در شروع
+        # First ensure the prompt type change handler runs
+        self.on_second_stage_prompt_type_change()
         
-        # Pre-fill with current prompt if available
-        current_prompt = self.get_selected_prompt()
-        if current_prompt:
-            self.second_stage_prompt_text.insert("1.0", current_prompt)
+        # Also directly load the default prompt to ensure it's displayed
+        if hasattr(self, 'second_stage_default_prompt_var'):
+            default_prompt_name = self.second_stage_default_prompt_var.get()
+            if default_prompt_name:
+                self.on_second_stage_default_prompt_selected(default_prompt_name)
         
         # Chapter name section (right after prompt)
         chapter_frame = ctk.CTkFrame(stage2_frame)
@@ -893,7 +1793,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             progress_frame,
-            text="Pipeline Progress (Stages 2 → 3 → 4 per Part)",
+            text="Pipeline Progress (Stages 2 to 3 to 4 per Part)",
             font=ctk.CTkFont(size=14, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -913,25 +1813,6 @@ class ContentAutomationGUI:
         controls_frame = ctk.CTkFrame(main_frame)
         controls_frame.pack(fill="x", pady=(10, 10))
         
-        def start_second_stage_only():
-            # فقط Stage 2 (پردازش پارت‌ها) – رفتار قبلی
-            start_stage2_btn.configure(state="disabled", text="Processing Stage 2...")
-            threading.Thread(
-                target=self.process_json_by_parts_worker,
-                args=(window, start_stage2_btn),
-                daemon=True,
-            ).start()
-        
-        start_stage2_btn = ctk.CTkButton(
-            controls_frame,
-            text="Run Stage 2 Only (per Part)",
-            command=start_second_stage_only,
-            width=240,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-        )
-        start_stage2_btn.pack(side="left", padx=10, pady=10)
-        
         # Full pipeline button
         self.full_pipeline_cancel = False
         
@@ -946,7 +1827,7 @@ class ContentAutomationGUI:
         
         full_btn = ctk.CTkButton(
             controls_frame,
-            text="Run Full Pipeline (Stage 2 → 3 → 4 per Part)",
+            text="Run Full Pipeline (Stage 2 to 3 to 4 per Part)",
             command=start_full_pipeline,
             width=320,
             height=40,
@@ -981,6 +1862,563 @@ class ContentAutomationGUI:
             width=100,
             height=40,
         ).pack(side="left", padx=10, pady=10)
+    
+    def setup_stages_2_3_4_ui(self, parent):
+        """
+        Setup UI for Stages 2-3-4 (same as open_part_processing_window but for tabview)
+        This is the actual Stages 1-4 form that should be shown in tabview
+        """
+        # Check if this is the tabview version (not main view)
+        is_tabview = hasattr(self, 'main_stages_1_4_frame') and parent != self.main_stages_1_4_frame
+        
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Add navigation button only in tabview version
+        if is_tabview:
+            nav_frame = ctk.CTkFrame(main_frame)
+            nav_frame.pack(fill="x", pady=(0, 10))
+            ctk.CTkButton(
+                nav_frame,
+                text="< Back to Main View",
+                command=self.show_main_view,
+                width=150,
+                height=30,
+                font=ctk.CTkFont(size=12),
+                fg_color="gray",
+                hover_color="darkgray"
+            ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Second Stage & Automatic Pipeline (Stages 2 to 3 to 4)",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        )
+        title.pack(pady=(0, 20))
+        
+        #
+        # --- Stage 2 configuration (per-Part processing, قبلی) ---
+        #
+        stage2_frame = ctk.CTkFrame(main_frame)
+        stage2_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            stage2_frame,
+            text="Second-Stage Prompt (per Part)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        ctk.CTkLabel(
+            stage2_frame,
+            text="This prompt will be applied separately to each Part in Stage 2.\n"
+                 "The JSON rows for each Part will be sent to the model with this prompt.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Stage 2 prompt mode (default vs custom) - tabview version (shares state with popup window)
+        stage2_mode_frame_tab = ctk.CTkFrame(stage2_frame)
+        stage2_mode_frame_tab.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'second_stage_prompt_type_var'):
+            self.second_stage_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage2_mode_frame_tab,
+            text="Use Default Prompt",
+            variable=self.second_stage_prompt_type_var,
+            value="default",
+            command=self.on_second_stage_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage2_mode_frame_tab,
+            text="Use Custom Prompt",
+            variable=self.second_stage_prompt_type_var,
+            value="custom",
+            command=self.on_second_stage_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage 2 prompt combobox (predefined prompts) for tabview
+        stage2_default_frame_tab = ctk.CTkFrame(stage2_frame)
+        stage2_default_frame_tab.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage2_default_frame_tab,
+            text="Default Stage 2 Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage2_prompt_names_tab = self.prompt_manager.get_prompt_names()
+        preferred_stage2_name = "Stage 2 - Structured Clinical Lesson (JSON)"
+        if preferred_stage2_name in stage2_prompt_names_tab:
+            stage2_default_value_tab = preferred_stage2_name
+        else:
+            stage2_default_value_tab = stage2_prompt_names_tab[0] if stage2_prompt_names_tab else ""
+        if not hasattr(self, 'second_stage_default_prompt_var'):
+            self.second_stage_default_prompt_var = ctk.StringVar(value=stage2_default_value_tab)
+        # Use shared combobox name so the prompt-type logic applies in this tab as well
+        self.second_stage_default_prompt_combo = ctk.CTkComboBox(
+            stage2_default_frame_tab,
+            values=stage2_prompt_names_tab,
+            variable=self.second_stage_default_prompt_var,
+            width=400,
+            command=self.on_second_stage_default_prompt_selected,
+        )
+        self.second_stage_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage 2 prompt (default-filled or custom) for tabview
+        if not hasattr(self, 'second_stage_prompt_text'):
+            self.second_stage_prompt_text = ctk.CTkTextbox(stage2_frame, height=140, font=self.farsi_text_font)
+        else:
+            try:
+                self.second_stage_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.second_stage_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # پر کردن خودکار با پرامپت پیش‌فرض در شروع
+        # First ensure the prompt type change handler runs
+        self.on_second_stage_prompt_type_change()
+        
+        # Also directly load the default prompt to ensure it's displayed
+        if hasattr(self, 'second_stage_default_prompt_var'):
+            default_prompt_name = self.second_stage_default_prompt_var.get()
+            if default_prompt_name:
+                self.on_second_stage_default_prompt_selected(default_prompt_name)
+
+        # Chapter name section (right after prompt)
+        chapter_frame = ctk.CTkFrame(stage2_frame)
+        chapter_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            chapter_frame,
+            text="Chapter Name:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_chapter_var'):
+            self.second_stage_chapter_var = ctk.StringVar(value="درمان با UV")
+        chapter_entry = ctk.CTkEntry(
+            chapter_frame,
+            textvariable=self.second_stage_chapter_var,
+            width=400
+        )
+        chapter_entry.pack(anchor="w", padx=10, pady=(0, 5))
+        
+        ctk.CTkLabel(
+            chapter_frame,
+            text="This name will automatically replace {CHAPTER_NAME} in your prompts.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # JSON selection section
+        json_frame = ctk.CTkFrame(main_frame)
+        json_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            json_frame,
+            text="Input JSON (Stage 1 - final_output.json)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        file_frame = ctk.CTkFrame(json_frame)
+        file_frame.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(
+            file_frame,
+            text="Stage 1 JSON File:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_json_var'):
+            self.second_stage_json_var = ctk.StringVar()
+            if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+                self.second_stage_json_var.set(self.last_final_output_path)
+        
+        json_entry = ctk.CTkEntry(file_frame, textvariable=self.second_stage_json_var, width=400)
+        json_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+        
+        def browse_json_file():
+            filename = filedialog.askopenfilename(
+                title="Select Stage 1 final_output.json file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                self.second_stage_json_var.set(filename)
+        
+        ctk.CTkButton(
+            file_frame,
+            text="Browse",
+            command=browse_json_file,
+            width=80,
+        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+        
+        # Model selection for second stage
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            model_frame,
+            text="Second-Stage Model Selection",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        inner_model_frame = ctk.CTkFrame(model_frame)
+        inner_model_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="Select model for second-stage (per-Part) processing:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'second_stage_model_var'):
+            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro")
+        if not hasattr(self, 'second_stage_model_combo'):
+            self.second_stage_model_combo = ctk.CTkComboBox(
+                inner_model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.second_stage_model_var,
+                width=400,
+            )
+            self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.second_stage_model_combo.pack_forget()
+            except:
+                pass
+            self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            inner_model_frame,
+            text="You can use a lighter model (e.g., gemini-2.5-flash) for faster processing in the second stage.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+
+        #
+        # --- Automatic Stage 3 & 4 settings (per-Part pipeline) ---
+        #
+        auto_frame = ctk.CTkFrame(main_frame)
+        auto_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            auto_frame,
+            text="Automatic Pipeline Settings (Stages 3 & 4 per Part)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        # Stage 3 prompt
+        s3_frame = ctk.CTkFrame(auto_frame)
+        s3_frame.pack(fill="x", padx=15, pady=(5, 10))
+        
+        ctk.CTkLabel(
+            s3_frame,
+            text="Stage 3 Prompt (structuring & point extraction):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        # Stage 3 prompt mode (default vs custom)
+        s3_mode_frame = ctk.CTkFrame(s3_frame)
+        s3_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'auto_stage3_prompt_type_var'):
+            self.auto_stage3_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            s3_mode_frame,
+            text="Use Default Prompt",
+            variable=self.auto_stage3_prompt_type_var,
+            value="default",
+            command=self.on_auto_stage3_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            s3_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.auto_stage3_prompt_type_var,
+            value="custom",
+            command=self.on_auto_stage3_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default prompt combobox for Stage 3
+        s3_default_frame = ctk.CTkFrame(s3_frame)
+        s3_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            s3_default_frame,
+            text="Default Stage 3 Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage3_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_stage3_name = "Stage 3 - Chunked JSON Completion"
+        if preferred_stage3_name in stage3_prompt_names:
+            stage3_default_value = preferred_stage3_name
+        else:
+            stage3_default_value = stage3_prompt_names[0] if stage3_prompt_names else ""
+        self.auto_stage3_default_prompt_var = ctk.StringVar(value=stage3_default_value)
+        self.auto_stage3_default_prompt_combo = ctk.CTkComboBox(
+            s3_default_frame,
+            values=stage3_prompt_names,
+            variable=self.auto_stage3_default_prompt_var,
+            width=400,
+            command=self.on_auto_stage3_default_prompt_selected,
+        )
+        self.auto_stage3_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage3_prompt_text'):
+            self.auto_stage3_prompt_text = ctk.CTkTextbox(s3_frame, height=140, font=self.farsi_text_font)
+        self.auto_stage3_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        # پر کردن خودکار با پرامپت پیش‌فرض در شروع
+        self.on_auto_stage3_prompt_type_change()
+        
+        ctk.CTkLabel(
+            s3_frame,
+            text="You can use {CHAPTER_NAME} and {PART_NUMBER} placeholders in this prompt.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Stage 4 prompt
+        s4_frame = ctk.CTkFrame(auto_frame)
+        s4_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            s4_frame,
+            text="Stage 4 Prompt (optional, e.g. question generation / extra notes):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+
+        # Stage 4 prompt mode (default vs custom)
+        s4_mode_frame = ctk.CTkFrame(s4_frame)
+        s4_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'auto_stage4_prompt_type_var'):
+            self.auto_stage4_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            s4_mode_frame,
+            text="Use Default Prompt",
+            variable=self.auto_stage4_prompt_type_var,
+            value="default",
+            command=self.on_auto_stage4_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            s4_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.auto_stage4_prompt_type_var,
+            value="custom",
+            command=self.on_auto_stage4_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default prompt combobox for Stage 4
+        s4_default_frame = ctk.CTkFrame(s4_frame)
+        s4_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            s4_default_frame,
+            text="Default Stage 4 Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage4_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_stage4_name = "Stage 4 - Prompt"
+        if preferred_stage4_name in stage4_prompt_names:
+            stage4_default_value = preferred_stage4_name
+        else:
+            stage4_default_value = stage4_prompt_names[0] if stage4_prompt_names else ""
+        self.auto_stage4_default_prompt_var = ctk.StringVar(value=stage4_default_value)
+        self.auto_stage4_default_prompt_combo = ctk.CTkComboBox(
+            s4_default_frame,
+            values=stage4_prompt_names,
+            variable=self.auto_stage4_default_prompt_var,
+            width=400,
+            command=self.on_auto_stage4_default_prompt_selected,
+        )
+        self.auto_stage4_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage4_prompt_text'):
+            self.auto_stage4_prompt_text = ctk.CTkTextbox(s4_frame, height=120, font=self.farsi_text_font)
+            self.auto_stage4_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.auto_stage4_prompt_text.pack_forget()
+            except:
+                pass
+            self.auto_stage4_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        # پر کردن خودکار با پرامپت پیش‌فرض در شروع
+        self.on_auto_stage4_prompt_type_change()
+        
+        ctk.CTkLabel(
+            s4_frame,
+            text="You can also use {CHAPTER_NAME} and {PART_NUMBER} here.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Stage 3 / 4 model & PointId
+        model34_frame = ctk.CTkFrame(auto_frame)
+        model34_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        # Stage 3 model
+        s3_model_row = ctk.CTkFrame(model34_frame)
+        s3_model_row.pack(fill="x", pady=(5, 5))
+        
+        ctk.CTkLabel(
+            s3_model_row,
+            text="Stage 3 Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(10, 5), pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage3_model_var'):
+            self.auto_stage3_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro")
+        if not hasattr(self, 'auto_stage3_model_combo'):
+            self.auto_stage3_model_combo = ctk.CTkComboBox(
+                s3_model_row,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.auto_stage3_model_var,
+                width=280,
+            )
+            self.auto_stage3_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.auto_stage3_model_combo.pack_forget()
+            except:
+                pass
+            self.auto_stage3_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        
+        # Stage 4 model
+        s4_model_row = ctk.CTkFrame(model34_frame)
+        s4_model_row.pack(fill="x", pady=(5, 5))
+        
+        ctk.CTkLabel(
+            s4_model_row,
+            text="Stage 4 Model:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(10, 5), pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_stage4_model_var'):
+            self.auto_stage4_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro")
+        if not hasattr(self, 'auto_stage4_model_combo'):
+            self.auto_stage4_model_combo = ctk.CTkComboBox(
+                s4_model_row,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.auto_stage4_model_var,
+                width=280,
+            )
+            self.auto_stage4_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        else:
+            # If exists, repack it in the new location
+            try:
+                self.auto_stage4_model_combo.pack_forget()
+            except:
+                pass
+            self.auto_stage4_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
+        
+        # Start PointId
+        pointid_row = ctk.CTkFrame(model34_frame)
+        pointid_row.pack(fill="x", pady=(5, 5))
+        
+        ctk.CTkLabel(
+            pointid_row,
+            text="Start PointId (e.g. 1050030001):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'auto_start_pointid_var'):
+            self.auto_start_pointid_var = ctk.StringVar(value="")
+        ctk.CTkEntry(
+            pointid_row,
+            textvariable=self.auto_start_pointid_var,
+            width=300,
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        ctk.CTkLabel(
+            pointid_row,
+            text="If empty, a default starting PointId will be used.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        #
+        # --- Progress & control buttons ---
+        #
+        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame.pack(fill="x", pady=(10, 10))
+        
+        ctk.CTkLabel(
+            progress_frame,
+            text="Pipeline Progress (Stages 2 to 3 to 4 per Part)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create if doesn't exist
+        if not hasattr(self, 'pipeline_progress_bar'):
+            self.pipeline_progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.pipeline_progress_bar.pack(fill="x", padx=10, pady=(0, 5))
+        self.pipeline_progress_bar.set(0.0)
+        
+        if not hasattr(self, 'pipeline_progress_label'):
+            self.pipeline_progress_label = ctk.CTkLabel(
+                progress_frame,
+                text="Waiting to start...",
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+            )
+        self.pipeline_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Control buttons
+        controls_frame = ctk.CTkFrame(main_frame)
+        controls_frame.pack(fill="x", pady=(10, 10))
+        
+        # Full pipeline button
+        if not hasattr(self, 'full_pipeline_cancel'):
+            self.full_pipeline_cancel = False
+        
+        def start_full_pipeline():
+            full_btn.configure(state="disabled", text="Running Full Pipeline...")
+            self.full_pipeline_cancel = False
+            threading.Thread(
+                target=self.process_full_pipeline_worker,
+                args=(self.root, full_btn),
+                daemon=True,
+            ).start()
+        
+        full_btn = ctk.CTkButton(
+            controls_frame,
+            text="Run Full Pipeline (Stage 2 to 3 to 4 per Part)",
+            command=start_full_pipeline,
+            width=320,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        full_btn.pack(side="left", padx=10, pady=10)
+        
+        def cancel_pipeline():
+            self.full_pipeline_cancel = True
+            self.update_status("Cancellation requested. Current part will finish, then pipeline will stop.")
+            self.pipeline_progress_label.configure(
+                text="Cancellation requested...",
+                text_color="orange",
+            )
+        
+        cancel_btn = ctk.CTkButton(
+            controls_frame,
+            text="Cancel Pipeline",
+            command=cancel_pipeline,
+            width=160,
+            height=40,
+            font=ctk.CTkFont(size=13),
+            fg_color="red",
+            hover_color="darkred",
+        )
+        cancel_btn.pack(side="left", padx=10, pady=10)
 
     def process_json_by_parts_worker(self, parent_window, start_button):
         """
@@ -1063,12 +2501,9 @@ class ContentAutomationGUI:
             self.logger.error(f"Error in second-stage processing: {str(e)}", exc_info=True)
             messagebox.showerror("Error", f"Second-stage processing error:\n{str(e)}")
         finally:
-            # Re-enable start button on UI thread
+            # پایان پردازش Stage 2 – نادیده گرفتن متن دکمه (ممکن است از خارج مدیریت شود)
             try:
-                self.root.after(
-                    0,
-                    lambda: start_button.configure(state="normal", text="Run Stage 2 Only (per Part)")
-                )
+                self.root.after(0, lambda: start_button.configure(state="normal"))
             except Exception:
                 pass
 
@@ -1478,6 +2913,15 @@ class ContentAutomationGUI:
                     )
                     continue
 
+                # Handle chunk structure: if JSON has chunk_index and payload, extract payload
+                # This matches how Stage V handles chunked responses
+                if isinstance(json_obj, dict) and "chunk_index" in json_obj and "payload" in json_obj:
+                    payload = json_obj.get("payload", {})
+                    if isinstance(payload, dict):
+                        # Use payload as the main JSON structure
+                        json_obj = payload
+                        self.logger.info(f"Extracted payload from chunk structure for Part {part_num}")
+
                 try:
                     flat_rows = converter._flatten_to_points(json_obj)
                     self.logger.info(f"Part {part_num}: Extracted {len(flat_rows)} points from Stage 4")
@@ -1799,6 +3243,3193 @@ class ContentAutomationGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load JSON file:\n{str(e)}")
 
+    def show_tabview(self):
+        """Switch from main view to tabview"""
+        self.main_stages_1_4_frame.pack_forget()
+        self.main_tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        # Force switch to Document Processing tab in tabview
+        # Use after() to ensure the tabview is fully packed before setting tab
+        def set_tab():
+            try:
+                self.main_tabview.set("Document Processing")
+                # Double-check after a short delay
+                self.root.after(50, lambda: self.main_tabview.set("Document Processing"))
+            except Exception as e:
+                self.logger.warning(f"Error setting tab to Document Processing: {e}")
+        self.root.after(10, set_tab)
+    
+    def show_main_view(self):
+        """Switch from tabview to main view"""
+        self.main_tabview.pack_forget()
+        self.main_stages_1_4_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    def setup_pipeline_status_bar(self):
+        """Setup pipeline status indicator bar"""
+        # Create status bar frame at the top
+        status_bar_frame = ctk.CTkFrame(self.root)
+        status_bar_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(status_bar_frame, text="Pipeline Status:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=10)
+        
+        # Status indicators for each stage
+        self.stage_status_labels = {}
+        stages = ['E', 'F', 'J', 'H', 'V', 'M', 'L']
+        
+        for stage in stages:
+            label = ctk.CTkLabel(status_bar_frame, text=f"{stage}: Waiting", 
+                               text_color="gray", width=60)
+            label.pack(side="left", padx=5)
+            self.stage_status_labels[stage] = label
+    
+    def update_stage_status(self, stage: str, status: str, file_path: Optional[str] = None):
+        """Update pipeline status for a stage"""
+        if stage not in self.stage_status_labels:
+            return
+        
+        label = self.stage_status_labels[stage]
+        if status == "completed":
+            label.configure(text=f"{stage}: OK", text_color="green")
+        elif status == "processing":
+            label.configure(text=f"{stage}: Processing", text_color="blue")
+        elif status == "error":
+            label.configure(text=f"{stage}: Error", text_color="red")
+        else:
+            label.configure(text=f"{stage}: Waiting", text_color="gray")
+    
+    def setup_stage_e_ui(self, parent):
+        """Setup UI for Stage E: Image Notes Processing"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Image Notes Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Generate image notes from Content Processing JSON and merge with Content Processing data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Content Processing File Selection
+        stage4_frame = ctk.CTkFrame(main_frame)
+        stage4_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage4_frame, text="Content Processing JSON (with PointId):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_e_stage4_var = ctk.StringVar()
+        # Auto-fill if available
+        if self.last_corrected_path and os.path.exists(self.last_corrected_path):
+            self.stage_e_stage4_var.set(self.last_corrected_path)
+        
+        entry_frame = ctk.CTkFrame(stage4_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage4_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_e_stage4_var)
+        stage4_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_e_stage4_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        self.stage_e_stage4_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_e_stage4_valid.pack(side="right", padx=5)
+        
+        # Stage 1 File Selection
+        stage1_frame = ctk.CTkFrame(main_frame)
+        stage1_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage1_frame, text="Content Extraction JSON:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_e_stage1_var = ctk.StringVar()
+        # Auto-fill if available
+        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
+            self.stage_e_stage1_var.set(self.last_final_output_path)
+        
+        entry_frame1 = ctk.CTkFrame(stage1_frame)
+        entry_frame1.pack(fill="x", padx=10, pady=5)
+        
+        stage1_entry = ctk.CTkEntry(entry_frame1, textvariable=self.stage_e_stage1_var)
+        stage1_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame1, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_e_stage1_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        self.stage_e_stage1_valid = ctk.CTkLabel(entry_frame1, text="", width=30)
+        self.stage_e_stage1_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for Image Notes Generation:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Stage E prompt mode (default vs custom)
+        stage_e_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_e_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_e_prompt_type_var'):
+            self.stage_e_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_e_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_e_prompt_type_var,
+            value="default",
+            command=self.on_stage_e_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_e_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_e_prompt_type_var,
+            value="custom",
+            command=self.on_stage_e_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage E prompt combobox (predefined prompts)
+        stage_e_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_e_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage_e_default_frame,
+            text="Default Stage E Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage_e_prompt_names = self.prompt_manager.get_prompt_names()
+        # Prefer the Image Notes prompt by its current name in prompts.json
+        preferred_stage_e_name = "Image Notes Prompt"
+        if preferred_stage_e_name in stage_e_prompt_names:
+            stage_e_default_value = preferred_stage_e_name
+        else:
+            stage_e_default_value = stage_e_prompt_names[0] if stage_e_prompt_names else ""
+        self.stage_e_default_prompt_var = ctk.StringVar(value=stage_e_default_value)
+        self.stage_e_default_prompt_combo = ctk.CTkComboBox(
+            stage_e_default_frame,
+            values=stage_e_prompt_names,
+            variable=self.stage_e_default_prompt_var,
+            width=400,
+            command=self.on_stage_e_default_prompt_selected,
+        )
+        self.stage_e_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage E prompt (default-filled or custom)
+        if not hasattr(self, 'stage_e_prompt_text'):
+            self.stage_e_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_e_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_e_prompt_text.pack(fill="x", padx=10, pady=5)
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_e_prompt_type_change()
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Get default model from main model selection if available
+        default_model = "gemini-2.5-pro"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        self.stage_e_model_var = ctk.StringVar(value=default_model)
+        self.stage_e_model_combo = ctk.CTkComboBox(
+            model_frame,
+            values=APIConfig.TEXT_MODELS,
+            variable=self.stage_e_model_var,
+            width=300
+        )
+        self.stage_e_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        self.stage_e_process_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process Image Notes Generation",
+            command=self.process_stage_e,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="blue"
+        )
+        self.stage_e_process_btn.pack(pady=10)
+        
+        # View CSV button
+        self.stage_e_view_csv_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="View CSV",
+            command=self.view_csv_stage_e,
+            width=150,
+            height=40,
+            font=ctk.CTkFont(size=14),
+            fg_color="green",
+            hover_color="darkgreen",
+            state="disabled"
+        )
+        self.stage_e_view_csv_btn.pack(pady=10)
+        
+        # Status for Stage E
+        self.stage_e_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                 font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_e_status_label.pack(pady=10)
+        
+        # Auto-validate files on change
+        self.stage_e_stage4_var.trace('w', lambda *args: self.validate_stage_e_files())
+        self.stage_e_stage1_var.trace('w', lambda *args: self.validate_stage_e_files())
+    
+    def browse_file_for_stage(self, var: ctk.StringVar, filetypes: list = None):
+        """Browse for file and set variable"""
+        if filetypes is None:
+            filetypes = [("All files", "*.*")]
+        
+        filename = filedialog.askopenfilename(
+            title="Select File",
+            filetypes=filetypes
+        )
+        if filename:
+            var.set(filename)
+    
+    def validate_stage_e_files(self):
+        """Validate Stage E input files"""
+        stage4_path = self.stage_e_stage4_var.get()
+        stage1_path = self.stage_e_stage1_var.get()
+        
+        # Validate Stage 4
+        if stage4_path and os.path.exists(stage4_path):
+            try:
+                data = json.load(open(stage4_path, 'r', encoding='utf-8'))
+                points = data.get("data") or data.get("points") or data.get("rows", [])
+                if points and points[0].get("PointId"):
+                    self.stage_e_stage4_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_e_stage4_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_e_stage4_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_e_stage4_valid.configure(text="", text_color="gray")
+        
+        # Validate Stage 1
+        if stage1_path and os.path.exists(stage1_path):
+            try:
+                data = json.load(open(stage1_path, 'r', encoding='utf-8'))
+                rows = data.get("data") or data.get("rows", [])
+                if rows:
+                    self.stage_e_stage1_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_e_stage1_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_e_stage1_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_e_stage1_valid.configure(text="", text_color="gray")
+    
+    def process_stage_e(self):
+        """Process Stage E in background thread"""
+        def worker():
+            try:
+                self.stage_e_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("E", "processing")
+                self.stage_e_status_label.configure(text="Processing Image Notes Generation...", text_color="blue")
+                
+                # Validate inputs
+                stage4_path = self.stage_e_stage4_var.get().strip()
+                stage1_path = self.stage_e_stage1_var.get().strip()
+                prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_e_model_var.get()
+                
+                if not stage4_path or not os.path.exists(stage4_path):
+                    messagebox.showerror("Error", "Please select a valid Content Processing JSON file")
+                    return
+                
+                if not stage1_path or not os.path.exists(stage1_path):
+                    messagebox.showerror("Error", "Please select a valid Content Extraction JSON file")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for image notes generation")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_e_status_label.configure(text=msg))
+                
+                # Process Stage E
+                output_path = self.stage_e_processor.process_stage_e(
+                    stage4_path=stage4_path,
+                    stage1_path=stage1_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_e_path = output_path
+                    self.update_stage_status("E", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_e_view_csv_btn.configure(state="normal"))
+                    self.stage_e_status_label.configure(
+                        text=f"Stage E completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Image Notes Generation completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("E", "error")
+                    self.stage_e_status_label.configure(text="Image Notes Generation failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Image Notes Generation processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Image Notes Generation processing: {e}", exc_info=True)
+                self.update_stage_status("E", "error")
+                self.stage_e_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Image Notes Generation processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_e_process_btn.configure(state="normal", text="Process Image Notes Generation"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_f_ui(self, parent):
+        """Setup UI for Stage F: Image File Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Stage F: Image File Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Generate image file JSON from Stage E data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Image Notes File Selection
+        stage_e_frame = ctk.CTkFrame(main_frame)
+        stage_e_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_e_frame, text="Image Notes JSON:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.stage_f_stage_e_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_e_path') and self.last_stage_e_path and os.path.exists(self.last_stage_e_path):
+            self.stage_f_stage_e_var.set(self.last_stage_e_path)
+        
+        entry_frame = ctk.CTkFrame(stage_e_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_e_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_f_stage_e_var)
+        stage_e_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_f_stage_e_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        self.stage_f_stage_e_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_f_stage_e_valid.pack(side="right", padx=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        self.stage_f_process_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process Image File Catalog",
+            command=self.process_stage_f,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="blue"
+        )
+        self.stage_f_process_btn.pack(pady=10)
+        
+        # View CSV button
+        self.stage_f_view_csv_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="View CSV",
+            command=self.view_csv_stage_f,
+            width=150,
+            height=40,
+            font=ctk.CTkFont(size=14),
+            fg_color="green",
+            hover_color="darkgreen",
+            state="disabled"
+        )
+        self.stage_f_view_csv_btn.pack(pady=10)
+        
+        # Status for Stage F
+        self.stage_f_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                 font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_f_status_label.pack(pady=10)
+        
+        # Auto-validate file on change
+        self.stage_f_stage_e_var.trace('w', lambda *args: self.validate_stage_f_file())
+    
+    def validate_stage_f_file(self):
+        """Validate Stage F input file"""
+        stage_e_path = self.stage_f_stage_e_var.get()
+        
+        if stage_e_path and os.path.exists(stage_e_path):
+            try:
+                data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
+                metadata = data.get("metadata", {})
+                if metadata.get("first_image_point_id"):
+                    self.stage_f_stage_e_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_f_stage_e_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_f_stage_e_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_f_stage_e_valid.configure(text="", text_color="gray")
+    
+    def process_stage_f(self):
+        """Process Stage F in background thread"""
+        def worker():
+            try:
+                self.stage_f_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("F", "processing")
+                self.stage_f_status_label.configure(text="Processing Image File Catalog...", text_color="blue")
+                
+                # Validate inputs
+                stage_e_path = self.stage_f_stage_e_var.get().strip()
+                
+                if not stage_e_path or not os.path.exists(stage_e_path):
+                    messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_f_status_label.configure(text=msg))
+                
+                # Process Stage F
+                output_path = self.stage_f_processor.process_stage_f(
+                    stage_e_path=stage_e_path,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_f_path = output_path
+                    self.update_stage_status("F", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_f_view_csv_btn.configure(state="normal"))
+                    self.stage_f_status_label.configure(
+                        text=f"Stage F completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Image File Catalog completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("F", "error")
+                    self.stage_f_status_label.configure(text="Image File Catalog failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Image File Catalog processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Image File Catalog processing: {e}", exc_info=True)
+                self.update_stage_status("F", "error")
+                self.stage_f_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Image File Catalog processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_f_process_btn.configure(state="normal", text="Process Image File Catalog"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_j_ui(self, parent):
+        """Setup UI for Stage J: Add Imp & Type"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="< Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Stage J: Add Imp & Type", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Add Imp and Type columns to Stage E data based on Word test file.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Stage E File Selection
+        stage_e_frame = ctk.CTkFrame(main_frame)
+        stage_e_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_e_frame, text="Stage E JSON:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_stage_e_var'):
+            self.stage_j_stage_e_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_e_path') and self.last_stage_e_path and os.path.exists(self.last_stage_e_path):
+            self.stage_j_stage_e_var.set(self.last_stage_e_path)
+        
+        entry_frame = ctk.CTkFrame(stage_e_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_e_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_j_stage_e_var)
+        stage_e_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_j_stage_e_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_j_stage_e_valid'):
+            self.stage_j_stage_e_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_j_stage_e_valid.pack(side="right", padx=5)
+        
+        # Word File Selection
+        word_frame = ctk.CTkFrame(main_frame)
+        word_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(word_frame, text="Word File (Test Questions):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_word_var'):
+            self.stage_j_word_var = ctk.StringVar()
+        
+        entry_frame_word = ctk.CTkFrame(word_frame)
+        entry_frame_word.pack(fill="x", padx=10, pady=5)
+        
+        word_entry = ctk.CTkEntry(entry_frame_word, textvariable=self.stage_j_word_var)
+        word_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_word, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_j_word_var, 
+                                                                 filetypes=[("Word Documents", "*.docx *.doc"), ("All files", "*.*")])).pack(side="right")
+        
+        # Validation indicator for Word file
+        if not hasattr(self, 'stage_j_word_valid'):
+            self.stage_j_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
+        self.stage_j_word_valid.pack(side="right", padx=5)
+        
+        # Image File Catalog Selection (Optional)
+        stage_f_frame = ctk.CTkFrame(main_frame)
+        stage_f_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_f_frame, text="Image File Catalog JSON (Optional - f.json):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_stage_f_var'):
+            self.stage_j_stage_f_var = ctk.StringVar()
+        # Auto-fill if available (try to find f.json in same directory as Stage E)
+        if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
+            self.stage_j_stage_f_var.set(self.last_stage_f_path)
+        elif self.stage_j_stage_e_var.get():
+            # Try to find f.json in same directory
+            stage_e_dir = os.path.dirname(self.stage_j_stage_e_var.get())
+            f_json_path = os.path.join(stage_e_dir, "f.json")
+            if os.path.exists(f_json_path):
+                self.stage_j_stage_f_var.set(f_json_path)
+        
+        entry_frame_f = ctk.CTkFrame(stage_f_frame)
+        entry_frame_f.pack(fill="x", padx=10, pady=5)
+        
+        stage_f_entry = ctk.CTkEntry(entry_frame_f, textvariable=self.stage_j_stage_f_var)
+        stage_f_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_f, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_j_stage_f_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator for Stage F file
+        if not hasattr(self, 'stage_j_stage_f_valid'):
+            self.stage_j_stage_f_valid = ctk.CTkLabel(entry_frame_f, text="", width=30)
+        self.stage_j_stage_f_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for Imp & Type Generation:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Stage J prompt mode (default vs custom)
+        stage_j_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_j_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_j_prompt_type_var'):
+            self.stage_j_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_j_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_j_prompt_type_var,
+            value="default",
+            command=self.on_stage_j_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_j_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_j_prompt_type_var,
+            value="custom",
+            command=self.on_stage_j_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage J prompt combobox (predefined prompts)
+        stage_j_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_j_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage_j_default_frame,
+            text="Default Stage J Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage_j_prompt_names = self.prompt_manager.get_prompt_names()
+        # We will later set a specific preferred name (e.g., \"Stage J - Importance & Type Prompt\")
+        # For now, fall back to the first available prompt.
+        preferred_stage_j_name = "Importance & Type Prompt"
+        if preferred_stage_j_name in stage_j_prompt_names:
+            stage_j_default_value = preferred_stage_j_name
+        else:
+            stage_j_default_value = stage_j_prompt_names[0] if stage_j_prompt_names else ""
+        self.stage_j_default_prompt_var = ctk.StringVar(value=stage_j_default_value)
+        self.stage_j_default_prompt_combo = ctk.CTkComboBox(
+            stage_j_default_frame,
+            values=stage_j_prompt_names,
+            variable=self.stage_j_default_prompt_var,
+            width=400,
+            command=self.on_stage_j_default_prompt_selected,
+        )
+        self.stage_j_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage J prompt (default-filled or custom)
+        if not hasattr(self, 'stage_j_prompt_text'):
+            self.stage_j_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_j_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_j_prompt_text.pack(fill="x", padx=10, pady=5)
+
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_j_prompt_type_change()
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Get default model from main model selection if available
+        default_model = "gemini-2.5-pro"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        if not hasattr(self, 'stage_j_model_var'):
+            self.stage_j_model_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_j_model_combo'):
+            self.stage_j_model_combo = ctk.CTkComboBox(
+                model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_j_model_var,
+                width=300
+            )
+        self.stage_j_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_j_process_btn'):
+            self.stage_j_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Importance & Type Tagging",
+                command=self.process_stage_j,
+                width=200,
+                height=40,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                fg_color="blue"
+            )
+        self.stage_j_process_btn.pack(pady=10)
+        
+        # View CSV button
+        if not hasattr(self, 'stage_j_view_csv_btn'):
+            self.stage_j_view_csv_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="View CSV",
+                command=self.view_csv_stage_j,
+                width=150,
+                height=40,
+                font=ctk.CTkFont(size=14),
+                fg_color="green",
+                hover_color="darkgreen",
+                state="disabled"
+            )
+        self.stage_j_view_csv_btn.pack(pady=10)
+        
+        # Status for Stage J
+        if not hasattr(self, 'stage_j_status_label'):
+            self.stage_j_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                     font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_j_status_label.pack(pady=10)
+        
+        # Auto-validate files on change
+        self.stage_j_stage_e_var.trace('w', lambda *args: self.validate_stage_j_files())
+        self.stage_j_word_var.trace('w', lambda *args: self.validate_stage_j_files())
+        self.stage_j_stage_f_var.trace('w', lambda *args: self.validate_stage_j_files())
+    
+    def validate_stage_j_files(self):
+        """Validate Stage J input files"""
+        stage_e_path = self.stage_j_stage_e_var.get()
+        word_path = self.stage_j_word_var.get()
+        stage_f_path = self.stage_j_stage_f_var.get() if hasattr(self, 'stage_j_stage_f_var') else ""
+        
+        # Validate Stage E
+        if stage_e_path and os.path.exists(stage_e_path):
+            try:
+                data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
+                records = data.get("data") or data.get("rows", [])
+                if records and records[0].get("PointId"):
+                    self.stage_j_stage_e_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_j_stage_e_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_j_stage_e_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_j_stage_e_valid.configure(text="", text_color="gray")
+        
+        # Validate Word file
+        if word_path and os.path.exists(word_path):
+            # Check if it's a Word file
+            ext = os.path.splitext(word_path)[1].lower()
+            if ext in ['.docx', '.doc']:
+                self.stage_j_word_valid.configure(text="OK", text_color="green")
+            else:
+                self.stage_j_word_valid.configure(text="W", text_color="orange")
+        else:
+            self.stage_j_word_valid.configure(text="", text_color="gray")
+        
+        # Validate Stage F (optional)
+        if hasattr(self, 'stage_j_stage_f_valid'):
+            if stage_f_path and os.path.exists(stage_f_path):
+                try:
+                    data = json.load(open(stage_f_path, 'r', encoding='utf-8'))
+                    records = data.get("data") or data.get("rows", [])
+                    if records:
+                        self.stage_j_stage_f_valid.configure(text="OK", text_color="green")
+                    else:
+                        self.stage_j_stage_f_valid.configure(text="W", text_color="orange")
+                except:
+                    self.stage_j_stage_f_valid.configure(text="X", text_color="red")
+            else:
+                self.stage_j_stage_f_valid.configure(text="", text_color="gray")
+    
+    def process_stage_j(self):
+        """Process Stage J in background thread"""
+        def worker():
+            try:
+                self.stage_j_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("J", "processing")
+                self.stage_j_status_label.configure(text="Processing Importance & Type Tagging...", text_color="blue")
+                
+                # Validate inputs
+                stage_e_path = self.stage_j_stage_e_var.get().strip()
+                word_path = self.stage_j_word_var.get().strip()
+                stage_f_path = self.stage_j_stage_f_var.get().strip() if hasattr(self, 'stage_j_stage_f_var') else ""
+                prompt = self.stage_j_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_j_model_var.get()
+                
+                if not stage_e_path or not os.path.exists(stage_e_path):
+                    messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                    return
+                
+                if not word_path or not os.path.exists(word_path):
+                    messagebox.showerror("Error", "Please select a valid Word file")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for Imp & Type generation")
+                    return
+                
+                # Stage F is optional, but validate if provided
+                if stage_f_path and not os.path.exists(stage_f_path):
+                    messagebox.showerror("Error", "Image File Catalog JSON file path is invalid")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_j_status_label.configure(text=msg))
+                
+                # Process Stage J
+                output_path = self.stage_j_processor.process_stage_j(
+                    stage_e_path=stage_e_path,
+                    word_file_path=word_path,
+                    stage_f_path=stage_f_path if stage_f_path else None,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_j_path = output_path
+                    self.update_stage_status("J", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_j_view_csv_btn.configure(state="normal"))
+                    self.stage_j_status_label.configure(
+                        text=f"Stage J completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Importance & Type Tagging completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("J", "error")
+                    self.stage_j_status_label.configure(text="Importance & Type Tagging failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Importance & Type Tagging processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Importance & Type Tagging processing: {e}", exc_info=True)
+                self.update_stage_status("J", "error")
+                self.stage_j_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Importance & Type Tagging processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_j_process_btn.configure(state="normal", text="Process Importance & Type Tagging"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def validate_stage_h_files(self):
+        """Validate Stage H input files"""
+        stage_j_path = self.stage_h_stage_j_var.get()
+        stage_f_path = self.stage_h_stage_f_var.get()
+        
+        # Validate Stage J
+        if stage_j_path and os.path.exists(stage_j_path):
+            try:
+                data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
+                records = data.get("data") or data.get("rows", [])
+                if records and records[0].get("PointId"):
+                    self.stage_h_stage_j_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_h_stage_j_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_h_stage_j_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_h_stage_j_valid.configure(text="", text_color="gray")
+        
+        # Validate Stage F
+        if stage_f_path and os.path.exists(stage_f_path):
+            try:
+                data = json.load(open(stage_f_path, 'r', encoding='utf-8'))
+                records = data.get("data") or data.get("rows", [])
+                if records:
+                    self.stage_h_stage_f_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_h_stage_f_valid.configure(text="W", text_color="orange")
+            except:
+                self.stage_h_stage_f_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_h_stage_f_valid.configure(text="", text_color="gray")
+    
+    def process_stage_h(self):
+        """Process Stage H in background thread"""
+        def worker():
+            try:
+                self.stage_h_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("H", "processing")
+                self.stage_h_status_label.configure(text="Processing Flashcard Generation...", text_color="blue")
+                
+                # Validate inputs
+                stage_j_path = self.stage_h_stage_j_var.get().strip()
+                stage_f_path = self.stage_h_stage_f_var.get().strip()
+                prompt = self.stage_h_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_h_model_var.get()
+                
+                if not stage_j_path or not os.path.exists(stage_j_path):
+                    messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
+                    return
+                
+                if not stage_f_path or not os.path.exists(stage_f_path):
+                    messagebox.showerror("Error", "Please select a valid Image File Catalog JSON file")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for flashcard generation")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_h_status_label.configure(text=msg))
+                
+                # Process Stage H
+                output_path = self.stage_h_processor.process_stage_h(
+                    stage_j_path=stage_j_path,
+                    stage_f_path=stage_f_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_h_path = output_path
+                    self.update_stage_status("H", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_h_view_csv_btn.configure(state="normal"))
+                    self.stage_h_status_label.configure(
+                        text=f"Stage H completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Flashcard Generation completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("H", "error")
+                    self.stage_h_status_label.configure(text="Flashcard Generation failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Flashcard Generation processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Flashcard Generation processing: {e}", exc_info=True)
+                self.update_stage_status("H", "error")
+                self.stage_h_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Flashcard Generation processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_h_process_btn.configure(state="normal", text="Process Flashcard Generation"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_h_ui(self, parent):
+        """Setup UI for Stage H: Flashcard Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="Flashcard Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Generate flashcards from Tagged data and Image File Catalog.", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+        
+        # Tagged Data File Selection
+        stage_j_frame = ctk.CTkFrame(main_frame)
+        stage_j_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_j_frame, text="Tagged Data JSON (a file):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_h_stage_j_var'):
+            self.stage_h_stage_j_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
+            self.stage_h_stage_j_var.set(self.last_stage_j_path)
+        
+        entry_frame = ctk.CTkFrame(stage_j_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_j_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_h_stage_j_var)
+        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_h_stage_j_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_h_stage_j_valid'):
+            self.stage_h_stage_j_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_h_stage_j_valid.pack(side="right", padx=5)
+        
+        # Image File Catalog Selection
+        stage_f_frame = ctk.CTkFrame(main_frame)
+        stage_f_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_f_frame, text="Image File Catalog JSON (f.json):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_h_stage_f_var'):
+            self.stage_h_stage_f_var = ctk.StringVar()
+        # Auto-fill if available (try to find f.json in same directory as Stage J)
+        if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
+            self.stage_h_stage_f_var.set(self.last_stage_f_path)
+        elif self.stage_h_stage_j_var.get():
+            # Try to find f.json in same directory
+            stage_j_dir = os.path.dirname(self.stage_h_stage_j_var.get())
+            f_json_path = os.path.join(stage_j_dir, "f.json")
+            if os.path.exists(f_json_path):
+                self.stage_h_stage_f_var.set(f_json_path)
+        
+        entry_frame_f = ctk.CTkFrame(stage_f_frame)
+        entry_frame_f.pack(fill="x", padx=10, pady=5)
+        
+        stage_f_entry = ctk.CTkEntry(entry_frame_f, textvariable=self.stage_h_stage_f_var)
+        stage_f_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_f, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_h_stage_f_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator for Stage F file
+        if not hasattr(self, 'stage_h_stage_f_valid'):
+            self.stage_h_stage_f_valid = ctk.CTkLabel(entry_frame_f, text="", width=30)
+        self.stage_h_stage_f_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for Flashcard Generation:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Stage H prompt mode (default vs custom)
+        stage_h_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_h_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_h_prompt_type_var'):
+            self.stage_h_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_h_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_h_prompt_type_var,
+            value="default",
+            command=self.on_stage_h_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_h_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_h_prompt_type_var,
+            value="custom",
+            command=self.on_stage_h_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage H prompt combobox (predefined prompts)
+        stage_h_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_h_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage_h_default_frame,
+            text="Default Stage H Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage_h_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_stage_h_name = "Flashcard Prompt"
+        if preferred_stage_h_name in stage_h_prompt_names:
+            stage_h_default_value = preferred_stage_h_name
+        else:
+            stage_h_default_value = stage_h_prompt_names[0] if stage_h_prompt_names else ""
+        self.stage_h_default_prompt_var = ctk.StringVar(value=stage_h_default_value)
+        self.stage_h_default_prompt_combo = ctk.CTkComboBox(
+            stage_h_default_frame,
+            values=stage_h_prompt_names,
+            variable=self.stage_h_default_prompt_var,
+            width=400,
+            command=self.on_stage_h_default_prompt_selected,
+        )
+        self.stage_h_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage H prompt (default-filled or custom)
+        if not hasattr(self, 'stage_h_prompt_text'):
+            self.stage_h_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_h_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_h_prompt_text.pack(fill="x", padx=10, pady=5)
+
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_h_prompt_type_change()
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Get default model from main model selection if available
+        default_model = "gemini-2.5-pro"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        if not hasattr(self, 'stage_h_model_var'):
+            self.stage_h_model_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_h_model_combo'):
+            self.stage_h_model_combo = ctk.CTkComboBox(
+                model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_h_model_var,
+                width=300
+            )
+        self.stage_h_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_h_process_btn'):
+            self.stage_h_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Flashcard Generation",
+                command=self.process_stage_h,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_h_process_btn.pack(pady=10)
+        
+        # View CSV button
+        if not hasattr(self, 'stage_h_view_csv_btn'):
+            self.stage_h_view_csv_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="View CSV",
+                command=self.view_csv_stage_h,
+                width=150,
+                height=40,
+                font=ctk.CTkFont(size=14),
+                fg_color="green",
+                hover_color="darkgreen",
+                state="disabled"
+            )
+        self.stage_h_view_csv_btn.pack(pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'stage_h_status_label'):
+            self.stage_h_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_h_status_label.pack(pady=5)
+        
+        # Bind validation
+        self.stage_h_stage_j_var.trace('w', lambda *args: self.validate_stage_h_files())
+        self.stage_h_stage_f_var.trace('w', lambda *args: self.validate_stage_h_files())
+        
+        # Initial validation
+        self.validate_stage_h_files()
+    
+    def setup_stage_v_ui(self, parent):
+        """Setup UI for Stage V: Test File Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="Test Bank Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Generate test files from Tagged data and Word document in three steps.", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+        
+        # Tagged Data File Selection
+        stage_j_frame = ctk.CTkFrame(main_frame)
+        stage_j_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(stage_j_frame, text="Tagged Data JSON (a file):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_v_stage_j_var'):
+            self.stage_v_stage_j_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
+            self.stage_v_stage_j_var.set(self.last_stage_j_path)
+        
+        entry_frame = ctk.CTkFrame(stage_j_frame)
+        entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        stage_j_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_v_stage_j_var)
+        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_v_stage_j_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_v_stage_j_valid'):
+            self.stage_v_stage_j_valid = ctk.CTkLabel(entry_frame, text="", width=30)
+        self.stage_v_stage_j_valid.pack(side="right", padx=5)
+        
+        # Word File Selection
+        word_frame = ctk.CTkFrame(main_frame)
+        word_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(word_frame, text="Word Document (Test Questions):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_v_word_var'):
+            self.stage_v_word_var = ctk.StringVar()
+        
+        entry_frame_word = ctk.CTkFrame(word_frame)
+        entry_frame_word.pack(fill="x", padx=10, pady=5)
+        
+        word_entry = ctk.CTkEntry(entry_frame_word, textvariable=self.stage_v_word_var)
+        word_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_word, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_v_word_var, 
+                                                                 filetypes=[("Word Documents", "*.docx *.doc")])).pack(side="right")
+        
+        # Validation indicator for Word file
+        if not hasattr(self, 'stage_v_word_valid'):
+            self.stage_v_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
+        self.stage_v_word_valid.pack(side="right", padx=5)
+        
+        # Step 1 Section
+        step1_frame = ctk.CTkFrame(main_frame)
+        step1_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(step1_frame, text="Step 1: Initial Question Generation", 
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=10)
+        
+        # Step 1 Prompt
+        ctk.CTkLabel(step1_frame, text="Prompt for Step 1:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        # Step 1 prompt mode (default vs custom)
+        step1_mode_frame = ctk.CTkFrame(step1_frame)
+        step1_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_v_prompt1_type_var'):
+            self.stage_v_prompt1_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            step1_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_v_prompt1_type_var,
+            value="default",
+            command=self.on_stage_v_prompt1_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            step1_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_v_prompt1_type_var,
+            value="custom",
+            command=self.on_stage_v_prompt1_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default prompt combobox for Step 1
+        step1_default_frame = ctk.CTkFrame(step1_frame)
+        step1_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            step1_default_frame,
+            text="Default Prompt for Step 1:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        step_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_step1_name = "Test Bank Generation - Step 1 Prompt"
+        if preferred_step1_name in step_prompt_names:
+            step1_default_value = preferred_step1_name
+        else:
+            step1_default_value = step_prompt_names[0] if step_prompt_names else ""
+        self.stage_v_prompt1_default_var = ctk.StringVar(value=step1_default_value)
+        self.stage_v_prompt1_default_combo = ctk.CTkComboBox(
+            step1_default_frame,
+            values=step_prompt_names,
+            variable=self.stage_v_prompt1_default_var,
+            width=400,
+            command=self.on_stage_v_prompt1_default_selected,
+        )
+        self.stage_v_prompt1_default_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Step 1 prompt
+        if not hasattr(self, 'stage_v_prompt1_text'):
+            self.stage_v_prompt1_text = ctk.CTkTextbox(step1_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_v_prompt1_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_v_prompt1_text.pack(fill="x", padx=10, pady=5)
+
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_v_prompt1_type_change()
+        
+        # Step 1 Model Selection
+        model1_frame = ctk.CTkFrame(step1_frame)
+        model1_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(model1_frame, text="Model for Step 1:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=5)
+        
+        default_model = "gemini-2.5-pro"
+        if hasattr(self, 'model_var') and self.model_var:
+            default_model = self.model_var.get()
+        
+        if not hasattr(self, 'stage_v_model1_var'):
+            self.stage_v_model1_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_v_model1_combo'):
+            self.stage_v_model1_combo = ctk.CTkComboBox(
+                model1_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_v_model1_var,
+                width=300
+            )
+        self.stage_v_model1_combo.pack(side="left", padx=5)
+        
+        # Step 2 Section
+        step2_frame = ctk.CTkFrame(main_frame)
+        step2_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(step2_frame, text="Step 2: Refine and Add QId Mapping", 
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=10)
+        
+        # Step 2 Prompt
+        ctk.CTkLabel(step2_frame, text="Prompt for Step 2:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        # Step 2 prompt mode (default vs custom)
+        step2_mode_frame = ctk.CTkFrame(step2_frame)
+        step2_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_v_prompt2_type_var'):
+            self.stage_v_prompt2_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            step2_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_v_prompt2_type_var,
+            value="default",
+            command=self.on_stage_v_prompt2_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            step2_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_v_prompt2_type_var,
+            value="custom",
+            command=self.on_stage_v_prompt2_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default prompt combobox for Step 2
+        step2_default_frame = ctk.CTkFrame(step2_frame)
+        step2_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            step2_default_frame,
+            text="Default Prompt for Step 2:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        preferred_step2_name = "Test Bank Generation - Step 2 Prompt"
+        if preferred_step2_name in step_prompt_names:
+            step2_default_value = preferred_step2_name
+        else:
+            step2_default_value = step_prompt_names[0] if step_prompt_names else ""
+        self.stage_v_prompt2_default_var = ctk.StringVar(value=step2_default_value)
+        self.stage_v_prompt2_default_combo = ctk.CTkComboBox(
+            step2_default_frame,
+            values=step_prompt_names,
+            variable=self.stage_v_prompt2_default_var,
+            width=400,
+            command=self.on_stage_v_prompt2_default_selected,
+        )
+        self.stage_v_prompt2_default_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Step 2 prompt
+        if not hasattr(self, 'stage_v_prompt2_text'):
+            self.stage_v_prompt2_text = ctk.CTkTextbox(step2_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_v_prompt2_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_v_prompt2_text.pack(fill="x", padx=10, pady=5)
+
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_v_prompt2_type_change()
+        
+        # Step 2 Model Selection
+        model2_frame = ctk.CTkFrame(step2_frame)
+        model2_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(model2_frame, text="Model for Step 2:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=5)
+        
+        if not hasattr(self, 'stage_v_model2_var'):
+            self.stage_v_model2_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_v_model2_combo'):
+            self.stage_v_model2_combo = ctk.CTkComboBox(
+                model2_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_v_model2_var,
+                width=300
+            )
+        self.stage_v_model2_combo.pack(side="left", padx=5)
+        
+        # Step 3 Section
+        step3_frame = ctk.CTkFrame(main_frame)
+        step3_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(step3_frame, text="Step 3: Question ID Mapping", 
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=10)
+        
+        # Step 3 Prompt
+        ctk.CTkLabel(step3_frame, text="Prompt for Step 3:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        # Step 3 prompt mode (default vs custom)
+        step3_mode_frame = ctk.CTkFrame(step3_frame)
+        step3_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_v_prompt3_type_var'):
+            self.stage_v_prompt3_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            step3_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_v_prompt3_type_var,
+            value="default",
+            command=self.on_stage_v_prompt3_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            step3_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_v_prompt3_type_var,
+            value="custom",
+            command=self.on_stage_v_prompt3_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default prompt combobox for Step 3
+        step3_default_frame = ctk.CTkFrame(step3_frame)
+        step3_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            step3_default_frame,
+            text="Default Prompt for Step 3:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        preferred_step3_name = "Test Bank Generation - Step 3 Prompt"
+        if preferred_step3_name in step_prompt_names:
+            step3_default_value = preferred_step3_name
+        else:
+            step3_default_value = step_prompt_names[0] if step_prompt_names else ""
+        self.stage_v_prompt3_default_var = ctk.StringVar(value=step3_default_value)
+        self.stage_v_prompt3_default_combo = ctk.CTkComboBox(
+            step3_default_frame,
+            values=step_prompt_names,
+            variable=self.stage_v_prompt3_default_var,
+            width=400,
+            command=self.on_stage_v_prompt3_default_selected,
+        )
+        self.stage_v_prompt3_default_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Step 3 prompt
+        if not hasattr(self, 'stage_v_prompt3_text'):
+            self.stage_v_prompt3_text = ctk.CTkTextbox(step3_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_v_prompt3_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_v_prompt3_text.pack(fill="x", padx=10, pady=5)
+
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_v_prompt3_type_change()
+        
+        # Step 3 Model Selection
+        model3_frame = ctk.CTkFrame(step3_frame)
+        model3_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(model3_frame, text="Model for Step 3:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=5)
+        
+        if not hasattr(self, 'stage_v_model3_var'):
+            self.stage_v_model3_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, 'stage_v_model3_combo'):
+            self.stage_v_model3_combo = ctk.CTkComboBox(
+                model3_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_v_model3_var,
+                width=300
+            )
+        self.stage_v_model3_combo.pack(side="left", padx=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_v_process_btn'):
+            self.stage_v_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Test Bank Generation",
+                command=self.process_stage_v,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_v_process_btn.pack(pady=10)
+        
+        # View CSV button
+        if not hasattr(self, 'stage_v_view_csv_btn'):
+            self.stage_v_view_csv_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="View CSV",
+                command=self.view_csv_stage_v,
+                width=150,
+                height=40,
+                font=ctk.CTkFont(size=14),
+                fg_color="green",
+                hover_color="darkgreen",
+                state="disabled"
+            )
+        self.stage_v_view_csv_btn.pack(pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'stage_v_status_label'):
+            self.stage_v_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_v_status_label.pack(pady=5)
+        
+        # Bind validation
+        self.stage_v_stage_j_var.trace('w', lambda *args: self.validate_stage_v_files())
+        self.stage_v_word_var.trace('w', lambda *args: self.validate_stage_v_files())
+        
+        # Initial validation
+        self.validate_stage_v_files()
+    
+    def validate_stage_v_files(self):
+        """Validate Stage V input files"""
+        stage_j_path = self.stage_v_stage_j_var.get().strip()
+        word_path = self.stage_v_word_var.get().strip()
+        
+        # Validate Stage J file
+        if stage_j_path and os.path.exists(stage_j_path):
+            self.stage_v_stage_j_valid.configure(text="Ok", text_color="green")
+        else:
+            self.stage_v_stage_j_valid.configure(text="", text_color="red")
+        
+        # Validate Word file
+        if word_path and os.path.exists(word_path):
+            self.stage_v_word_valid.configure(text="Ok", text_color="green")
+        else:
+            self.stage_v_word_valid.configure(text="", text_color="red")
+    
+    def process_stage_v(self):
+        """Process Stage V in background thread"""
+        def worker():
+            try:
+                self.stage_v_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("V", "processing")
+                self.stage_v_status_label.configure(text="Processing Test Bank Generation...", text_color="blue")
+                
+                # Validate inputs
+                stage_j_path = self.stage_v_stage_j_var.get().strip()
+                word_path = self.stage_v_word_var.get().strip()
+                prompt_1 = self.stage_v_prompt1_text.get("1.0", tk.END).strip()
+                model_name_1 = self.stage_v_model1_var.get()
+                prompt_2 = self.stage_v_prompt2_text.get("1.0", tk.END).strip()
+                model_name_2 = self.stage_v_model2_var.get()
+                prompt_3 = self.stage_v_prompt3_text.get("1.0", tk.END).strip()
+                model_name_3 = self.stage_v_model3_var.get()
+                
+                if not stage_j_path or not os.path.exists(stage_j_path):
+                    messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
+                    return
+                
+                if not word_path or not os.path.exists(word_path):
+                    messagebox.showerror("Error", "Please select a valid Word document")
+                    return
+                
+                if not prompt_1:
+                    messagebox.showerror("Error", "Please enter a prompt for Step 1")
+                    return
+                
+                if not prompt_2:
+                    messagebox.showerror("Error", "Please enter a prompt for Step 2")
+                    return
+                
+                if not prompt_3:
+                    messagebox.showerror("Error", "Please enter a prompt for Step 3")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_v_status_label.configure(text=msg))
+                
+                # Process Stage V
+                output_path = self.stage_v_processor.process_stage_v(
+                    stage_j_path=stage_j_path,
+                    word_file_path=word_path,
+                    prompt_1=prompt_1,
+                    model_name_1=model_name_1,
+                    prompt_2=prompt_2,
+                    model_name_2=model_name_2,
+                    prompt_3=prompt_3,
+                    model_name_3=model_name_3,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_v_path = output_path
+                    self.update_stage_status("V", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_v_view_csv_btn.configure(state="normal"))
+                    self.stage_v_status_label.configure(
+                        text=f"Stage V completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Test Bank Generation completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("V", "error")
+                    self.stage_v_status_label.configure(text="Test Bank Generation failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Test Bank Generation processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in Test Bank Generation processing: {e}", exc_info=True)
+                self.update_stage_status("V", "error")
+                self.stage_v_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Test Bank Generation processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_v_process_btn.configure(state="normal", text="Process Test Bank Generation"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_m_ui(self, parent):
+        """Setup UI for Stage M: Topic ID List"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="Topic List Extraction", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(main_frame, text="Extract unique chapter / subchapter / topic combinations from Flashcard file (ac).", 
+                           font=ctk.CTkFont(size=12), text_color="gray")
+        desc.pack(pady=(0, 20))
+
+        # Flashcard File Selection
+        stage_h_frame = ctk.CTkFrame(main_frame)
+        stage_h_frame.pack(fill="x", pady=10)
+
+        ctk.CTkLabel(stage_h_frame, text="Flashcard JSON (ac file):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        if not hasattr(self, 'stage_m_stage_h_var'):
+            self.stage_m_stage_h_var = ctk.StringVar()
+        # Auto-fill if available (use last Stage H output if tracked in future)
+
+        entry_frame_h = ctk.CTkFrame(stage_h_frame)
+        entry_frame_h.pack(fill="x", padx=10, pady=5)
+
+        stage_h_entry = ctk.CTkEntry(entry_frame_h, textvariable=self.stage_m_stage_h_var)
+        stage_h_entry.pack(side="left", fill="x", expand=True, padx=5)
+
+        ctk.CTkButton(entry_frame_h, text="Browse",
+                     command=lambda: self.browse_file_for_stage(self.stage_m_stage_h_var,
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+
+        # Validation indicator
+        if not hasattr(self, 'stage_m_stage_h_valid'):
+            self.stage_m_stage_h_valid = ctk.CTkLabel(entry_frame_h, text="", width=30)
+        self.stage_m_stage_h_valid.pack(side="right", padx=5)
+
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+
+        if not hasattr(self, 'stage_m_process_btn'):
+            self.stage_m_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Topic List Extraction",
+                command=self.process_stage_m,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_m_process_btn.pack(pady=10)
+
+        # View CSV button
+        if not hasattr(self, 'stage_m_view_csv_btn'):
+            self.stage_m_view_csv_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="View CSV",
+                command=self.view_csv_stage_m,
+                width=150,
+                height=40,
+                font=ctk.CTkFont(size=14),
+                fg_color="green",
+                hover_color="darkgreen",
+                state="disabled"
+            )
+        self.stage_m_view_csv_btn.pack(pady=10)
+
+        # Status Label
+        if not hasattr(self, 'stage_m_status_label'):
+            self.stage_m_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_m_status_label.pack(pady=5)
+
+        # Bind validation
+        self.stage_m_stage_h_var.trace('w', lambda *args: self.validate_stage_m_files())
+
+        # Initial validation
+        self.validate_stage_m_files()
+
+    def validate_stage_m_files(self):
+        """Validate Stage M input file"""
+        stage_h_path = self.stage_m_stage_h_var.get().strip()
+
+        if stage_h_path and os.path.exists(stage_h_path):
+            self.stage_m_stage_h_valid.configure(text="Ok", text_color="green")
+        else:
+            self.stage_m_stage_h_valid.configure(text="", text_color="red")
+
+    def process_stage_m(self):
+        """Process Stage M in background thread"""
+        def worker():
+            try:
+                self.stage_m_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("M", "processing")
+                self.stage_m_status_label.configure(text="Processing Topic List Extraction...", text_color="blue")
+
+                # Validate inputs
+                stage_h_path = self.stage_m_stage_h_var.get().strip()
+
+                if not stage_h_path or not os.path.exists(stage_h_path):
+                    messagebox.showerror("Error", "Please select a valid Flashcard JSON file")
+                    return
+
+                # Validate API keys (not strictly needed for Stage M, but keep consistent)
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_m_status_label.configure(text=msg))
+
+                # Detect book/chapter for status convenience (optional)
+                output_path = self.stage_m_processor.process_stage_m(
+                    stage_h_path=stage_h_path,
+                    progress_callback=progress_callback
+                )
+
+                if output_path:
+                    self.last_stage_m_path = output_path
+                    self.update_stage_status("M", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_m_view_csv_btn.configure(state="normal"))
+                    self.stage_m_status_label.configure(
+                        text=f"Stage M completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Topic List Extraction completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("M", "error")
+                    self.stage_m_status_label.configure(text="Topic List Extraction failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Topic List Extraction processing failed. Check logs for details.")
+
+            except Exception as e:
+                self.logger.error(f"Error in Topic List Extraction processing: {e}", exc_info=True)
+                self.update_stage_status("M", "error")
+                self.stage_m_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Topic List Extraction processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_m_process_btn.configure(state="normal", text="Process Topic List Extraction"))
+
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_l_ui(self, parent):
+        """Setup UI for Stage L: Chapter Overview"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="Chapter Summary", 
+                    font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(
+            main_frame,
+            text="Generate per-topic chapter overview from Tagged data (a file) and Test Bank (b file).",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+
+        # Tagged Data File Selection
+        stage_j_frame = ctk.CTkFrame(main_frame)
+        stage_j_frame.pack(fill="x", pady=10)
+
+        ctk.CTkLabel(stage_j_frame, text="Tagged Data JSON (a file):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        if not hasattr(self, 'stage_l_stage_j_var'):
+            self.stage_l_stage_j_var = ctk.StringVar()
+        # Auto-fill if available
+        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
+            self.stage_l_stage_j_var.set(self.last_stage_j_path)
+
+        entry_frame_j = ctk.CTkFrame(stage_j_frame)
+        entry_frame_j.pack(fill="x", padx=10, pady=5)
+
+        stage_j_entry = ctk.CTkEntry(entry_frame_j, textvariable=self.stage_l_stage_j_var)
+        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
+
+        ctk.CTkButton(
+            entry_frame_j,
+            text="Browse",
+            command=lambda: self.browse_file_for_stage(self.stage_l_stage_j_var, filetypes=[("JSON", "*.json")])
+        ).pack(side="right")
+
+        # Validation indicator for Stage J file
+        if not hasattr(self, 'stage_l_stage_j_valid'):
+            self.stage_l_stage_j_valid = ctk.CTkLabel(entry_frame_j, text="", width=30)
+        self.stage_l_stage_j_valid.pack(side="right", padx=5)
+
+        # Stage V File Selection
+        stage_v_frame = ctk.CTkFrame(main_frame)
+        stage_v_frame.pack(fill="x", pady=10)
+
+        ctk.CTkLabel(stage_v_frame, text="Test Bank JSON (b file):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        if not hasattr(self, 'stage_l_stage_v_var'):
+            self.stage_l_stage_v_var = ctk.StringVar()
+
+        entry_frame_v = ctk.CTkFrame(stage_v_frame)
+        entry_frame_v.pack(fill="x", padx=10, pady=5)
+
+        stage_v_entry = ctk.CTkEntry(entry_frame_v, textvariable=self.stage_l_stage_v_var)
+        stage_v_entry.pack(side="left", fill="x", expand=True, padx=5)
+
+        ctk.CTkButton(
+            entry_frame_v,
+            text="Browse",
+            command=lambda: self.browse_file_for_stage(self.stage_l_stage_v_var, filetypes=[("JSON", "*.json")])
+        ).pack(side="right")
+
+        # Validation indicator for Stage V file
+        if not hasattr(self, 'stage_l_stage_v_valid'):
+            self.stage_l_stage_v_valid = ctk.CTkLabel(entry_frame_v, text="", width=30)
+        self.stage_l_stage_v_valid.pack(side="right", padx=5)
+
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for Chapter Overview:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Stage L prompt mode (default vs custom)
+        stage_l_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_l_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_l_prompt_type_var'):
+            self.stage_l_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_l_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_l_prompt_type_var,
+            value="default",
+            command=self.on_stage_l_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_l_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_l_prompt_type_var,
+            value="custom",
+            command=self.on_stage_l_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage L prompt combobox (predefined prompts)
+        stage_l_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_l_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage_l_default_frame,
+            text="Default Chapter Summary Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage_l_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_stage_l_name = "Chapter Summary Prompt"
+        if preferred_stage_l_name in stage_l_prompt_names:
+            stage_l_default_value = preferred_stage_l_name
+        else:
+            stage_l_default_value = stage_l_prompt_names[0] if stage_l_prompt_names else ""
+        if not hasattr(self, 'stage_l_default_prompt_var'):
+            self.stage_l_default_prompt_var = ctk.StringVar(value=stage_l_default_value)
+        if not hasattr(self, 'stage_l_default_prompt_combo'):
+            self.stage_l_default_prompt_combo = ctk.CTkComboBox(
+                stage_l_default_frame,
+                values=stage_l_prompt_names,
+                variable=self.stage_l_default_prompt_var,
+                width=400,
+                command=self.on_stage_l_default_prompt_selected,
+            )
+        self.stage_l_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage L prompt (default-filled or custom)
+        if not hasattr(self, "stage_l_prompt_text"):
+            self.stage_l_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_l_prompt_text.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Initialize prompt textbox with default prompt
+        self.on_stage_l_prompt_type_change()
+
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+
+        ctk.CTkLabel(
+            model_frame,
+            text="Model for Chapter Summary:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
+
+        default_model = "gemini-2.5-pro"
+        if hasattr(self, "model_var") and self.model_var:
+            default_model = self.model_var.get()
+
+        if not hasattr(self, "stage_l_model_var"):
+            self.stage_l_model_var = ctk.StringVar(value=default_model)
+        if not hasattr(self, "stage_l_model_combo"):
+            self.stage_l_model_combo = ctk.CTkComboBox(
+                model_frame,
+                values=APIConfig.TEXT_MODELS,
+                variable=self.stage_l_model_var,
+                width=300
+            )
+        self.stage_l_model_combo.pack(anchor="w", padx=10, pady=5)
+
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+
+        if not hasattr(self, 'stage_l_process_btn'):
+            self.stage_l_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Chapter Summary",
+                command=self.process_stage_l,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_l_process_btn.pack(pady=10)
+
+        # View CSV button
+        if not hasattr(self, 'stage_l_view_csv_btn'):
+            self.stage_l_view_csv_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="View CSV",
+                command=self.view_csv_stage_l,
+                width=150,
+                height=40,
+                font=ctk.CTkFont(size=14),
+                fg_color="green",
+                hover_color="darkgreen",
+                state="disabled"
+            )
+        self.stage_l_view_csv_btn.pack(pady=10)
+
+        # Status Label
+        if not hasattr(self, 'stage_l_status_label'):
+            self.stage_l_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_l_status_label.pack(pady=5)
+
+        # Bind validation
+        self.stage_l_stage_j_var.trace('w', lambda *args: self.validate_stage_l_files())
+        self.stage_l_stage_v_var.trace('w', lambda *args: self.validate_stage_l_files())
+
+        # Initial validation
+        self.validate_stage_l_files()
+
+    def validate_stage_l_files(self):
+        """Validate Stage L input files"""
+        stage_j_path = self.stage_l_stage_j_var.get().strip()
+        stage_v_path = self.stage_l_stage_v_var.get().strip()
+
+        # Stage J
+        if stage_j_path and os.path.exists(stage_j_path):
+            self.stage_l_stage_j_valid.configure(text="Ok", text_color="green")
+        else:
+            self.stage_l_stage_j_valid.configure(text="", text_color="red")
+
+        # Stage V
+        if stage_v_path and os.path.exists(stage_v_path):
+            self.stage_l_stage_v_valid.configure(text="Ok", text_color="green")
+        else:
+            self.stage_l_stage_v_valid.configure(text="", text_color="red")
+
+    def process_stage_l(self):
+        """Process Stage L in background thread"""
+        def worker():
+            try:
+                self.stage_l_process_btn.configure(state="disabled", text="Processing...")
+                self.update_stage_status("L", "processing")
+                self.stage_l_status_label.configure(text="Processing Chapter Summary...", text_color="blue")
+
+                # Validate inputs
+                stage_j_path = self.stage_l_stage_j_var.get().strip()
+                stage_v_path = self.stage_l_stage_v_var.get().strip()
+
+                if not stage_j_path or not os.path.exists(stage_j_path):
+                    messagebox.showerror("Error", "Please select a valid Tagged Data JSON file (a file)")
+                    return
+
+                if not stage_v_path or not os.path.exists(stage_v_path):
+                    messagebox.showerror("Error", "Please select a valid Test Bank JSON file (b file)")
+                    return
+
+                prompt = self.stage_l_prompt_text.get("1.0", tk.END).strip()
+                model_name = self.stage_l_model_var.get()
+
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for Chapter Summary")
+                    return
+
+                # Validate API keys (to be consistent with other stages)
+                if not self.api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_l_status_label.configure(text=msg))
+
+                # Process Stage L
+                output_path = self.stage_l_processor.process_stage_l(
+                    stage_j_path=stage_j_path,
+                    stage_v_path=stage_v_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+
+                if output_path:
+                    self.last_stage_l_path = output_path
+                    self.update_stage_status("L", "completed", output_path)
+                    self.root.after(0, lambda: self.stage_l_view_csv_btn.configure(state="normal"))
+                    self.stage_l_status_label.configure(
+                        text=f"Stage L completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Chapter Summary completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.update_stage_status("L", "error")
+                    self.stage_l_status_label.configure(text="Chapter Summary failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Chapter Summary processing failed. Check logs for details.")
+
+            except Exception as e:
+                self.logger.error(f"Error in Chapter Summary processing: {e}", exc_info=True)
+                self.update_stage_status("L", "error")
+                self.stage_l_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Chapter Summary processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_l_process_btn.configure(state="normal", text="Process Chapter Summary"))
+
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def setup_stage_x_ui(self, parent):
+        """Setup UI for Stage X: Book Changes Detection"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="Book Changes Detection", 
+                    font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(
+            main_frame,
+            text="Detect changes between old book PDF and current Stage A data. Part 1: Extract PDF. Part 2: Detect changes.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Part 1: PDF Extraction
+        part1_frame = ctk.CTkFrame(main_frame)
+        part1_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(part1_frame, text="Part 1: PDF Extraction",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Old Book PDF
+        pdf_frame = ctk.CTkFrame(part1_frame)
+        pdf_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(pdf_frame, text="Old Book PDF:", width=150).pack(side="left", padx=5)
+        if not hasattr(self, 'stage_x_old_pdf_var'):
+            self.stage_x_old_pdf_var = ctk.StringVar()
+        ctk.CTkEntry(pdf_frame, textvariable=self.stage_x_old_pdf_var, width=400).pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkButton(
+            pdf_frame,
+            text="Browse",
+            command=lambda: self.stage_x_old_pdf_var.set(filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")]))
+        ).pack(side="left", padx=5)
+        
+        # PDF Extraction Prompt Section
+        pdf_prompt_frame = ctk.CTkFrame(part1_frame)
+        pdf_prompt_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(pdf_prompt_frame, text="PDF Extraction Prompt:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=5, pady=5)
+        
+        # PDF Extraction Prompt mode (default vs custom)
+        pdf_prompt_mode_frame = ctk.CTkFrame(pdf_prompt_frame)
+        pdf_prompt_mode_frame.pack(fill="x", padx=5, pady=(0, 5))
+        if not hasattr(self, 'stage_x_pdf_prompt_type_var'):
+            self.stage_x_pdf_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            pdf_prompt_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_x_pdf_prompt_type_var,
+            value="default",
+            command=self.on_stage_x_pdf_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            pdf_prompt_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_x_pdf_prompt_type_var,
+            value="custom",
+            command=self.on_stage_x_pdf_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        
+        # Default PDF Extraction Prompt combobox
+        pdf_prompt_default_frame = ctk.CTkFrame(pdf_prompt_frame)
+        pdf_prompt_default_frame.pack(fill="x", padx=5, pady=(0, 5))
+        ctk.CTkLabel(
+            pdf_prompt_default_frame,
+            text="Default PDF Extraction Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+        
+        pdf_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_pdf_prompt_name = "Document Processing"
+        if preferred_pdf_prompt_name in pdf_prompt_names:
+            pdf_prompt_default_value = preferred_pdf_prompt_name
+        else:
+            pdf_prompt_default_value = pdf_prompt_names[0] if pdf_prompt_names else ""
+        if not hasattr(self, 'stage_x_pdf_default_prompt_var'):
+            self.stage_x_pdf_default_prompt_var = ctk.StringVar(value=pdf_prompt_default_value)
+        if not hasattr(self, 'stage_x_pdf_default_prompt_combo'):
+            self.stage_x_pdf_default_prompt_combo = ctk.CTkComboBox(
+                pdf_prompt_default_frame,
+                values=pdf_prompt_names,
+                variable=self.stage_x_pdf_default_prompt_var,
+                width=400,
+                command=self.on_stage_x_pdf_default_prompt_selected,
+            )
+        self.stage_x_pdf_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Textbox for PDF Extraction prompt
+        if not hasattr(self, 'stage_x_pdf_prompt_text'):
+            self.stage_x_pdf_prompt_text = ctk.CTkTextbox(pdf_prompt_frame, height=100, font=self.farsi_text_font)
+        self.stage_x_pdf_prompt_text.pack(fill="x", padx=5, pady=(0, 5))
+        
+        # Initialize PDF Extraction prompt textbox
+        self.on_stage_x_pdf_prompt_type_change()
+        
+        # PDF Extraction Model
+        pdf_model_frame = ctk.CTkFrame(part1_frame)
+        pdf_model_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(pdf_model_frame, text="PDF Extraction Model:", width=150).pack(side="left", padx=5)
+        if not hasattr(self, 'stage_x_pdf_model_var'):
+            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
+            self.stage_x_pdf_model_var = ctk.StringVar(value=default_model)
+        ctk.CTkComboBox(pdf_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_x_pdf_model_var, width=300).pack(side="left", padx=5)
+        
+        # Part 2: Change Detection
+        part2_frame = ctk.CTkFrame(main_frame)
+        part2_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(part2_frame, text="Part 2: Change Detection",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Stage A File
+        stage_a_frame = ctk.CTkFrame(part2_frame)
+        stage_a_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(stage_a_frame, text="Stage A JSON (a file):", width=150).pack(side="left", padx=5)
+        if not hasattr(self, 'stage_x_stage_a_var'):
+            self.stage_x_stage_a_var = ctk.StringVar()
+            if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path:
+                self.stage_x_stage_a_var.set(self.last_stage_j_path)
+        ctk.CTkEntry(stage_a_frame, textvariable=self.stage_x_stage_a_var, width=400).pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkButton(
+            stage_a_frame,
+            text="Browse",
+            command=lambda: self.stage_x_stage_a_var.set(filedialog.askopenfilename(filetypes=[("JSON files", "*.json")]))
+        ).pack(side="left", padx=5)
+        
+        # Change Detection Prompt Section
+        change_prompt_frame = ctk.CTkFrame(part2_frame)
+        change_prompt_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(change_prompt_frame, text="Change Detection Prompt:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=5, pady=5)
+        
+        # Change Detection Prompt mode (default vs custom)
+        change_prompt_mode_frame = ctk.CTkFrame(change_prompt_frame)
+        change_prompt_mode_frame.pack(fill="x", padx=5, pady=(0, 5))
+        if not hasattr(self, 'stage_x_change_prompt_type_var'):
+            self.stage_x_change_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            change_prompt_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_x_change_prompt_type_var,
+            value="default",
+            command=self.on_stage_x_change_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            change_prompt_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_x_change_prompt_type_var,
+            value="custom",
+            command=self.on_stage_x_change_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        
+        # Default Change Detection Prompt combobox
+        change_prompt_default_frame = ctk.CTkFrame(change_prompt_frame)
+        change_prompt_default_frame.pack(fill="x", padx=5, pady=(0, 5))
+        ctk.CTkLabel(
+            change_prompt_default_frame,
+            text="Default Change Detection Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+        
+        change_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_change_prompt_name = "Change Detection Prompt"
+        if preferred_change_prompt_name in change_prompt_names:
+            change_prompt_default_value = preferred_change_prompt_name
+        else:
+            change_prompt_default_value = change_prompt_names[0] if change_prompt_names else ""
+        if not hasattr(self, 'stage_x_change_default_prompt_var'):
+            self.stage_x_change_default_prompt_var = ctk.StringVar(value=change_prompt_default_value)
+        if not hasattr(self, 'stage_x_change_default_prompt_combo'):
+            self.stage_x_change_default_prompt_combo = ctk.CTkComboBox(
+                change_prompt_default_frame,
+                values=change_prompt_names,
+                variable=self.stage_x_change_default_prompt_var,
+                width=400,
+                command=self.on_stage_x_change_default_prompt_selected,
+            )
+        self.stage_x_change_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Textbox for Change Detection prompt
+        if not hasattr(self, 'stage_x_change_prompt_text'):
+            self.stage_x_change_prompt_text = ctk.CTkTextbox(change_prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_x_change_prompt_text.pack(fill="x", padx=5, pady=(0, 5))
+        
+        # Initialize Change Detection prompt textbox
+        self.on_stage_x_change_prompt_type_change()
+        
+        # Change Detection Model
+        change_model_frame = ctk.CTkFrame(part2_frame)
+        change_model_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(change_model_frame, text="Change Detection Model:", width=150).pack(side="left", padx=5)
+        if not hasattr(self, 'stage_x_change_model_var'):
+            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
+            self.stage_x_change_model_var = ctk.StringVar(value=default_model)
+        ctk.CTkComboBox(change_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_x_change_model_var, width=300).pack(side="left", padx=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_x_process_btn'):
+            self.stage_x_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Book Changes Detection",
+                command=self.process_stage_x,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_x_process_btn.pack(pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'stage_x_status_label'):
+            self.stage_x_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_x_status_label.pack(pady=5)
+    
+    def setup_stage_y_ui(self, parent):
+        """Setup UI for Stage Y: Deletion Detection"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="Deletion Detection", 
+                    font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(
+            main_frame,
+            text="Detect deleted content by comparing old book PDF extraction with current Stage A data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Stage A File
+        stage_a_frame = ctk.CTkFrame(main_frame)
+        stage_a_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(stage_a_frame, text="Stage A JSON (a file):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_stage_a_var'):
+            self.stage_y_stage_a_var = ctk.StringVar()
+            if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path:
+                self.stage_y_stage_a_var.set(self.last_stage_j_path)
+        
+        entry_frame_a = ctk.CTkFrame(stage_a_frame)
+        entry_frame_a.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_a, textvariable=self.stage_y_stage_a_var).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            entry_frame_a,
+            text="Browse",
+            command=lambda: self.stage_y_stage_a_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+        ).pack(side="right")
+        
+        # PDF Extracted JSON
+        pdf_extracted_frame = ctk.CTkFrame(main_frame)
+        pdf_extracted_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(pdf_extracted_frame, text="PDF Extracted JSON (from Stage X Part 1):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_pdf_extracted_var'):
+            self.stage_y_pdf_extracted_var = ctk.StringVar()
+        
+        entry_frame_pdf = ctk.CTkFrame(pdf_extracted_frame)
+        entry_frame_pdf.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_pdf, textvariable=self.stage_y_pdf_extracted_var).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            entry_frame_pdf,
+            text="Browse",
+            command=lambda: self.stage_y_pdf_extracted_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+        ).pack(side="right")
+        
+        # Stage X Output
+        stage_x_frame = ctk.CTkFrame(main_frame)
+        stage_x_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(stage_x_frame, text="Stage X Output JSON:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_stage_x_var'):
+            self.stage_y_stage_x_var = ctk.StringVar()
+        
+        entry_frame_x = ctk.CTkFrame(stage_x_frame)
+        entry_frame_x.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_x, textvariable=self.stage_y_stage_x_var).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            entry_frame_x,
+            text="Browse",
+            command=lambda: self.stage_y_stage_x_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+        ).pack(side="right")
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(prompt_frame, text="Prompt for Deletion Detection:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Stage Y prompt mode (default vs custom)
+        stage_y_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_y_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_y_prompt_type_var'):
+            self.stage_y_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_y_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_y_prompt_type_var,
+            value="default",
+            command=self.on_stage_y_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_y_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_y_prompt_type_var,
+            value="custom",
+            command=self.on_stage_y_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        
+        # Default Stage Y prompt combobox
+        stage_y_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_y_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            stage_y_default_frame,
+            text="Default Deletion Detection Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+        
+        stage_y_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_stage_y_name = "Deletion Detection Prompt"
+        if preferred_stage_y_name in stage_y_prompt_names:
+            stage_y_default_value = preferred_stage_y_name
+        else:
+            stage_y_default_value = stage_y_prompt_names[0] if stage_y_prompt_names else ""
+        if not hasattr(self, 'stage_y_default_prompt_var'):
+            self.stage_y_default_prompt_var = ctk.StringVar(value=stage_y_default_value)
+        if not hasattr(self, 'stage_y_default_prompt_combo'):
+            self.stage_y_default_prompt_combo = ctk.CTkComboBox(
+                stage_y_default_frame,
+                values=stage_y_prompt_names,
+                variable=self.stage_y_default_prompt_var,
+                width=400,
+                command=self.on_stage_y_default_prompt_selected,
+            )
+        self.stage_y_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Textbox for Stage Y prompt
+        if not hasattr(self, 'stage_y_prompt_text'):
+            self.stage_y_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_y_prompt_text.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Initialize Stage Y prompt textbox
+        self.on_stage_y_prompt_type_change()
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(model_frame, text="Model:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_model_var'):
+            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
+            self.stage_y_model_var = ctk.StringVar(value=default_model)
+        ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_y_model_var, width=300).pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_y_process_btn'):
+            self.stage_y_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process Deletion Detection",
+                command=self.process_stage_y,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_y_process_btn.pack(pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'stage_y_status_label'):
+            self.stage_y_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_y_status_label.pack(pady=5)
+    
+    def setup_stage_z_ui(self, parent):
+        """Setup UI for Stage Z: RichText Generation"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="RichText Generation", 
+                    font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(
+            main_frame,
+            text="Generate RichText format output from Stage A, Stage X, and Stage Y data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Stage A File
+        stage_a_frame = ctk.CTkFrame(main_frame)
+        stage_a_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(stage_a_frame, text="Stage A JSON (a file):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_z_stage_a_var'):
+            self.stage_z_stage_a_var = ctk.StringVar()
+            if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path:
+                self.stage_z_stage_a_var.set(self.last_stage_j_path)
+        
+        entry_frame_a = ctk.CTkFrame(stage_a_frame)
+        entry_frame_a.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_a, textvariable=self.stage_z_stage_a_var).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            entry_frame_a,
+            text="Browse",
+            command=lambda: self.stage_z_stage_a_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+        ).pack(side="right")
+        
+        # Stage X Output
+        stage_x_frame = ctk.CTkFrame(main_frame)
+        stage_x_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(stage_x_frame, text="Stage X Output JSON:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_z_stage_x_var'):
+            self.stage_z_stage_x_var = ctk.StringVar()
+        
+        entry_frame_x = ctk.CTkFrame(stage_x_frame)
+        entry_frame_x.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_x, textvariable=self.stage_z_stage_x_var).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            entry_frame_x,
+            text="Browse",
+            command=lambda: self.stage_z_stage_x_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+        ).pack(side="right")
+        
+        # Stage Y Output
+        stage_y_frame = ctk.CTkFrame(main_frame)
+        stage_y_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(stage_y_frame, text="Stage Y Output JSON:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_z_stage_y_var'):
+            self.stage_z_stage_y_var = ctk.StringVar()
+        
+        entry_frame_y = ctk.CTkFrame(stage_y_frame)
+        entry_frame_y.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_y, textvariable=self.stage_z_stage_y_var).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            entry_frame_y,
+            text="Browse",
+            command=lambda: self.stage_z_stage_y_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+        ).pack(side="right")
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(prompt_frame, text="Prompt for RichText Generation:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Stage Z prompt mode (default vs custom)
+        stage_z_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_z_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_z_prompt_type_var'):
+            self.stage_z_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_z_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_z_prompt_type_var,
+            value="default",
+            command=self.on_stage_z_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_z_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_z_prompt_type_var,
+            value="custom",
+            command=self.on_stage_z_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        
+        # Default Stage Z prompt combobox
+        stage_z_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_z_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            stage_z_default_frame,
+            text="Default RichText Generation Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+        
+        stage_z_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_stage_z_name = "RichText Generation Prompt"
+        if preferred_stage_z_name in stage_z_prompt_names:
+            stage_z_default_value = preferred_stage_z_name
+        else:
+            stage_z_default_value = stage_z_prompt_names[0] if stage_z_prompt_names else ""
+        if not hasattr(self, 'stage_z_default_prompt_var'):
+            self.stage_z_default_prompt_var = ctk.StringVar(value=stage_z_default_value)
+        if not hasattr(self, 'stage_z_default_prompt_combo'):
+            self.stage_z_default_prompt_combo = ctk.CTkComboBox(
+                stage_z_default_frame,
+                values=stage_z_prompt_names,
+                variable=self.stage_z_default_prompt_var,
+                width=400,
+                command=self.on_stage_z_default_prompt_selected,
+            )
+        self.stage_z_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Textbox for Stage Z prompt
+        if not hasattr(self, 'stage_z_prompt_text'):
+            self.stage_z_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_z_prompt_text.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Initialize Stage Z prompt textbox
+        self.on_stage_z_prompt_type_change()
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(model_frame, text="Model:",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_z_model_var'):
+            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
+            self.stage_z_model_var = ctk.StringVar(value=default_model)
+        ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_z_model_var, width=300).pack(anchor="w", padx=10, pady=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'stage_z_process_btn'):
+            self.stage_z_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Process RichText Generation",
+                command=self.process_stage_z,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.stage_z_process_btn.pack(pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'stage_z_status_label'):
+            self.stage_z_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.stage_z_status_label.pack(pady=5)
+    
+    def process_stage_x(self):
+        """Process Stage X in background thread"""
+        def worker():
+            try:
+                self.stage_x_process_btn.configure(state="disabled", text="Processing...")
+                self.stage_x_status_label.configure(text="Processing Book Changes Detection...", text_color="blue")
+                
+                # Validate inputs
+                old_pdf_path = self.stage_x_old_pdf_var.get().strip()
+                stage_a_path = self.stage_x_stage_a_var.get().strip()
+                pdf_prompt = self.stage_x_pdf_prompt_text.get("1.0", tk.END).strip()
+                change_prompt = self.stage_x_change_prompt_text.get("1.0", tk.END).strip()
+                
+                if not old_pdf_path or not os.path.exists(old_pdf_path):
+                    messagebox.showerror("Error", "Please select a valid old book PDF file.")
+                    return
+                
+                if not stage_a_path or not os.path.exists(stage_a_path):
+                    messagebox.showerror("Error", "Please select a valid Stage A JSON file.")
+                    return
+                
+                if not pdf_prompt:
+                    messagebox.showerror("Error", "Please enter PDF extraction prompt.")
+                    return
+                
+                if not change_prompt:
+                    messagebox.showerror("Error", "Please enter change detection prompt.")
+                    return
+                
+                pdf_model = self.stage_x_pdf_model_var.get()
+                change_model = self.stage_x_change_model_var.get()
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_x_status_label.configure(text=msg))
+                
+                output_path = self.stage_x_processor.process_stage_x(
+                    old_book_pdf_path=old_pdf_path,
+                    pdf_extraction_prompt=pdf_prompt,
+                    pdf_extraction_model=pdf_model,
+                    stage_a_path=stage_a_path,
+                    changes_prompt=change_prompt,
+                    changes_model=change_model,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_x_path = output_path
+                    self.stage_x_status_label.configure(
+                        text=f"Stage X completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Book Changes Detection completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.stage_x_status_label.configure(text="Book Changes Detection failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Book Changes Detection failed. Check logs for details.")
+                    
+            except Exception as e:
+                self.logger.error(f"Error in Stage X processing: {e}", exc_info=True)
+                self.stage_x_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Book Changes Detection error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_x_process_btn.configure(state="normal", text="Process Book Changes Detection"))
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def process_stage_y(self):
+        """Process Stage Y in background thread"""
+        def worker():
+            try:
+                self.stage_y_process_btn.configure(state="disabled", text="Processing...")
+                self.stage_y_status_label.configure(text="Processing Deletion Detection...", text_color="blue")
+                
+                # Validate inputs
+                stage_a_path = self.stage_y_stage_a_var.get().strip()
+                pdf_extracted_path = self.stage_y_pdf_extracted_var.get().strip()
+                stage_x_path = self.stage_y_stage_x_var.get().strip()
+                prompt = self.stage_y_prompt_text.get("1.0", tk.END).strip()
+                
+                if not stage_a_path or not os.path.exists(stage_a_path):
+                    messagebox.showerror("Error", "Please select a valid Stage A JSON file.")
+                    return
+                
+                if not pdf_extracted_path or not os.path.exists(pdf_extracted_path):
+                    messagebox.showerror("Error", "Please select a valid PDF extracted JSON file.")
+                    return
+                
+                if not stage_x_path or not os.path.exists(stage_x_path):
+                    messagebox.showerror("Error", "Please select a valid Stage X output JSON file.")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for Deletion Detection.")
+                    return
+                
+                model_name = self.stage_y_model_var.get()
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_y_status_label.configure(text=msg))
+                
+                output_path = self.stage_y_processor.process_stage_y(
+                    stage_a_path=stage_a_path,
+                    pdf_extracted_json_path=pdf_extracted_path,
+                    stage_x_output_path=stage_x_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_y_path = output_path
+                    self.stage_y_status_label.configure(
+                        text=f"Stage Y completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Deletion Detection completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.stage_y_status_label.configure(text="Deletion Detection failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "Deletion Detection failed. Check logs for details.")
+                    
+            except Exception as e:
+                self.logger.error(f"Error in Stage Y processing: {e}", exc_info=True)
+                self.stage_y_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Deletion Detection error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_y_process_btn.configure(state="normal", text="Process Deletion Detection"))
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def process_stage_z(self):
+        """Process Stage Z in background thread"""
+        def worker():
+            try:
+                self.stage_z_process_btn.configure(state="disabled", text="Processing...")
+                self.stage_z_status_label.configure(text="Processing RichText Generation...", text_color="blue")
+                
+                # Validate inputs
+                stage_a_path = self.stage_z_stage_a_var.get().strip()
+                stage_x_path = self.stage_z_stage_x_var.get().strip()
+                stage_y_path = self.stage_z_stage_y_var.get().strip()
+                prompt = self.stage_z_prompt_text.get("1.0", tk.END).strip()
+                
+                if not stage_a_path or not os.path.exists(stage_a_path):
+                    messagebox.showerror("Error", "Please select a valid Stage A JSON file.")
+                    return
+                
+                if not stage_x_path or not os.path.exists(stage_x_path):
+                    messagebox.showerror("Error", "Please select a valid Stage X output JSON file.")
+                    return
+                
+                if not stage_y_path or not os.path.exists(stage_y_path):
+                    messagebox.showerror("Error", "Please select a valid Stage Y output JSON file.")
+                    return
+                
+                if not prompt:
+                    messagebox.showerror("Error", "Please enter a prompt for RichText Generation.")
+                    return
+                
+                model_name = self.stage_z_model_var.get()
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.stage_z_status_label.configure(text=msg))
+                
+                output_path = self.stage_z_processor.process_stage_z(
+                    stage_a_path=stage_a_path,
+                    stage_x_output_path=stage_x_path,
+                    stage_y_output_path=stage_y_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                if output_path:
+                    self.last_stage_z_path = output_path
+                    self.stage_z_status_label.configure(
+                        text=f"Stage Z completed successfully!\nOutput: {os.path.basename(output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"RichText Generation completed!\n\nOutput saved to:\n{output_path}")
+                else:
+                    self.stage_z_status_label.configure(text="RichText Generation failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "RichText Generation failed. Check logs for details.")
+                    
+            except Exception as e:
+                self.logger.error(f"Error in Stage Z processing: {e}", exc_info=True)
+                self.stage_z_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"RichText Generation error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_z_process_btn.configure(state="normal", text="Process RichText Generation"))
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def start_automated_pipeline_from_main(self):
+        """Start automated pipeline from main page"""
+        # Validate PDF is selected
+        if not self.pdf_path or not os.path.exists(self.pdf_path):
+            messagebox.showerror("Error", "Please select a PDF file first.")
+            return
+        
+        # Validate PointID
+        pointid = self.auto_pipeline_pointid_var.get().strip()
+        if not pointid or len(pointid) != 10 or not pointid.isdigit():
+            messagebox.showerror("Error", "Please enter a valid 10-digit PointID (e.g., 1050030001).")
+            return
+        
+        # Validate chapter name
+        chapter_name = self.auto_pipeline_chapter_var.get().strip()
+        if not chapter_name:
+            messagebox.showerror("Error", "Please enter chapter name.")
+            return
+        
+        # Get Stage 1 prompt from main page
+        if self.use_custom_prompt:
+            stage1_prompt = self.custom_prompt
+        else:
+            if not self.selected_prompt_name:
+                messagebox.showerror("Error", "Please select or enter a prompt for Stage 1.")
+                return
+            stage1_prompt = self.prompt_manager.get_prompt(self.selected_prompt_name) or ""
+        
+        if not stage1_prompt:
+            messagebox.showerror("Error", "Please select or enter a prompt for Stage 1.")
+            return
+        
+        # Get model
+        stage1_model = self.model_var.get()
+        
+        # Disable button
+        self.auto_pipeline_start_btn.configure(state="disabled", text="Running Pipeline...")
+        
+        # Run in background
+        threading.Thread(target=self.run_full_automated_pipeline_worker, daemon=True).start()
+    
+    def run_full_automated_pipeline_worker(self):
+        """Background worker for full automated pipeline starting from PDF"""
+        try:
+            # Get all inputs
+            pdf_path = self.pdf_path
+            pointid = self.auto_pipeline_pointid_var.get().strip()
+            chapter_name = self.auto_pipeline_chapter_var.get().strip()
+            word_file_path = self.auto_pipeline_word_var.get().strip()
+            if not word_file_path or not os.path.exists(word_file_path):
+                word_file_path = None
+            
+            # Get Stage 1 prompt and model
+            if self.use_custom_prompt:
+                stage1_prompt = self.custom_prompt
+            else:
+                stage1_prompt = self.prompt_manager.get_prompt(self.selected_prompt_name) or ""
+            
+            stage1_model = self.model_var.get()
+            
+            # Get Stage 2, 3, 4 prompts from prompt_manager
+            stage2_prompt = self.prompt_manager.get_prompt("Stage 2 - Structured Clinical Lesson (JSON)") or ""
+            stage3_prompt = self.prompt_manager.get_prompt("Stage 3 - Chunked JSON Completion") or ""
+            stage4_prompt = self.prompt_manager.get_prompt("Stage 4 - Prompt") or ""
+            
+            # Get Stage E, J, V prompts
+            stage_e_prompt = self.prompt_manager.get_prompt("Image Notes Prompt") or ""
+            stage_j_prompt = self.prompt_manager.get_prompt("Importance & Type Prompt") or ""
+            stage_v_prompt_1 = self.prompt_manager.get_prompt("Test Bank Generation - Step 1 Prompt") or ""
+            stage_v_prompt_2 = self.prompt_manager.get_prompt("Test Bank Generation - Step 2 Prompt") or ""
+            stage_v_prompt_3 = self.prompt_manager.get_prompt("Test Bank Generation - Step 3 Prompt") or ""
+            
+            # Get Stage X, Y, Z prompts (optional)
+            old_book_pdf_path = self.auto_pipeline_old_pdf_var.get().strip()
+            if not old_book_pdf_path or not os.path.exists(old_book_pdf_path):
+                old_book_pdf_path = None
+            
+            stage_x_pdf_prompt = self.prompt_manager.get_prompt("Stage X - PDF Extraction Prompt") or ""
+            stage_x_change_prompt = self.prompt_manager.get_prompt("Change Detection Prompt") or ""
+            stage_y_prompt = self.prompt_manager.get_prompt("Deletion Detection Prompt") or ""
+            stage_z_prompt = self.prompt_manager.get_prompt("RichText Generation Prompt") or ""
+            
+            # Validate required prompts
+            if not stage2_prompt:
+                messagebox.showerror("Error", "Stage 2 prompt not found in prompts.json. Please add it.")
+                return
+            if not stage3_prompt:
+                messagebox.showerror("Error", "Stage 3 prompt not found in prompts.json. Please add it.")
+                return
+            if not stage4_prompt:
+                messagebox.showerror("Error", "Stage 4 prompt not found in prompts.json. Please add it.")
+                return
+            if not stage_e_prompt:
+                messagebox.showerror("Error", "Stage E prompt not found in prompts.json. Please add it.")
+                return
+            
+            # Progress callback
+            def progress_callback(msg: str):
+                self.root.after(0, lambda: self.auto_pipeline_progress_label.configure(text=msg))
+            
+            # Initialize orchestrator
+            orchestrator = AutomatedPipelineOrchestrator(self.api_client)
+            
+            # Output directory
+            output_dir = os.path.dirname(pdf_path) or os.getcwd()
+            
+            # Run pipeline
+            results = orchestrator.run_automated_pipeline(
+                pdf_path=pdf_path,
+                stage1_prompt=stage1_prompt,
+                stage1_model=stage1_model,
+                stage2_prompt=stage2_prompt,
+                stage2_model=stage1_model,  # Use same model
+                chapter_name=chapter_name,
+                stage3_prompt=stage3_prompt,
+                stage3_model=stage1_model,
+                stage4_prompt=stage4_prompt,
+                stage4_model=stage1_model,
+                start_pointid=pointid,
+                stage_e_prompt=stage_e_prompt,
+                stage_e_model=stage1_model,
+                word_file_path=word_file_path,
+                stage_j_prompt=stage_j_prompt if stage_j_prompt else None,
+                stage_j_model=stage1_model if stage_j_prompt else None,
+                stage_v_prompt_1=stage_v_prompt_1 if stage_v_prompt_1 else None,
+                stage_v_model_1=stage1_model if stage_v_prompt_1 else None,
+                stage_v_prompt_2=stage_v_prompt_2 if stage_v_prompt_2 else None,
+                stage_v_model_2=stage1_model if stage_v_prompt_2 else None,
+                stage_v_prompt_3=stage_v_prompt_3 if stage_v_prompt_3 else None,
+                stage_v_model_3=stage1_model if stage_v_prompt_3 else None,
+                old_book_pdf_path=old_book_pdf_path,
+                stage_x_pdf_extraction_prompt=stage_x_pdf_prompt if stage_x_pdf_prompt else None,
+                stage_x_pdf_extraction_model=stage1_model if stage_x_pdf_prompt else None,
+                stage_x_change_prompt=stage_x_change_prompt if stage_x_change_prompt else None,
+                stage_x_change_model=stage1_model if stage_x_change_prompt else None,
+                stage_y_prompt=stage_y_prompt if stage_y_prompt else None,
+                stage_y_model=stage1_model if stage_y_prompt else None,
+                stage_z_prompt=stage_z_prompt if stage_z_prompt else None,
+                stage_z_model=stage1_model if stage_z_prompt else None,
+                output_dir=output_dir,
+                progress_callback=progress_callback
+            )
+            
+            # Show results
+            successful = [name for name, result in results.items() if result.status.value == "success"]
+            failed = [name for name, result in results.items() if result.status.value == "failed"]
+            
+            summary = f"Pipeline completed!\n\nSuccessful stages: {', '.join(successful) if successful else 'None'}\n"
+            if failed:
+                summary += f"\nFailed stages: {', '.join(failed)}\n"
+                for name in failed:
+                    summary += f"  - Stage {name}: {results[name].error_message}\n"
+            
+            messagebox.showinfo("Pipeline Complete", summary)
+            self.root.after(0, lambda: self.auto_pipeline_progress_label.configure(
+                text=f"Completed! Successful: {len(successful)}, Failed: {len(failed)}"
+            ))
+            
+        except Exception as e:
+            self.logger.error(f"Error in automated pipeline: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Pipeline error:\n{str(e)}")
+            self.root.after(0, lambda: self.auto_pipeline_progress_label.configure(
+                text=f"Error: {str(e)}", text_color="red"
+            ))
+        finally:
+            self.root.after(0, lambda: self.auto_pipeline_start_btn.configure(
+                state="normal", text="Start Automated Pipeline"
+            ))
+    
     def run(self):
         """Start the GUI main loop"""
         self.root.mainloop()
