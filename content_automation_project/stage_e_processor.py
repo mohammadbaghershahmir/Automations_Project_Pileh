@@ -23,6 +23,7 @@ class StageEProcessor(BaseStageProcessor):
         self,
         stage4_path: str,
         stage1_path: str,
+        ocr_extraction_json_path: str,
         prompt: str,
         model_name: str,
         output_dir: Optional[str] = None,
@@ -34,6 +35,7 @@ class StageEProcessor(BaseStageProcessor):
         Args:
             stage4_path: Path to Stage 4 JSON file (with PointId)
             stage1_path: Path to Stage 1 JSON file
+            ocr_extraction_json_path: Path to OCR Extraction JSON file (for chapter/subchapter/topic)
             prompt: User prompt for image notes generation
             model_name: Gemini model name
             output_dir: Output directory (defaults to stage4_path directory)
@@ -49,6 +51,23 @@ class StageEProcessor(BaseStageProcessor):
         
         _progress("Starting Stage E processing...")
         
+        # Load OCR Extraction JSON for chapter/subchapter/topic mapping
+        _progress("Loading OCR Extraction JSON...")
+        ocr_extraction_data = self.load_json_file(ocr_extraction_json_path)
+        if not ocr_extraction_data:
+            self.logger.error("Failed to load OCR Extraction JSON")
+            return None
+        
+        # Extract chapter/subchapter/topic mapping from OCR Extraction JSON
+        _progress("Extracting chapter/subchapter/topic mapping from OCR Extraction JSON...")
+        chapter_subchapter_topic_mapping = self._extract_chapter_subchapter_topic_mapping(ocr_extraction_data)
+        
+        if not chapter_subchapter_topic_mapping:
+            self.logger.warning("No chapter/subchapter/topic mapping found in OCR Extraction JSON")
+            _progress("Warning: No chapter/subchapter/topic mapping found. Continuing without them.")
+        else:
+            _progress(f"Extracted {len(chapter_subchapter_topic_mapping)} chapter/subchapter/topic mappings")
+        
         # Load Stage 4 JSON
         _progress("Loading Stage 4 JSON...")
         stage4_data = self.load_json_file(stage4_path)
@@ -63,16 +82,44 @@ class StageEProcessor(BaseStageProcessor):
             self.logger.error("Failed to load Stage 1 JSON")
             return None
         
+        # Log Stage 1 JSON structure for debugging
+        if isinstance(stage1_data, dict):
+            self.logger.info(f"Stage 1 JSON keys: {list(stage1_data.keys())}")
+            if "rows" in stage1_data:
+                self.logger.info(f"Stage 1 has 'rows' key with {len(stage1_data.get('rows', []))} items")
+            elif "data" in stage1_data:
+                self.logger.info(f"Stage 1 has 'data' key with {len(stage1_data.get('data', []))} items")
+            elif "points" in stage1_data:
+                self.logger.info(f"Stage 1 has 'points' key with {len(stage1_data.get('points', []))} items")
+            else:
+                self.logger.warning(f"Stage 1 JSON structure: {json.dumps(stage1_data, indent=2)[:500]}...")
+        elif isinstance(stage1_data, list):
+            self.logger.info(f"Stage 1 JSON is a list with {len(stage1_data)} items")
+        else:
+            self.logger.warning(f"Stage 1 JSON is of type: {type(stage1_data)}")
+        
         # Extract data from both files
         stage4_points = self.get_data_from_json(stage4_data)
         stage1_rows = self.get_data_from_json(stage1_data)
         
+        # If Stage 1 has chapters structure, convert it to rows
+        if not stage1_rows and isinstance(stage1_data, dict) and "chapters" in stage1_data:
+            _progress("Converting chapters structure to rows...")
+            stage1_rows = self._convert_chapters_to_rows(stage1_data.get("chapters", []))
+            if stage1_rows:
+                self.logger.info(f"Converted {len(stage1_rows)} rows from chapters structure")
+                _progress(f"Converted {len(stage1_rows)} rows from chapters structure")
+        
         if not stage4_points:
             self.logger.error("Stage 4 JSON has no data/points")
+            _progress("Error: Stage 4 JSON has no data/points")
             return None
         
         if not stage1_rows:
-            self.logger.error("Stage 1 JSON has no data/rows")
+            self.logger.error(f"Stage 1 JSON has no data/rows. JSON structure: {type(stage1_data)}")
+            if isinstance(stage1_data, dict):
+                self.logger.error(f"Available keys in Stage 1 JSON: {list(stage1_data.keys())}")
+            _progress("Error: Stage 1 JSON has no data/rows. Please check the JSON structure.")
             return None
         
         # Extract book and chapter from first PointId in Stage 4
@@ -303,6 +350,41 @@ Stage 1 JSON (original):
             self.logger.error(f"Error saving filepic JSON: {e}", exc_info=True)
             # Continue anyway, Stage F can try to load from TXT
         
+        # Add chapter/subchapter/topic to Stage 4 points
+        _progress("Adding chapter/subchapter/topic to Stage 4 points...")
+        for idx, point in enumerate(stage4_points):
+            # Get chapter/subchapter/topic from mapping by index
+            if idx < len(chapter_subchapter_topic_mapping):
+                mapping = chapter_subchapter_topic_mapping[idx]
+                point["chapter"] = mapping.get("chapter", "")
+                point["subchapter"] = mapping.get("subchapter", "")
+                point["topic"] = mapping.get("topic", "")
+            else:
+                # Use last mapping if index exceeds
+                if chapter_subchapter_topic_mapping:
+                    last_mapping = chapter_subchapter_topic_mapping[-1]
+                    point["chapter"] = last_mapping.get("chapter", "")
+                    point["subchapter"] = last_mapping.get("subchapter", "")
+                    point["topic"] = last_mapping.get("topic", "")
+                else:
+                    point["chapter"] = ""
+                    point["subchapter"] = ""
+                    point["topic"] = ""
+        
+        # Add chapter/subchapter/topic to image notes
+        _progress("Adding chapter/subchapter/topic to image notes...")
+        for idx, image_note in enumerate(processed_image_notes):
+            # Image notes come after Stage 4 points, so use last mapping
+            if chapter_subchapter_topic_mapping:
+                last_mapping = chapter_subchapter_topic_mapping[-1]
+                image_note["chapter"] = last_mapping.get("chapter", "")
+                image_note["subchapter"] = last_mapping.get("subchapter", "")
+                image_note["topic"] = last_mapping.get("topic", "")
+            else:
+                image_note["chapter"] = ""
+                image_note["subchapter"] = ""
+                image_note["topic"] = ""
+        
         # Merge Stage 4 points with image notes
         _progress("Merging Stage 4 points with image notes...")
         merged_points = stage4_points + processed_image_notes
@@ -322,6 +404,7 @@ Stage 1 JSON (original):
             "last_point_id": f"{book_id:03d}{chapter_id:03d}{(current_index - 1):04d}",
             "source_stage4": os.path.basename(stage4_path),
             "source_stage1": os.path.basename(stage1_path),
+            "source_ocr_extraction": os.path.basename(ocr_extraction_json_path),
             "stage_e_txt_file": os.path.basename(txt_path),
             "filepic_json_file": os.path.basename(filepic_json_path) if filepic_saved else None,
             "filepic_json_path": filepic_json_path if filepic_saved else None,
@@ -339,4 +422,107 @@ Stage 1 JSON (original):
         else:
             self.logger.error("Failed to save Stage E output")
             return None
+    
+    def _convert_chapters_to_rows(self, chapters: List[Dict]) -> List[Dict]:
+        """
+        Convert chapters structure to rows structure.
+        
+        Args:
+            chapters: List of chapter objects with subchapters
+            
+        Returns:
+            List of row objects
+        """
+        rows = []
+        for chapter_obj in chapters:
+            chapter_name = chapter_obj.get("chapter", "")
+            subchapters = chapter_obj.get("subchapters", [])
+            
+            if isinstance(subchapters, list):
+                for subchapter_obj in subchapters:
+                    # Create a row from subchapter data
+                    row = {
+                        "chapter": chapter_name,
+                        **subchapter_obj  # Include all subchapter fields
+                    }
+                    rows.append(row)
+            elif isinstance(subchapters, dict):
+                # If subchapters is a dict, treat it as a single row
+                row = {
+                    "chapter": chapter_name,
+                    **subchapters
+                }
+                rows.append(row)
+        
+        return rows
+    
+    def _extract_chapter_subchapter_topic_mapping(self, ocr_extraction_data: Dict) -> List[Dict]:
+        """
+        Extract chapter/subchapter/topic mapping from OCR Extraction JSON.
+        
+        OCR Extraction JSON structure:
+        {
+          "chapters": [
+            {
+              "chapter": "...",
+              "subchapters": [
+                {
+                  "subchapter": "...",
+                  "topics": [
+                    {
+                      "topic": "...",
+                      "extractions": [...]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        
+        Returns a flat list of {chapter, subchapter, topic} for each extraction point.
+        """
+        mapping = []
+        
+        chapters = ocr_extraction_data.get("chapters", [])
+        
+        for chapter_obj in chapters:
+            if not isinstance(chapter_obj, dict):
+                continue
+            
+            chapter_name = chapter_obj.get("chapter", "")
+            subchapters = chapter_obj.get("subchapters", [])
+            
+            for subchapter_obj in subchapters:
+                if not isinstance(subchapter_obj, dict):
+                    continue
+                
+                subchapter_name = subchapter_obj.get("subchapter", "")
+                topics = subchapter_obj.get("topics", [])
+                
+                for topic_obj in topics:
+                    if not isinstance(topic_obj, dict):
+                        continue
+                    
+                    topic_name = topic_obj.get("topic", "")
+                    extractions = topic_obj.get("extractions", [])
+                    
+                    # For each extraction, add a mapping entry
+                    # If extractions is a list, create one mapping per extraction
+                    if isinstance(extractions, list):
+                        for extraction in extractions:
+                            mapping.append({
+                                "chapter": chapter_name,
+                                "subchapter": subchapter_name,
+                                "topic": topic_name
+                            })
+                    else:
+                        # If extractions is not a list, create one mapping
+                        mapping.append({
+                            "chapter": chapter_name,
+                            "subchapter": subchapter_name,
+                            "topic": topic_name
+                        })
+        
+        return mapping
 

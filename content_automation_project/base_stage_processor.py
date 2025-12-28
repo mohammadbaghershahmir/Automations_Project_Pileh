@@ -177,7 +177,7 @@ class BaseStageProcessor:
         Extract data array from JSON.
         Supports multiple structures: 
         - Direct array: [{...}, {...}]
-        - Object with data: {metadata, data}, {metadata, points}, {rows}
+        - Object with data: {metadata, data}, {metadata, points}, {rows}, {chapters}
         
         Args:
             json_data: JSON dictionary or list
@@ -189,7 +189,7 @@ class BaseStageProcessor:
         if isinstance(json_data, list):
             return json_data
         
-        # If json_data is a dict, look for data/points/rows keys
+        # If json_data is a dict, look for data/points/rows/chapters keys
         if isinstance(json_data, dict):
             if "data" in json_data:
                 return json_data["data"]
@@ -197,8 +197,24 @@ class BaseStageProcessor:
                 return json_data["points"]
             elif "rows" in json_data:
                 return json_data["rows"]
+            elif "chapters" in json_data:
+                # If chapters is a list, return it directly
+                chapters = json_data["chapters"]
+                if isinstance(chapters, list):
+                    return chapters
+                # If chapters is a dict, try to extract rows/data from it
+                elif isinstance(chapters, dict):
+                    if "rows" in chapters:
+                        return chapters["rows"]
+                    elif "data" in chapters:
+                        return chapters["data"]
+                    else:
+                        # Return chapters dict as a single-item list
+                        return [chapters]
+                else:
+                    return []
             else:
-                self.logger.warning("No data/points/rows found in JSON, returning empty list")
+                self.logger.warning("No data/points/rows/chapters found in JSON, returning empty list")
                 return []
         
         # Fallback: return empty list

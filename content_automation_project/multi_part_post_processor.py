@@ -587,5 +587,440 @@ class MultiPartPostProcessor:
             self.logger.error(f"Failed to save post-processed JSON: {e}")
             return None, {}
 
+    def process_final_json_by_topics(
+        self,
+        json_path: str,
+        topic_file_path: str,
+        user_prompt: str,
+        model_name: str,
+    ) -> Optional[Tuple[str, Dict[str, str]]]:
+        """
+        Take final_output.json, split rows by Topic (from topic file), send each Topic with the given prompt
+        to the language model (via process_text), collect all JSON responses, and save
+        a combined final JSON file.
+
+        Args:
+            json_path: Path to existing final_output.json (OCR Extraction JSON)
+            topic_file_path: Path to topic file (t{book}{chapter}.json)
+            user_prompt: Prompt/instruction for second-stage processing
+            model_name: Gemini model name to use
+
+        Returns:
+            Tuple of (Path to combined final JSON file, Dict of topic_id -> response_text), or (None, {}) on error.
+        """
+        if not os.path.exists(json_path):
+            self.logger.error(f"JSON file not found: {json_path}")
+            return None, {}
+        
+        if not os.path.exists(topic_file_path):
+            self.logger.error(f"Topic file not found: {topic_file_path}")
+            return None, {}
+
+        self.logger.info(f"Loading input JSON file: {json_path}")
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self.logger.error(f"Failed to load JSON file {json_path}: {e}")
+            return None, {}
+
+        rows = data.get("rows", []) or data.get("data", [])
+        if not isinstance(rows, list) or not rows:
+            self.logger.error("Input JSON has no rows to process")
+            return None, {}
+
+        # Load topic file
+        self.logger.info(f"Loading topic file: {topic_file_path}")
+        try:
+            with open(topic_file_path, "r", encoding="utf-8") as f:
+                topic_data = json.load(f)
+        except Exception as e:
+            self.logger.error(f"Failed to load topic file {topic_file_path}: {e}")
+            return None, {}
+
+        # Extract topics list from topic file
+        topics_list = topic_data if isinstance(topic_data, list) else topic_data.get("data", topic_data.get("topics", []))
+        if not topics_list:
+            self.logger.error("Topic file has no topics")
+            return None, {}
+
+        self.logger.info(f"Found {len(rows)} rows in input JSON. Grouping by Topic...")
+        
+        # Group rows by Topic
+        # We'll match rows to topics based on topic field in rows
+        topics: Dict[str, List[Dict[str, Any]]] = {}
+        unmatched_rows = []
+        
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            # Try to find topic in row
+            topic_value = row.get("topic", "") or row.get("Topic", "")
+            if topic_value:
+                # Normalize topic value for matching
+                topic_key = str(topic_value).strip().lower()
+                if topic_key not in topics:
+                    topics[topic_key] = []
+                topics[topic_key].append(row)
+            else:
+                unmatched_rows.append(row)
+        
+        # If we have unmatched rows, try to match them to topics from topic file
+        if unmatched_rows:
+            self.logger.warning(f"Found {len(unmatched_rows)} rows without topic field. Attempting to match...")
+            # For now, we'll assign unmatched rows to a default topic
+            if "default" not in topics:
+                topics["default"] = []
+            topics["default"].extend(unmatched_rows)
+
+        if not topics:
+            self.logger.error("No valid Topic information found in rows")
+            return None, {}
+
+        sorted_topics = sorted(topics.keys())
+        self.logger.info(f"Processing {len(sorted_topics)} topics: {sorted_topics}")
+        all_responses: List[str] = []
+        topic_responses: Dict[str, str] = {}
+
+        for topic_id in sorted_topics:
+            topic_rows = topics[topic_id]
+            if not topic_rows:
+                continue
+
+            # Build text payload: just the JSON for this topic
+            topic_json_text = json.dumps(topic_rows, ensure_ascii=False, indent=2)
+
+            # Use only user's prompt, no additions
+            self.logger.info(f"Processing Topic {topic_id} ({len(topic_rows)} rows) with second-stage prompt...")
+            response_text = self.api_client.process_text(
+                text=topic_json_text,
+                system_prompt=user_prompt,
+                model_name=model_name,
+            )
+
+            if not response_text:
+                self.logger.error(f"No response received for Topic {topic_id}, aborting post-process")
+                return None, {}
+
+            self.logger.info(f"Topic {topic_id} processed successfully. Response length: {len(response_text)} characters")
+            # Store response as-is (no parsing, no conversion)
+            all_responses.append(response_text)
+            topic_responses[topic_id] = response_text
+
+        if not all_responses:
+            self.logger.error("No responses produced by second-stage processing")
+            return None, {}
+
+        # Extract JSON blocks from each response separately, then combine
+        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per topic)...")
+        all_json_blocks = []
+        
+        for topic_id, response_text in zip(sorted_topics, all_responses):
+            self.logger.debug(f"Topic {topic_id}: Extracting JSON from response ({len(response_text)} chars)...")
+            # Extract JSON blocks from this response
+            topic_json_blocks = self._extract_json_blocks_from_text(response_text)
+            if topic_json_blocks:
+                all_json_blocks.extend(topic_json_blocks)
+                self.logger.debug(f"Topic {topic_id}: Extracted {len(topic_json_blocks)} JSON block(s)")
+            else:
+                self.logger.warning(f"Topic {topic_id}: No JSON blocks found in response")
+        
+        if not all_json_blocks:
+            self.logger.error("No JSON blocks extracted from any response")
+            return None, {}
+
+        self.logger.info(f"Total {len(all_json_blocks)} JSON block(s) extracted from all topics")
+        
+        # Combine all JSON blocks into final structure
+        self.logger.info("Combining JSON blocks into final structure...")
+        json_data = self._combine_json_blocks(all_json_blocks)
+        if not json_data:
+            self.logger.error("Failed to extract JSON from responses")
+            return None, {}
+
+        # Save as JSON
+        base_dir = os.path.dirname(json_path) or os.getcwd()
+        input_name = os.path.basename(json_path)
+        base_name, _ = os.path.splitext(input_name)
+        # Stage 2 output naming: append explicit stage suffix
+        json_filename = f"{base_name}_stage2.json"
+        json_path_final = os.path.join(base_dir, json_filename)
+
+        try:
+            self.logger.info(f"Saving post-processed JSON to: {json_path_final}")
+            with open(json_path_final, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Post-processed JSON saved successfully: {json_path_final}")
+            return json_path_final, topic_responses
+        except Exception as e:
+            self.logger.error(f"Failed to save post-processed JSON: {e}")
+            return None, {}
+
+    def process_document_processing_from_ocr_json(
+        self,
+        ocr_json_path: str,
+        user_prompt: str,
+        model_name: str,
+        book_id: Optional[int] = None,
+        chapter_id: Optional[int] = None,
+        start_point_index: int = 1,
+        progress_callback: Optional[Any] = None,
+    ) -> Optional[str]:
+        """
+        Process Document Processing stage using OCR Extraction JSON as input.
+        
+        This method:
+        1. Reads OCR Extraction JSON (with chapters->subchapters->topics structure)
+        2. Extracts all topics with their subchapter names
+        3. For each topic, replaces {Topic_NAME} and {Subchapter_Name} in the prompt
+        4. Processes each topic with the replaced prompt
+        5. Combines all outputs
+        6. Flattens to points and assigns PointId
+        
+        Args:
+            ocr_json_path: Path to OCR Extraction JSON file
+            user_prompt: Prompt template with {Topic_NAME} and {Subchapter_Name} placeholders
+            model_name: Gemini model name to use
+            book_id: Book ID for PointId generation
+            chapter_id: Chapter ID for PointId generation
+            start_point_index: Starting index for PointId (default: 1)
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            Path to final output JSON file, or None on error
+        """
+        if not os.path.exists(ocr_json_path):
+            self.logger.error(f"OCR JSON file not found: {ocr_json_path}")
+            return None
+        
+        # Load OCR Extraction JSON
+        self.logger.info(f"Loading OCR Extraction JSON: {ocr_json_path}")
+        try:
+            with open(ocr_json_path, "r", encoding="utf-8") as f:
+                ocr_data = json.load(f)
+        except Exception as e:
+            self.logger.error(f"Failed to load OCR JSON file {ocr_json_path}: {e}")
+            return None
+        
+        # Extract chapters structure
+        chapters = ocr_data.get("chapters", [])
+        if not chapters:
+            self.logger.error("OCR JSON has no 'chapters' structure")
+            return None
+        
+        # Collect all topics with their subchapter and chapter info
+        topics_list = []
+        for chapter in chapters:
+            if not isinstance(chapter, dict):
+                continue
+            chapter_name = chapter.get("chapter", "")
+            subchapters = chapter.get("subchapters", [])
+            
+            for subchapter in subchapters:
+                if not isinstance(subchapter, dict):
+                    continue
+                subchapter_name = subchapter.get("subchapter", "")
+                topics = subchapter.get("topics", [])
+                
+                for topic in topics:
+                    if not isinstance(topic, dict):
+                        continue
+                    topic_name = topic.get("topic", "")
+                    extractions = topic.get("extractions", [])
+                    
+                    if topic_name and extractions:
+                        topics_list.append({
+                            "chapter": chapter_name,
+                            "subchapter": subchapter_name,
+                            "topic": topic_name,
+                            "extractions": extractions
+                        })
+        
+        if not topics_list:
+            self.logger.error("No topics found in OCR JSON")
+            return None
+        
+        self.logger.info(f"Found {len(topics_list)} topics to process")
+        if progress_callback:
+            progress_callback(f"Found {len(topics_list)} topics to process")
+        
+        # Process each topic
+        all_responses = []
+        topic_responses = {}
+        
+        for idx, topic_info in enumerate(topics_list, 1):
+            topic_name = topic_info["topic"]
+            subchapter_name = topic_info["subchapter"]
+            extractions = topic_info["extractions"]
+            
+            self.logger.info(f"Processing topic {idx}/{len(topics_list)}: {topic_name} (Subchapter: {subchapter_name})")
+            if progress_callback:
+                progress_callback(f"Processing topic {idx}/{len(topics_list)}: {topic_name}")
+            
+            # Replace placeholders in prompt
+            topic_prompt = user_prompt.replace("{Topic_NAME}", topic_name)
+            topic_prompt = topic_prompt.replace("{Subchapter_Name}", subchapter_name)
+            
+            # Build JSON payload for this topic
+            topic_json = {
+                "topic": topic_name,
+                "subchapter": subchapter_name,
+                "extractions": extractions
+            }
+            topic_json_text = json.dumps(topic_json, ensure_ascii=False, indent=2)
+            
+            # Process with model
+            response_text = self.api_client.process_text(
+                text=topic_json_text,
+                system_prompt=topic_prompt,
+                model_name=model_name,
+            )
+            
+            if not response_text:
+                self.logger.error(f"No response received for topic: {topic_name}")
+                continue
+            
+            self.logger.info(f"Topic {topic_name} processed successfully. Response length: {len(response_text)} characters")
+            all_responses.append(response_text)
+            topic_responses[topic_name] = response_text
+        
+        if not all_responses:
+            self.logger.error("No responses produced by Document Processing")
+            return None
+        
+        # Extract JSON blocks from each response
+        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses...")
+        if progress_callback:
+            progress_callback("Extracting JSON from responses...")
+        
+        all_json_blocks = []
+        for topic_name, response_text in zip([t["topic"] for t in topics_list], all_responses):
+            self.logger.debug(f"Topic {topic_name}: Extracting JSON from response...")
+            topic_json_blocks = self._extract_json_blocks_from_text(response_text)
+            if topic_json_blocks:
+                all_json_blocks.extend(topic_json_blocks)
+                self.logger.debug(f"Topic {topic_name}: Extracted {len(topic_json_blocks)} JSON block(s)")
+            else:
+                self.logger.warning(f"Topic {topic_name}: No JSON blocks found in response")
+        
+        if not all_json_blocks:
+            self.logger.error("No JSON blocks extracted from any response")
+            return None
+        
+        # Combine all JSON blocks
+        self.logger.info("Combining JSON blocks into final structure...")
+        if progress_callback:
+            progress_callback("Combining JSON blocks...")
+        
+        json_data = self._combine_json_blocks(all_json_blocks)
+        if not json_data:
+            self.logger.error("Failed to extract JSON from responses")
+            return None
+        
+        # Flatten to points using ThirdStageConverter
+        self.logger.info("Flattening hierarchical structure to points...")
+        if progress_callback:
+            progress_callback("Flattening to points...")
+        
+        from third_stage_converter import ThirdStageConverter
+        converter = ThirdStageConverter()
+        
+        # Extract chapter name from first topic if available
+        chapter_name = topics_list[0]["chapter"] if topics_list else ""
+        
+        try:
+            flat_rows = converter._flatten_to_points(json_data)
+            self.logger.info(f"Extracted {len(flat_rows)} points from Document Processing")
+        except Exception as e:
+            self.logger.error(f"Failed to flatten JSON to points: {e}")
+            # Try to use json_data directly if it's already a list
+            if isinstance(json_data, list):
+                flat_rows = json_data
+            elif isinstance(json_data, dict) and "content" in json_data:
+                # Try to flatten content
+                try:
+                    flat_rows = converter._flatten_to_points(json_data)
+                except:
+                    flat_rows = []
+            else:
+                flat_rows = []
+        
+        if not flat_rows:
+            self.logger.warning("No points extracted from Document Processing output")
+            return None
+        
+        # Assign PointId and add chapter/subchapter/topic
+        if not book_id:
+            book_id = 1
+        if not chapter_id:
+            chapter_id = 1
+        
+        self.logger.info(f"Assigning PointId and chapter/subchapter/topic to {len(flat_rows)} points (starting from {start_point_index})...")
+        if progress_callback:
+            progress_callback(f"Assigning PointId to {len(flat_rows)} points...")
+        
+        # Calculate points distribution across topics
+        total_topics = len(topics_list)
+        points_per_topic = len(flat_rows) // total_topics if total_topics > 0 else 0
+        if points_per_topic == 0:
+            points_per_topic = 1
+        
+        self.logger.info(f"Distributing {len(flat_rows)} points across {total_topics} topics (~{points_per_topic} points per topic)")
+        
+        current_index = start_point_index
+        for point_idx, row in enumerate(flat_rows):
+            point_id = f"{book_id:03d}{chapter_id:03d}{current_index:04d}"
+            row["PointId"] = point_id
+            
+            # Determine which topic this point belongs to based on index
+            topic_idx = min(point_idx // points_per_topic, len(topics_list) - 1)
+            topic_info = topics_list[topic_idx]
+            
+            # Add chapter/subchapter/topic from OCR Extraction JSON
+            row["chapter"] = topic_info.get("chapter", "")
+            row["subchapter"] = topic_info.get("subchapter", "")
+            row["topic"] = topic_info.get("topic", "")
+            
+            current_index += 1
+        
+        # Build final output
+        from datetime import datetime
+        base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
+        input_name = os.path.basename(ocr_json_path)
+        base_name, _ = os.path.splitext(input_name)
+        # Remove _final_output suffix if present
+        if base_name.endswith("_final_output"):
+            base_name = base_name[:-13]
+        
+        output_filename = f"{base_name}_document_processing_final.json"
+        output_path = os.path.join(base_dir, output_filename)
+        
+        final_output = {
+            "metadata": {
+                "chapter": chapter_name,
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "total_points": len(flat_rows),
+                "start_point_index": start_point_index,
+                "next_free_index": current_index,
+                "processed_at": datetime.now().isoformat(),
+                "source_file": os.path.basename(ocr_json_path),
+                "model": model_name,
+            },
+            "points": flat_rows,
+        }
+        
+        try:
+            self.logger.info(f"Saving Document Processing output to: {output_path}")
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(final_output, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Document Processing completed successfully: {output_path}")
+            if progress_callback:
+                progress_callback(f"✓ Document Processing completed. {len(flat_rows)} points generated.")
+            return output_path
+        except Exception as e:
+            self.logger.error(f"Failed to save Document Processing output: {e}")
+            return None
+
 
 

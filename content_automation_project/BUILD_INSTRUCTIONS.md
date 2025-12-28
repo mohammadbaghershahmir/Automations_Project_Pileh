@@ -69,3 +69,10 @@ pyinstaller build_exe.spec --clean --noconfirm
 
 
 
+
+
+
+
+
+
+

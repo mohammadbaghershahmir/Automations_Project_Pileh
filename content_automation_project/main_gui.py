@@ -33,6 +33,7 @@ from stage_v_processor import StageVProcessor
 from stage_x_processor import StageXProcessor
 from stage_y_processor import StageYProcessor
 from stage_z_processor import StageZProcessor
+from pre_ocr_topic_processor import PreOCRTopicProcessor
 from automated_pipeline_orchestrator import AutomatedPipelineOrchestrator
 
 
@@ -77,11 +78,15 @@ class ContentAutomationGUI:
         self.stage_x_processor = StageXProcessor(self.api_client)
         self.stage_y_processor = StageYProcessor(self.api_client)
         self.stage_z_processor = StageZProcessor(self.api_client)
+        self.pre_ocr_topic_processor = PreOCRTopicProcessor(self.api_client)
         
         # Variables
         self.pdf_path = None
         self.selected_prompt_name = None
         self.custom_prompt = ""
+        
+        # Default settings from main view (will be used across all stages)
+        # These are set from Model Selection and Output Section in main view
         self.use_custom_prompt = False
         self.last_final_output_path = None       # Stage 1 JSON
         self.last_post_processed_path = None     # Stage 2 JSON
@@ -95,6 +100,11 @@ class ContentAutomationGUI:
         self.last_stage_v_path = None            # Stage V JSON
         self.last_stage_m_path = None            # Stage M JSON
         self.last_stage_l_path = None            # Stage L JSON
+        
+        # Initialize default settings variables (shared across all views)
+        # These will be used as default values for all stages
+        self.model_var = ctk.StringVar(value="gemini-2.5-pro")
+        self.output_folder_var = ctk.StringVar()
         
         # Setup UI
         self.setup_ui()
@@ -118,7 +128,15 @@ class ContentAutomationGUI:
         # Initially hide tabview - show main frame first
         self.main_tabview.pack_forget()
         
-        # Tab 1: Document Processing (for tabview access) - MUST be first to be default
+        # Tab 1: Pre-OCR Topic Extraction (FIRST TAB)
+        self.tab_pre_ocr_topic = self.main_tabview.add("Pre-OCR Topic Extraction")
+        self.setup_pre_ocr_topic_ui(self.tab_pre_ocr_topic)
+        
+        # Tab 2: OCR Extraction
+        self.tab_ocr_extraction = self.main_tabview.add("OCR Extraction")
+        self.setup_ocr_extraction_ui(self.tab_ocr_extraction)
+        
+        # Tab 3: Document Processing (for tabview access)
         self.tab_stages_1_4 = self.main_tabview.add("Document Processing")
         
         # Main page: Stages 1-4 (Original UI) - shown directly on root
@@ -130,7 +148,7 @@ class ContentAutomationGUI:
         # Now setup Stages 2-3-4 UI in tabview (the actual Stages 1-4 form)
         self.setup_stages_2_3_4_ui(self.tab_stages_1_4)
         
-        # Tab 2: Image Notes Generation
+        # Tab 3: Image Notes Generation
         self.tab_stage_e = self.main_tabview.add("Image Notes Generation")
         self.setup_stage_e_ui(self.tab_stage_e)
         
@@ -170,8 +188,8 @@ class ContentAutomationGUI:
         self.tab_stage_z = self.main_tabview.add("RichText Generation")
         self.setup_stage_z_ui(self.tab_stage_z)
         
-        # Ensure Document Processing is the default/selected tab
-        self.main_tabview.set("Document Processing")
+        # Ensure Pre-OCR Topic Extraction is the default/selected tab
+        self.main_tabview.set("Pre-OCR Topic Extraction")
         
         # Pipeline Status Bar (shown on all tabs)
         self.setup_pipeline_status_bar()
@@ -200,15 +218,18 @@ class ContentAutomationGUI:
                 hover_color="darkgray"
             ).pack(side="left", padx=10, pady=5)
         
+        # Title for main view only
+        if not is_tabview:
+            title_label = ctk.CTkLabel(
+                main_frame,
+                text="Settings",
+                font=ctk.CTkFont(size=24, weight="bold")
+            )
+            title_label.pack(pady=(0, 20))
+        
         # Setup all sections - widgets will be shared via StringVar and other variables
         # API Configuration Section
         self.setup_api_section(main_frame)
-        
-        # PDF Upload Section
-        self.setup_pdf_section(main_frame)
-        
-        # Prompt Selection Section
-        self.setup_prompt_section(main_frame)
         
         # Model Selection Section
         self.setup_model_section(main_frame)
@@ -216,11 +237,8 @@ class ContentAutomationGUI:
         # Output Section
         self.setup_output_section(main_frame)
         
-        # Automated Pipeline Section
+        # Automated Pipeline Section (includes View Other Tools button)
         self.setup_automated_pipeline_section(main_frame)
-        
-        # Control Buttons
-        self.setup_controls(main_frame)
         
         # Status Section
         self.setup_status_section(main_frame)
@@ -264,6 +282,117 @@ class ContentAutomationGUI:
             api_keys_status_label_tab = ctk.CTkLabel(key_frame, text="No API keys loaded", 
                                                       font=ctk.CTkFont(size=10), text_color="gray")
             api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
+    
+    def setup_pre_ocr_topic_ui(self, parent):
+        """Setup UI for Pre-OCR Topic Extraction"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Pre-OCR Topic Extraction", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Extract topics from PDF before OCR extraction. Output: t{book}{chapter}.json",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # PDF file selection for Pre-OCR
+        pdf_frame = ctk.CTkFrame(main_frame)
+        pdf_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(pdf_frame, text="PDF File:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'pre_ocr_pdf_file_var'):
+            self.pre_ocr_pdf_file_var = ctk.StringVar()
+        
+        entry_frame_pdf = ctk.CTkFrame(pdf_frame)
+        entry_frame_pdf.pack(fill="x", padx=10, pady=5)
+        
+        pre_ocr_pdf_entry = ctk.CTkEntry(entry_frame_pdf, textvariable=self.pre_ocr_pdf_file_var)
+        pre_ocr_pdf_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_pdf, text="Browse", 
+                     command=self.browse_pre_ocr_pdf_file, 
+                     width=80).pack(side="right", padx=5)
+        
+        # Validation indicator
+        if not hasattr(self, 'pre_ocr_pdf_valid'):
+            self.pre_ocr_pdf_valid = ctk.CTkLabel(entry_frame_pdf, text="", width=30)
+        self.pre_ocr_pdf_valid.pack(side="right", padx=5)
+        
+        # Prompt selection for Pre-OCR
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(prompt_frame, text="Prompt for Topic Extraction:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'pre_ocr_prompt_text'):
+            self.pre_ocr_prompt_text = ctk.CTkTextbox(prompt_frame, height=120, font=self.farsi_text_font)
+        self.pre_ocr_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Select Gemini Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'pre_ocr_model_var'):
+            self.pre_ocr_model_var = ctk.StringVar(value="gemini-2.5-pro")
+        pre_ocr_model_combo = ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, 
+                                             variable=self.pre_ocr_model_var, width=400)
+        pre_ocr_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # Process button
+        process_frame = ctk.CTkFrame(main_frame)
+        process_frame.pack(fill="x", pady=10)
+        
+        if not hasattr(self, 'pre_ocr_process_btn'):
+            self.pre_ocr_process_btn = ctk.CTkButton(process_frame, text="Extract Topics", 
+                                                    command=self.process_pre_ocr_topic, width=200, height=40,
+                                                    font=ctk.CTkFont(size=14, weight="bold"))
+        self.pre_ocr_process_btn.pack(side="left", padx=10, pady=10)
+        
+        # Status label
+        if not hasattr(self, 'pre_ocr_status_label'):
+            self.pre_ocr_status_label = ctk.CTkLabel(process_frame, text="Ready", 
+                                                     font=ctk.CTkFont(size=12), text_color="gray")
+        self.pre_ocr_status_label.pack(side="left", padx=10, pady=10)
+        
+        # Output file path
+        output_frame = ctk.CTkFrame(main_frame)
+        output_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(output_frame, text="Output File (t{book}{chapter}.json):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'pre_ocr_output_var'):
+            self.pre_ocr_output_var = ctk.StringVar()
+        pre_ocr_output_entry = ctk.CTkEntry(output_frame, textvariable=self.pre_ocr_output_var, 
+                                                width=400, state="readonly")
+        pre_ocr_output_entry.pack(fill="x", padx=10, pady=(0, 10))
     
     def setup_pdf_section(self, parent):
         """Setup PDF upload section"""
@@ -367,12 +496,14 @@ class ContentAutomationGUI:
         ctk.CTkLabel(model_select_frame, text="Select Gemini Model:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        # Only create StringVar if it doesn't exist (for main view)
-        if not hasattr(self, 'model_var'):
-            self.model_var = ctk.StringVar(value="gemini-2.5-pro")
+        # Use shared model_var (initialized in __init__)
         self.model_combo = ctk.CTkComboBox(model_select_frame, values=APIConfig.TEXT_MODELS, 
-                                          variable=self.model_var, width=400)
+                                          variable=self.model_var, width=400,
+                                          command=self.on_model_changed)
         self.model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # Also add trace to StringVar to catch any changes (using trace like other variables)
+        self.model_var.trace('w', lambda *args: self._on_model_var_changed())
         
         ctk.CTkLabel(model_select_frame, 
                     text="Available models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash, etc.", 
@@ -394,7 +525,7 @@ class ContentAutomationGUI:
         ctk.CTkLabel(folder_frame, text="Output Folder:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.output_folder_var = ctk.StringVar()
+        # Use shared output_folder_var (initialized in __init__)
         output_entry = ctk.CTkEntry(folder_frame, textvariable=self.output_folder_var, width=400)
         output_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
         
@@ -439,7 +570,7 @@ class ContentAutomationGUI:
         # Navigation button to switch to tabview
         self.show_tabview_btn = ctk.CTkButton(
             buttons_frame,
-            text="View Other Tools",
+            text="Start Per Stage Processing",
             command=self.show_tabview,
             width=200,
             height=40,
@@ -536,9 +667,13 @@ class ContentAutomationGUI:
         )
         self.auto_pipeline_progress_label.pack(pady=(10, 5))
         
+        # Buttons frame (Start Pipeline and View Other Tools)
+        buttons_frame = ctk.CTkFrame(pipeline_frame)
+        buttons_frame.pack(pady=(5, 15))
+        
         # Start button
         self.auto_pipeline_start_btn = ctk.CTkButton(
-            pipeline_frame,
+            buttons_frame,
             text="Start Automated Pipeline",
             command=self.start_automated_pipeline_from_main,
             width=300,
@@ -547,7 +682,20 @@ class ContentAutomationGUI:
             fg_color="orange",
             hover_color="darkorange"
         )
-        self.auto_pipeline_start_btn.pack(pady=(5, 15))
+        self.auto_pipeline_start_btn.pack(side="left", padx=10)
+        
+        # View Other Tools button (moved from setup_controls)
+        self.show_tabview_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Start Per Stage Processing",
+            command=self.show_tabview,
+            width=200,
+            height=45,
+            font=ctk.CTkFont(size=15, weight="bold"),
+            fg_color="purple",
+            hover_color="darkviolet"
+        )
+        self.show_tabview_btn.pack(side="left", padx=10)
     
     def setup_status_section(self, parent):
         """Setup status section"""
@@ -585,6 +733,16 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", "Failed to load API keys from file")
     
     
+    def browse_pre_ocr_pdf_file(self):
+        """Browse for PDF file for Pre-OCR Topic Extraction"""
+        filename = filedialog.askopenfilename(
+            title="Select PDF File for Pre-OCR Topic Extraction",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        )
+        if filename:
+            self.pre_ocr_pdf_file_var.set(filename)
+            self.pre_ocr_status_label.configure(text=f"PDF selected: {os.path.basename(filename)}", text_color="green")
+    
     def browse_pdf_file(self):
         """Browse for PDF file"""
         filename = filedialog.askopenfilename(
@@ -601,6 +759,163 @@ class ContentAutomationGUI:
         if folder:
             self.output_folder_var.set(folder)
             self.update_status(f"Output folder set: {folder}")
+            self.logger.info(f"Default output folder updated to: {folder}")
+    
+    def on_model_changed(self, value: str):
+        """Callback when model is changed in ComboBox"""
+        if value:
+            value = value.strip()
+            # Force update StringVar to ensure it's synced
+            self.model_var.set(value)
+            # Verify the update
+            verify_value = self.model_var.get()
+            self.logger.info(f"[on_model_changed] Model changed to: {value}, StringVar now: {verify_value}")
+            if verify_value != value:
+                self.logger.warning(f"[on_model_changed] WARNING: StringVar sync failed! Expected: {value}, Got: {verify_value}")
+            # Sync all model ComboBoxes with the new value
+            self.sync_all_model_combos(value)
+            # Also update status if update_status method exists
+            try:
+                self.update_status(f"Default model set to: {value}")
+            except:
+                pass
+    
+    def _on_model_var_changed(self):
+        """Callback when model_var StringVar is changed"""
+        try:
+            new_value = self.model_var.get()
+            if new_value:
+                self.logger.info(f"[_on_model_var_changed] Model variable changed to: {new_value}")
+                # Sync all model ComboBoxes with the new value
+                self.sync_all_model_combos(new_value)
+        except Exception as e:
+            self.logger.warning(f"Error in _on_model_var_changed: {e}")
+    
+    def sync_all_model_combos(self, model_value: str):
+        """Sync all model ComboBoxes in all stages with the default model from settings"""
+        if not model_value:
+            return
+        
+        model_value = model_value.strip()
+        synced_count = 0
+        
+        # List of all model variables to sync
+        model_vars_to_sync = [
+            'pre_ocr_model_var',
+            'ocr_extraction_model_var',
+            'stage_e_model_var',
+            'stage_j_model_var',
+            'stage_h_model_var',
+            'stage_v_model1_var',
+            'stage_v_model2_var',
+            'stage_v_model3_var',
+            'stage_l_model_var',
+            'stage_x_pdf_model_var',
+            'stage_x_change_model_var',
+            'stage_y_ocr_model_var',
+            # Note: stage_y_deletion_model_var is not in UI, deletion_detection_model uses get_default_model()
+            'stage_z_model_var',
+            'second_stage_model_var',
+            'auto_stage3_model_var',
+            'auto_stage4_model_var',
+        ]
+        
+        # Update all model variables
+        for var_name in model_vars_to_sync:
+            if hasattr(self, var_name):
+                try:
+                    var = getattr(self, var_name)
+                    if isinstance(var, ctk.StringVar):
+                        current_value = var.get()
+                        if current_value != model_value:
+                            var.set(model_value)
+                            synced_count += 1
+                            self.logger.debug(f"Synced {var_name} to {model_value}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to sync {var_name}: {e}")
+        
+        if synced_count > 0:
+            self.logger.info(f"[sync_all_model_combos] Synced {synced_count} model ComboBoxes to: {model_value}")
+    
+    def get_default_model(self) -> str:
+        """Get default model from main view Model Selection"""
+        # Try both ComboBox and StringVar, prefer the one that has a value
+        combo_value = None
+        var_value = None
+        
+        # Get from ComboBox
+        if hasattr(self, 'model_combo'):
+            try:
+                combo_value = self.model_combo.get()
+                if combo_value:
+                    combo_value = combo_value.strip()
+            except Exception as e:
+                self.logger.warning(f"Error getting model from ComboBox: {e}")
+        
+        # Get from StringVar
+        if hasattr(self, 'model_var'):
+            try:
+                var_value = self.model_var.get()
+                if var_value:
+                    var_value = var_value.strip()
+            except Exception as e:
+                self.logger.warning(f"Error getting model from StringVar: {e}")
+        
+        # Log what we found for debugging
+        self.logger.info(f"[get_default_model] ComboBox value: {combo_value}, StringVar value: {var_value}")
+        
+        # Prefer ComboBox value (most up-to-date), but sync both
+        if combo_value:
+            # Sync StringVar with ComboBox to keep them in sync
+            if hasattr(self, 'model_var'):
+                current_var = self.model_var.get()
+                if current_var != combo_value:
+                    self.model_var.set(combo_value)
+                    self.logger.info(f"[get_default_model] Synced StringVar with ComboBox: {combo_value}")
+            self.logger.info(f"[get_default_model] Returning model from ComboBox: {combo_value}")
+            return combo_value
+        
+        # Fallback to StringVar
+        if var_value:
+            # Sync ComboBox with StringVar if possible
+            if hasattr(self, 'model_combo'):
+                try:
+                    current_combo = self.model_combo.get()
+                    if current_combo != var_value:
+                        self.model_combo.set(var_value)
+                        self.logger.info(f"[get_default_model] Synced ComboBox with StringVar: {var_value}")
+                except Exception as e:
+                    self.logger.warning(f"[get_default_model] Could not sync ComboBox: {e}")
+            self.logger.info(f"[get_default_model] Returning model from StringVar: {var_value}")
+            return var_value
+        
+        # Final fallback
+        fallback = "gemini-2.5-pro"
+        self.logger.warning(f"[get_default_model] Both ComboBox and StringVar are empty, using fallback: {fallback}")
+        return fallback
+    
+    def get_default_output_dir(self, fallback_path: Optional[str] = None) -> str:
+        """Get default output directory from main view Output Section"""
+        # Always get current value from output_folder_var (shared across all views)
+        if hasattr(self, 'output_folder_var'):
+            current_value = self.output_folder_var.get()
+            if current_value:
+                output_dir = current_value.strip()
+                if output_dir and os.path.exists(output_dir):
+                    self.logger.debug(f"Using default output dir from settings: {output_dir}")
+                    return output_dir
+        
+        # Fallback to provided path (e.g., PDF directory)
+        if fallback_path:
+            fallback_dir = os.path.dirname(fallback_path) if os.path.isfile(fallback_path) else fallback_path
+            if fallback_dir and os.path.exists(fallback_dir):
+                self.logger.debug(f"Using fallback output dir from path: {fallback_dir}")
+                return fallback_dir
+        
+        # Final fallback to current working directory
+        cwd = os.getcwd()
+        self.logger.debug(f"Using current working directory as output dir: {cwd}")
+        return cwd
     
     def validate_pdf(self, file_path: str):
         """Validate PDF file and update UI"""
@@ -876,6 +1191,44 @@ class ContentAutomationGUI:
             except Exception:
                 pass
     
+    def on_ocr_extraction_prompt_type_change(self):
+        """Switch between default and custom prompt for OCR Extraction."""
+        if not hasattr(self, 'ocr_extraction_prompt_type_var') \
+           or not hasattr(self, 'ocr_extraction_default_prompt_combo') \
+           or not hasattr(self, 'ocr_extraction_prompt_text'):
+            return
+        mode = self.ocr_extraction_prompt_type_var.get()
+        if mode == "default":
+            self.ocr_extraction_default_prompt_combo.configure(state="normal")
+            selected_name = self.ocr_extraction_default_prompt_var.get()
+            self.on_ocr_extraction_default_prompt_selected(selected_name)
+            try:
+                self.ocr_extraction_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.ocr_extraction_default_prompt_combo.configure(state="disabled")
+            try:
+                self.ocr_extraction_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    def on_ocr_extraction_default_prompt_selected(self, selected_name: str):
+        """When default OCR Extraction prompt combobox changes, fill the prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'ocr_extraction_prompt_text'):
+            try:
+                self.ocr_extraction_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.ocr_extraction_prompt_text.delete("1.0", tk.END)
+            self.ocr_extraction_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'ocr_extraction_prompt_type_var') and self.ocr_extraction_prompt_type_var.get() == "default":
+                try:
+                    self.ocr_extraction_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+    
     def on_stage_j_prompt_type_change(self):
         """Switch between default and custom prompt for Stage J (Importance & Type)."""
         if not hasattr(self, 'stage_j_prompt_type_var') \
@@ -1055,6 +1408,44 @@ class ContentAutomationGUI:
             except Exception:
                 pass
     
+    def on_stage_y_deletion_default_prompt_selected(self, selected_name: str):
+        """When default Stage Y deletion prompt combobox changes, fill the Stage Y deletion prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_y_deletion_prompt_text'):
+            try:
+                self.stage_y_deletion_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.stage_y_deletion_prompt_text.delete("1.0", tk.END)
+            self.stage_y_deletion_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'stage_y_deletion_prompt_type_var') and self.stage_y_deletion_prompt_type_var.get() == "default":
+                try:
+                    self.stage_y_deletion_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+
+    def on_stage_y_deletion_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage Y deletion detection."""
+        if not hasattr(self, 'stage_y_deletion_prompt_type_var') \
+           or not hasattr(self, 'stage_y_deletion_default_prompt_combo') \
+           or not hasattr(self, 'stage_y_deletion_prompt_text'):
+            return
+        mode = self.stage_y_deletion_prompt_type_var.get()
+        if mode == "default":
+            self.stage_y_deletion_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_y_deletion_default_prompt_var.get()
+            self.on_stage_y_deletion_default_prompt_selected(selected_name)
+            try:
+                self.stage_y_deletion_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_y_deletion_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_y_deletion_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
     # Stage Z Prompt handlers
     def on_stage_z_default_prompt_selected(self, selected_name: str):
         """Load default prompt when selected from combobox."""
@@ -1177,6 +1568,75 @@ class ContentAutomationGUI:
             except Exception:
                 pass
 
+    def process_pre_ocr_topic(self):
+        """Process Pre-OCR Topic Extraction using LLM"""
+        def worker():
+            try:
+                # Disable process button
+                self.pre_ocr_process_btn.configure(state="disabled", text="Processing...")
+                self.pre_ocr_status_label.configure(text="Processing Pre-OCR Topic Extraction...", text_color="blue")
+                
+                # Validate inputs
+                pdf_path = self.pre_ocr_pdf_file_var.get().strip()
+                if not pdf_path or not os.path.exists(pdf_path):
+                    self.pre_ocr_status_label.configure(text="Error: Please select a valid PDF file", text_color="red")
+                    messagebox.showerror("Error", "Please select a valid PDF file")
+                    return
+                
+                prompt = self.pre_ocr_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    self.pre_ocr_status_label.configure(text="Error: Please enter a prompt", text_color="red")
+                    messagebox.showerror("Error", "Please enter a prompt for topic extraction")
+                    return
+                
+                # Validate API keys are loaded
+                if not self.api_key_manager.api_keys:
+                    if not self.api_key_file_var.get():
+                        self.pre_ocr_status_label.configure(text="Error: Please load API keys", text_color="red")
+                        messagebox.showerror("Error", "Please load API keys from CSV file")
+                        return
+                    else:
+                        if not self.api_key_manager.load_from_csv(self.api_key_file_var.get()):
+                            self.pre_ocr_status_label.configure(text="Error: Failed to load API keys", text_color="red")
+                            messagebox.showerror("Error", "Failed to load API keys from CSV file")
+                            return
+                
+                model_name = self.pre_ocr_model_var.get()
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.pre_ocr_status_label.configure(text=msg))
+                
+                # Process Pre-OCR Topic Extraction
+                output_path = self.pre_ocr_topic_processor.process_pre_ocr_topic(
+                    pdf_path=pdf_path,
+                    prompt=prompt,
+                    model_name=model_name,
+                    output_dir=self.get_default_output_dir(pdf_path),
+                    progress_callback=progress_callback
+                )
+                
+                if output_path and os.path.exists(output_path):
+                    self.pre_ocr_output_var.set(output_path)
+                    self.pre_ocr_status_label.configure(
+                        text=f"Success! Output saved to: {os.path.basename(output_path)}", 
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"Pre-OCR Topic Extraction completed!\nOutput: {output_path}")
+                else:
+                    self.pre_ocr_status_label.configure(text="Error: Processing failed", text_color="red")
+                    messagebox.showerror("Error", "Pre-OCR Topic Extraction failed. Check logs for details.")
+                
+            except Exception as e:
+                error_msg = f"Error: {str(e)}"
+                self.pre_ocr_status_label.configure(text=error_msg, text_color="red")
+                self.logger.error(f"Pre-OCR Topic Extraction error: {e}", exc_info=True)
+                messagebox.showerror("Error", f"Pre-OCR Topic Extraction failed: {str(e)}")
+            finally:
+                self.pre_ocr_process_btn.configure(state="normal", text="Extract Topics")
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
     def process_pdf(self):
         """Process PDF with selected prompt and model"""
         def worker():
@@ -1208,8 +1668,9 @@ class ContentAutomationGUI:
                             messagebox.showerror("Error", "Failed to load API keys from CSV file")
                             return
                 
-                # Get selected model
-                model_name = self.model_var.get()
+                # Get selected model (use default from main view)
+                model_name = self.get_default_model()
+                self.logger.info(f"[process_pdf] Using model: {model_name}")
                 
                 # Get current API key info (for logging)
                 current_key_info = self.api_key_manager.get_current_key_info()
@@ -1234,14 +1695,15 @@ class ContentAutomationGUI:
                     """Callback for progress updates during multi-part processing"""
                     self.update_status(message)
                 
-                # Use multi-part processor
+                # Use multi-part processor (use default output dir from main view)
                 final_output_path = self.multi_part_processor.process_multi_part(
                     pdf_path=self.pdf_path,
                     base_prompt=prompt,  # User's original prompt (no modifications)
                     model_name=model_name,
                     temperature=0.7,
                     resume=True,  # Enable resume capability
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    output_dir=self.get_default_output_dir(self.pdf_path)
                 )
                 
                 if final_output_path and os.path.exists(final_output_path):
@@ -1793,7 +2255,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             progress_frame,
-            text="Pipeline Progress (Stages 2 to 3 to 4 per Part)",
+            text="Document Processing Progress",
             font=ctk.CTkFont(size=14, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -1942,7 +2404,7 @@ class ContentAutomationGUI:
 
         ctk.CTkLabel(
             stage2_default_frame_tab,
-            text="Default Stage 2 Prompt:",
+            text="Default Document Processing Prompt:",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", pady=(0, 5))
 
@@ -1984,29 +2446,20 @@ class ContentAutomationGUI:
             if default_prompt_name:
                 self.on_second_stage_default_prompt_selected(default_prompt_name)
 
-        # Chapter name section (right after prompt)
-        chapter_frame = ctk.CTkFrame(stage2_frame)
-        chapter_frame.pack(fill="x", padx=10, pady=(0, 10))
+        # Info label about placeholders
+        info_frame = ctk.CTkFrame(stage2_frame)
+        info_frame.pack(fill="x", padx=10, pady=(0, 10))
         
         ctk.CTkLabel(
-            chapter_frame,
-            text="Chapter Name:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Only create if doesn't exist
-        if not hasattr(self, 'second_stage_chapter_var'):
-            self.second_stage_chapter_var = ctk.StringVar(value="درمان با UV")
-        chapter_entry = ctk.CTkEntry(
-            chapter_frame,
-            textvariable=self.second_stage_chapter_var,
-            width=400
-        )
-        chapter_entry.pack(anchor="w", padx=10, pady=(0, 5))
+            info_frame,
+            text="Note: Your prompt should contain {Topic_NAME} and {Subchapter_Name} placeholders.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(5, 5))
         
         ctk.CTkLabel(
-            chapter_frame,
-            text="This name will automatically replace {CHAPTER_NAME} in your prompts.",
+            info_frame,
+            text="These will be automatically replaced with the actual topic and subchapter names for each topic.",
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 10))
@@ -2017,7 +2470,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             json_frame,
-            text="Input JSON (Stage 1 - final_output.json)",
+            text="Input JSON (OCR Extraction JSON)",
             font=ctk.CTkFont(size=18, weight="bold"),
         ).pack(pady=(15, 10))
         
@@ -2026,33 +2479,41 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             file_frame,
-            text="Stage 1 JSON File:",
+            text="OCR Extraction JSON File:",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
         # Only create if doesn't exist
-        if not hasattr(self, 'second_stage_json_var'):
-            self.second_stage_json_var = ctk.StringVar()
-            if self.last_final_output_path and os.path.exists(self.last_final_output_path):
-                self.second_stage_json_var.set(self.last_final_output_path)
+        if not hasattr(self, 'document_processing_ocr_json_var'):
+            self.document_processing_ocr_json_var = ctk.StringVar()
+            # Try to auto-fill from last OCR extraction path if available
+            if hasattr(self, 'last_ocr_extraction_path') and self.last_ocr_extraction_path:
+                self.document_processing_ocr_json_var.set(self.last_ocr_extraction_path)
         
-        json_entry = ctk.CTkEntry(file_frame, textvariable=self.second_stage_json_var, width=400)
+        json_entry = ctk.CTkEntry(file_frame, textvariable=self.document_processing_ocr_json_var, width=400)
         json_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
         
-        def browse_json_file():
+        def browse_ocr_json_file():
             filename = filedialog.askopenfilename(
-                title="Select Stage 1 final_output.json file",
+                title="Select OCR Extraction JSON file",
                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
             )
             if filename:
-                self.second_stage_json_var.set(filename)
+                self.document_processing_ocr_json_var.set(filename)
         
         ctk.CTkButton(
             file_frame,
             text="Browse",
-            command=browse_json_file,
+            command=browse_ocr_json_file,
             width=80,
         ).pack(side="right", padx=(5, 10), pady=(0, 5))
+        
+        ctk.CTkLabel(
+            file_frame,
+            text="This JSON file should have the structure: chapters -> subchapters -> topics -> extractions",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
         
         # Model selection for second stage
         model_frame = ctk.CTkFrame(main_frame)
@@ -2069,7 +2530,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             inner_model_frame,
-            text="Select model for second-stage (per-Part) processing:",
+            text="Select model for second-stage (per-Topic) processing:",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -2094,235 +2555,26 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             inner_model_frame,
-            text="You can use a lighter model (e.g., gemini-2.5-flash) for faster processing in the second stage.",
+            text="Model will be used for Document Processing (per-Topic processing).",
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 5))
 
         #
-        # --- Automatic Stage 3 & 4 settings (per-Part pipeline) ---
+        # --- PointId Settings ---
         #
-        auto_frame = ctk.CTkFrame(main_frame)
-        auto_frame.pack(fill="x", pady=(0, 20))
+        pointid_frame = ctk.CTkFrame(main_frame)
+        pointid_frame.pack(fill="x", pady=(0, 20))
         
         ctk.CTkLabel(
-            auto_frame,
-            text="Automatic Pipeline Settings (Stages 3 & 4 per Part)",
+            pointid_frame,
+            text="PointId Settings",
             font=ctk.CTkFont(size=18, weight="bold"),
         ).pack(pady=(15, 10))
         
-        # Stage 3 prompt
-        s3_frame = ctk.CTkFrame(auto_frame)
-        s3_frame.pack(fill="x", padx=15, pady=(5, 10))
-        
-        ctk.CTkLabel(
-            s3_frame,
-            text="Stage 3 Prompt (structuring & point extraction):",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", padx=10, pady=(10, 5))
-
-        # Stage 3 prompt mode (default vs custom)
-        s3_mode_frame = ctk.CTkFrame(s3_frame)
-        s3_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
-        if not hasattr(self, 'auto_stage3_prompt_type_var'):
-            self.auto_stage3_prompt_type_var = ctk.StringVar(value="default")
-        ctk.CTkRadioButton(
-            s3_mode_frame,
-            text="Use Default Prompt",
-            variable=self.auto_stage3_prompt_type_var,
-            value="default",
-            command=self.on_auto_stage3_prompt_type_change,
-        ).pack(side="left", padx=(0, 10), pady=5)
-        ctk.CTkRadioButton(
-            s3_mode_frame,
-            text="Use Custom Prompt",
-            variable=self.auto_stage3_prompt_type_var,
-            value="custom",
-            command=self.on_auto_stage3_prompt_type_change,
-        ).pack(side="left", padx=(0, 10), pady=5)
-
-        # Default prompt combobox for Stage 3
-        s3_default_frame = ctk.CTkFrame(s3_frame)
-        s3_default_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        ctk.CTkLabel(
-            s3_default_frame,
-            text="Default Stage 3 Prompt:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", pady=(0, 5))
-
-        stage3_prompt_names = self.prompt_manager.get_prompt_names()
-        preferred_stage3_name = "Stage 3 - Chunked JSON Completion"
-        if preferred_stage3_name in stage3_prompt_names:
-            stage3_default_value = preferred_stage3_name
-        else:
-            stage3_default_value = stage3_prompt_names[0] if stage3_prompt_names else ""
-        self.auto_stage3_default_prompt_var = ctk.StringVar(value=stage3_default_value)
-        self.auto_stage3_default_prompt_combo = ctk.CTkComboBox(
-            s3_default_frame,
-            values=stage3_prompt_names,
-            variable=self.auto_stage3_default_prompt_var,
-            width=400,
-            command=self.on_auto_stage3_default_prompt_selected,
-        )
-        self.auto_stage3_default_prompt_combo.pack(anchor="w", pady=(0, 5))
-        
-        # Only create if doesn't exist
-        if not hasattr(self, 'auto_stage3_prompt_text'):
-            self.auto_stage3_prompt_text = ctk.CTkTextbox(s3_frame, height=140, font=self.farsi_text_font)
-        self.auto_stage3_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
-        # پر کردن خودکار با پرامپت پیش‌فرض در شروع
-        self.on_auto_stage3_prompt_type_change()
-        
-        ctk.CTkLabel(
-            s3_frame,
-            text="You can use {CHAPTER_NAME} and {PART_NUMBER} placeholders in this prompt.",
-            font=ctk.CTkFont(size=10),
-            text_color="gray",
-        ).pack(anchor="w", padx=10, pady=(0, 5))
-        
-        # Stage 4 prompt
-        s4_frame = ctk.CTkFrame(auto_frame)
-        s4_frame.pack(fill="x", padx=15, pady=(0, 10))
-        
-        ctk.CTkLabel(
-            s4_frame,
-            text="Stage 4 Prompt (optional, e.g. question generation / extra notes):",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", padx=10, pady=(5, 5))
-
-        # Stage 4 prompt mode (default vs custom)
-        s4_mode_frame = ctk.CTkFrame(s4_frame)
-        s4_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
-        if not hasattr(self, 'auto_stage4_prompt_type_var'):
-            self.auto_stage4_prompt_type_var = ctk.StringVar(value="default")
-        ctk.CTkRadioButton(
-            s4_mode_frame,
-            text="Use Default Prompt",
-            variable=self.auto_stage4_prompt_type_var,
-            value="default",
-            command=self.on_auto_stage4_prompt_type_change,
-        ).pack(side="left", padx=(0, 10), pady=5)
-        ctk.CTkRadioButton(
-            s4_mode_frame,
-            text="Use Custom Prompt",
-            variable=self.auto_stage4_prompt_type_var,
-            value="custom",
-            command=self.on_auto_stage4_prompt_type_change,
-        ).pack(side="left", padx=(0, 10), pady=5)
-
-        # Default prompt combobox for Stage 4
-        s4_default_frame = ctk.CTkFrame(s4_frame)
-        s4_default_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        ctk.CTkLabel(
-            s4_default_frame,
-            text="Default Stage 4 Prompt:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", pady=(0, 5))
-
-        stage4_prompt_names = self.prompt_manager.get_prompt_names()
-        preferred_stage4_name = "Stage 4 - Prompt"
-        if preferred_stage4_name in stage4_prompt_names:
-            stage4_default_value = preferred_stage4_name
-        else:
-            stage4_default_value = stage4_prompt_names[0] if stage4_prompt_names else ""
-        self.auto_stage4_default_prompt_var = ctk.StringVar(value=stage4_default_value)
-        self.auto_stage4_default_prompt_combo = ctk.CTkComboBox(
-            s4_default_frame,
-            values=stage4_prompt_names,
-            variable=self.auto_stage4_default_prompt_var,
-            width=400,
-            command=self.on_auto_stage4_default_prompt_selected,
-        )
-        self.auto_stage4_default_prompt_combo.pack(anchor="w", pady=(0, 5))
-        
-        # Only create if doesn't exist
-        if not hasattr(self, 'auto_stage4_prompt_text'):
-            self.auto_stage4_prompt_text = ctk.CTkTextbox(s4_frame, height=120, font=self.farsi_text_font)
-            self.auto_stage4_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
-        else:
-            # If exists, repack it in the new location
-            try:
-                self.auto_stage4_prompt_text.pack_forget()
-            except:
-                pass
-            self.auto_stage4_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
-        # پر کردن خودکار با پرامپت پیش‌فرض در شروع
-        self.on_auto_stage4_prompt_type_change()
-        
-        ctk.CTkLabel(
-            s4_frame,
-            text="You can also use {CHAPTER_NAME} and {PART_NUMBER} here.",
-            font=ctk.CTkFont(size=10),
-            text_color="gray",
-        ).pack(anchor="w", padx=10, pady=(0, 5))
-        
-        # Stage 3 / 4 model & PointId
-        model34_frame = ctk.CTkFrame(auto_frame)
-        model34_frame.pack(fill="x", padx=15, pady=(0, 10))
-        
-        # Stage 3 model
-        s3_model_row = ctk.CTkFrame(model34_frame)
-        s3_model_row.pack(fill="x", pady=(5, 5))
-        
-        ctk.CTkLabel(
-            s3_model_row,
-            text="Stage 3 Model:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(side="left", padx=(10, 5), pady=(5, 5))
-        
-        # Only create if doesn't exist
-        if not hasattr(self, 'auto_stage3_model_var'):
-            self.auto_stage3_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro")
-        if not hasattr(self, 'auto_stage3_model_combo'):
-            self.auto_stage3_model_combo = ctk.CTkComboBox(
-                s3_model_row,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.auto_stage3_model_var,
-                width=280,
-            )
-            self.auto_stage3_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
-        else:
-            # If exists, repack it in the new location
-            try:
-                self.auto_stage3_model_combo.pack_forget()
-            except:
-                pass
-            self.auto_stage3_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
-        
-        # Stage 4 model
-        s4_model_row = ctk.CTkFrame(model34_frame)
-        s4_model_row.pack(fill="x", pady=(5, 5))
-        
-        ctk.CTkLabel(
-            s4_model_row,
-            text="Stage 4 Model:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(side="left", padx=(10, 5), pady=(5, 5))
-        
-        # Only create if doesn't exist
-        if not hasattr(self, 'auto_stage4_model_var'):
-            self.auto_stage4_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro")
-        if not hasattr(self, 'auto_stage4_model_combo'):
-            self.auto_stage4_model_combo = ctk.CTkComboBox(
-                s4_model_row,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.auto_stage4_model_var,
-                width=280,
-            )
-            self.auto_stage4_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
-        else:
-            # If exists, repack it in the new location
-            try:
-                self.auto_stage4_model_combo.pack_forget()
-            except:
-                pass
-            self.auto_stage4_model_combo.pack(side="left", padx=(0, 10), pady=(5, 5))
-        
         # Start PointId
-        pointid_row = ctk.CTkFrame(model34_frame)
-        pointid_row.pack(fill="x", pady=(5, 5))
+        pointid_row = ctk.CTkFrame(pointid_frame)
+        pointid_row.pack(fill="x", padx=15, pady=(5, 10))
         
         ctk.CTkLabel(
             pointid_row,
@@ -2354,7 +2606,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             progress_frame,
-            text="Pipeline Progress (Stages 2 to 3 to 4 per Part)",
+            text="Document Processing Progress",
             font=ctk.CTkFont(size=14, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -2382,7 +2634,7 @@ class ContentAutomationGUI:
             self.full_pipeline_cancel = False
         
         def start_full_pipeline():
-            full_btn.configure(state="disabled", text="Running Full Pipeline...")
+            full_btn.configure(state="disabled", text="Running Document Processing...")
             self.full_pipeline_cancel = False
             threading.Thread(
                 target=self.process_full_pipeline_worker,
@@ -2392,7 +2644,7 @@ class ContentAutomationGUI:
         
         full_btn = ctk.CTkButton(
             controls_frame,
-            text="Run Full Pipeline (Stage 2 to 3 to 4 per Part)",
+            text="Run Document Processing",
             command=start_full_pipeline,
             width=320,
             height=40,
@@ -2449,8 +2701,8 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", f"JSON file not found:\n{json_path}")
                 return
 
-            # Use selected model for second stage
-            model_name = self.second_stage_model_var.get()
+            # Always use default model from main view settings
+            model_name = self.get_default_model()
 
             self.update_status("Starting second-stage part processing...")
 
@@ -2509,51 +2761,36 @@ class ContentAutomationGUI:
 
     def process_full_pipeline_worker(self, parent_window, start_button):
         """
-        Background worker: run Stage 2 → 3 → 4 for all Parts automatically.
+        Background worker: run Document Processing using OCR Extraction JSON.
         Uses:
-          - Stage 1 JSON (final_output.json)
-          - Stage 2 per-Part prompt/model
-          - Stage 3 / 4 prompts and models
+          - OCR Extraction JSON (with chapters->subchapters->topics structure)
+          - Document Processing prompt (with {Topic_NAME} and {Subchapter_Name} placeholders)
+          - Model from main settings
           - Start PointId for the whole chapter
         """
         try:
             # --- Validate and load basic inputs ---
-            stage1_path = self.second_stage_json_var.get().strip()
-            if not stage1_path:
-                if self.last_final_output_path and os.path.exists(self.last_final_output_path):
-                    stage1_path = self.last_final_output_path
-                    self.second_stage_json_var.set(stage1_path)
-                else:
-                    messagebox.showerror("Error", "Please select the Stage 1 JSON file (final_output.json).")
-                    return
-
-            if not os.path.exists(stage1_path):
-                messagebox.showerror("Error", f"Stage 1 JSON file not found:\n{stage1_path}")
+            ocr_json_path = self.document_processing_ocr_json_var.get().strip()
+            if not ocr_json_path:
+                messagebox.showerror("Error", "Please select the OCR Extraction JSON file.")
                 return
 
-            stage2_prompt = self.second_stage_prompt_text.get("1.0", tk.END).strip()
-            if not stage2_prompt:
-                messagebox.showerror("Error", "Please enter a prompt for second-stage (per-Part) processing.")
+            if not os.path.exists(ocr_json_path):
+                messagebox.showerror("Error", f"OCR Extraction JSON file not found:\n{ocr_json_path}")
                 return
 
-            chapter_name = self.second_stage_chapter_var.get().strip()
-            if "{CHAPTER_NAME}" in stage2_prompt and chapter_name:
-                stage2_prompt = stage2_prompt.replace("{CHAPTER_NAME}", chapter_name)
-
-            stage2_model = self.second_stage_model_var.get().strip()
-            if not stage2_model:
-                stage2_model = self.model_var.get()
-
-            # Stage 3 / 4 prompts
-            stage3_prompt = self.auto_stage3_prompt_text.get("1.0", tk.END).strip()
-            if not stage3_prompt:
-                messagebox.showerror("Error", "Please enter Stage 3 prompt (structuring & point extraction).")
+            # Document Processing prompt (should contain {Topic_NAME} and {Subchapter_Name})
+            document_prompt = self.second_stage_prompt_text.get("1.0", tk.END).strip()
+            if not document_prompt:
+                messagebox.showerror("Error", "Please enter a prompt for Document Processing (should contain {Topic_NAME} and {Subchapter_Name} placeholders).")
                 return
 
-            stage4_prompt = self.auto_stage4_prompt_text.get("1.0", tk.END).strip()
+            # Check if prompt contains placeholders
+            if "{Topic_NAME}" not in document_prompt or "{Subchapter_Name}" not in document_prompt:
+                self.logger.warning("Document Processing prompt may not contain {Topic_NAME} and {Subchapter_Name} placeholders")
 
-            stage3_model = self.auto_stage3_model_var.get().strip() or self.model_var.get()
-            stage4_model = self.auto_stage4_model_var.get().strip() or self.model_var.get()
+            # Always use default model from main view settings
+            model_name = self.get_default_model()
 
             # PointId handling
             start_pointid_str = self.auto_start_pointid_var.get().strip()
@@ -2573,457 +2810,59 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", "Start PointId format is invalid.")
                 return
 
-            self.update_status("Loading Stage 1 JSON (final_output)...")
-            try:
-                with open(stage1_path, "r", encoding="utf-8") as f:
-                    stage1_data = json.load(f)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to load Stage 1 JSON:\n{str(e)}")
-                return
-
-            rows = stage1_data.get("rows", [])
-            if not isinstance(rows, list) or not rows:
-                messagebox.showerror("Error", "Stage 1 JSON has no 'rows' to process.")
-                return
-
-            # Discover Parts from Stage 1
-            parts = {}
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                part_value = row.get("Part", 0)
-                try:
-                    part_num = int(part_value) if part_value not in (None, "") else 0
-                except (ValueError, TypeError):
-                    part_num = 0
-                parts.setdefault(part_num, []).append(row)
-
-            if not parts:
-                messagebox.showerror("Error", "No valid Part information found in Stage 1 JSON.")
-                return
-
-            sorted_parts = sorted(parts.keys())
-            total_parts = len(sorted_parts)
-
-            # --- Stage 2: per-Part processing using existing MultiPartPostProcessor ---
-            # We reuse existing Stage 2 module which already does per-Part calls and returns a single JSON.
-            # Now we also get individual responses per Part for use in Stage 3.
-            self.update_status("Running Stage 2 (per-Part) processing for all parts...")
-            stage2_path, stage2_part_responses = self.multi_part_post_processor.process_final_json_by_parts_with_responses(
-                json_path=stage1_path,
-                user_prompt=stage2_prompt,
-                model_name=stage2_model,
-            )
-
-            if not stage2_path or not os.path.exists(stage2_path):
-                self.update_status("Stage 2 processing failed.")
-                messagebox.showerror("Error", "Stage 2 processing failed. Check logs for details.")
-                return
-
-            if not stage2_part_responses:
-                self.update_status("Stage 2 processing failed: No individual responses received.")
-                messagebox.showerror("Error", "Stage 2 processing failed: No individual responses received.")
-                return
-
-            self.last_post_processed_path = stage2_path
-
-            try:
-                with open(stage2_path, "r", encoding="utf-8") as f:
-                    stage2_data = json.load(f)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to load Stage 2 JSON:\n{str(e)}")
-                return
-
-            # Stage 2: Each Part has its own response. For Stage 3, we use the response
-            # from the same Part (not the combined JSON). This ensures each Part's
-            # Stage 3 processing uses its corresponding Stage 2 response.
-
-            processed_parts = 0
-            stage3_txt_files = []
-            stage4_txt_files = []
-            all_stage4_rows: List[Dict[str, Any]] = []
-
-            def _update_progress(part_idx: int, stage_label: str):
-                if total_parts <= 0:
-                    self.pipeline_progress_bar.set(0.0)
-                    self.pipeline_progress_label.configure(text="No parts to process.", text_color="gray")
-                    return
-                frac = min(max(part_idx / total_parts, 0.0), 1.0)
-                self.pipeline_progress_bar.set(frac)
-                self.pipeline_progress_label.configure(
-                    text=f"{stage_label} - Part {part_idx}/{total_parts}",
-                    text_color="white",
-                )
-
-            # Loop over Parts
-            for idx, part_num in enumerate(sorted_parts, start=1):
-                if self.full_pipeline_cancel:
-                    self.update_status(f"Pipeline cancelled by user. Stopped at Part {idx}/{total_parts}.")
-                    break
-
-                part_rows = parts.get(part_num) or []
-                if not part_rows:
-                    continue
-
-                # Restrict Stage 1 JSON to this Part only
-                stage1_part = {
-                    "metadata": stage1_data.get("metadata", {}),
-                    "rows": part_rows,
-                }
-
-                # Stage 3: برای هر پارت فقط یک بار مدل را صدا می‌زنیم و هیچ تبدیل JSON انجام نمی‌دهیم؛
-                # فقط پاسخ خام مدل را به‌صورت فایل متنی ذخیره می‌کنیم.
-                # از Response Stage 2 همان Part استفاده می‌کنیم (نه combined JSON).
-
-                _update_progress(idx - 1, "Stage 3 (structuring)")
-                self.update_status(f"Stage 3: Processing Part {part_num} ({idx}/{total_parts})...")
-
-                # Build Stage 3 prompt (بدون وابستگی به شماره پارت / چانک)
-                s3_prompt_part = stage3_prompt
-                if "{CHAPTER_NAME}" in s3_prompt_part and chapter_name:
-                    s3_prompt_part = s3_prompt_part.replace("{CHAPTER_NAME}", chapter_name)
-
-                # Get Stage 2 response for this specific Part
-                stage2_response_for_part = stage2_part_responses.get(part_num, "")
-                if not stage2_response_for_part:
-                    self.update_status(
-                        f"Warning: No Stage 2 response found for Part {part_num}. Skipping Stage 3 for this Part."
-                    )
-                    continue
-
-                try:
-                    s1_str = json.dumps(stage1_part, ensure_ascii=False, indent=2)
-                except Exception as e:
-                    self.update_status(
-                        f"Error serializing JSON for Stage 3 (Part {part_num}): {e}"
-                    )
-                    messagebox.showerror(
-                        "Error",
-                        f"Error serializing JSON for Stage 3 (Part {part_num}):\n{str(e)}",
-                    )
-                    return
-
-                s3_full_prompt = (
-                    f"{s3_prompt_part}\n\n"
-                    "====================\n"
-                    "Stage 1 JSON (this Part only):\n"
-                    "====================\n"
-                    f"{s1_str}\n\n"
-                    "====================\n"
-                    "Stage 2 Response (for this Part):\n"
-                    "====================\n"
-                    f"{stage2_response_for_part}\n"
-                )
-
-                # مشابه Stage 2: فقط متن خام پاسخ را می‌گیریم (در صورت نیاز با چند ری‌تری) و به‌صورت txt ذخیره می‌کنیم.
-                s3_response_text = None
-                max_s3_retries = 2
-
-                for attempt in range(1, max_s3_retries + 2):  # تلاش اولیه + حداکثر دو ری‌تری
-                    if self.full_pipeline_cancel:
-                        self.update_status(
-                            f"Pipeline cancelled by user during Stage 3. Stopped at Part {idx}/{total_parts}."
-                        )
-                        return
-
-                    if attempt > 1:
-                        self.update_status(
-                            f"Stage 3: Retrying Part {part_num} (attempt {attempt}/{max_s3_retries + 1})..."
-                        )
-
-                    s3_response_text = self.api_client.process_text(
-                        text=s3_full_prompt,
-                        system_prompt=None,
-                        model_name=stage3_model,
-                        temperature=APIConfig.DEFAULT_TEMPERATURE,
-                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
-                    )
-
-                    if s3_response_text:
-                        break
-
-                if not s3_response_text:
-                    self.update_status(
-                        f"Stage 3 failed for Part {part_num} (no response from model after retries). Skipping this Part."
-                    )
-                    continue
-
-                # ذخیره خروجی Stage 3 این پارت به‌صورت فایل متنی
-                s3_txt_path = None
-                try:
-                    base_dir = os.path.dirname(stage1_path) or os.getcwd()
-                    base_name, _ = os.path.splitext(os.path.basename(stage1_path))
-                    s3_txt_name = f"{base_name}_part{part_num}_stage3.txt"
-                    s3_txt_path = os.path.join(base_dir, s3_txt_name)
-                    with open(s3_txt_path, "w", encoding="utf-8") as f:
-                        f.write(s3_response_text)
-                    self.update_status(f"Stage 3 raw text saved for Part {part_num}: {s3_txt_path}")
-                    stage3_txt_files.append(s3_txt_path)
-                except Exception as e:
-                    self.update_status(
-                        f"Error saving Stage 3 text output for Part {part_num}: {e}"
-                    )
-
-                # Stage 4 برای این پارت: ورودی فقط پرامپت + خروجی Stage 3
-                if stage4_prompt:
-                    if self.full_pipeline_cancel:
-                        self.update_status(f"Pipeline cancelled by user during Stage 4. Stopped at Part {idx}/{total_parts}.")
-                        break
-
-                    _update_progress(idx - 1, "Stage 4 (extra points)")
-                    self.update_status(f"Stage 4: Processing Part {part_num} ({idx}/{total_parts})...")
-
-                    s4_prompt_part = stage4_prompt
-                    if "{CHAPTER_NAME}" in s4_prompt_part and chapter_name:
-                        s4_prompt_part = s4_prompt_part.replace("{CHAPTER_NAME}", chapter_name)
-
-                    # آماده‌سازی Stage 1 JSON برای همین پارت
-                    try:
-                        s1_str_4 = json.dumps(stage1_part, ensure_ascii=False, indent=2)
-                    except Exception as e:
-                        self.update_status(
-                            f"Error serializing Stage 1 JSON for Stage 4 (Part {part_num}): {e}"
-                        )
-                        messagebox.showerror(
-                            "Error",
-                            f"Error serializing Stage 1 JSON for Stage 4 (Part {part_num}):\n{str(e)}",
-                        )
-                        return
-
-                    # خواندن خروجی Stage 3 از فایل txt
-                    s3_output_text = ""
-                    if s3_txt_path and os.path.exists(s3_txt_path):
-                        try:
-                            with open(s3_txt_path, "r", encoding="utf-8") as f:
-                                s3_output_text = f.read()
-                        except Exception as e:
-                            self.update_status(
-                                f"Warning: Failed to read Stage 3 output for Part {part_num}: {e}"
-                            )
-                    else:
-                        # اگر فایل Stage 3 ذخیره نشده، از پاسخ خام استفاده می‌کنیم
-                        s3_output_text = s3_response_text
-
-                    if not s3_output_text:
-                        self.update_status(
-                            f"Warning: No Stage 3 output available for Part {part_num}. Skipping Stage 4."
-                        )
-                        continue
-
-                    # ساخت prompt Stage 4: پرامپت + Stage 1 JSON + خروجی Stage 3
-                    s4_full_prompt = (
-                        f"{s4_prompt_part}\n\n"
-                        "====================\n"
-                        "Stage 1 JSON (this Part only):\n"
-                        "====================\n"
-                        f"{s1_str_4}\n\n"
-                        "====================\n"
-                        "Stage 3 output for this Part:\n"
-                        "====================\n"
-                        f"{s3_output_text}\n"
-                    )
-
-                    s4_response_text = None
-                    max_s4_retries = 2
-
-                    for attempt in range(1, max_s4_retries + 2):
-                        if self.full_pipeline_cancel:
-                            self.update_status(
-                                f"Pipeline cancelled by user during Stage 4. Stopped at Part {idx}/{total_parts}."
-                            )
-                            break
-
-                        if attempt > 1:
-                            self.update_status(
-                                f"Stage 4: Retrying Part {part_num} (attempt {attempt}/{max_s4_retries + 1})..."
-                            )
-
-                        s4_response_text = self.api_client.process_text(
-                            text=s4_full_prompt,
-                            system_prompt=None,
-                            model_name=stage4_model,
-                            temperature=APIConfig.DEFAULT_TEMPERATURE,
-                            max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
-                        )
-
-                        if not s4_response_text:
-                            self.update_status(
-                                f"Stage 4 failed for Part {part_num} (no response, attempt {attempt})."
-                            )
-                            if attempt > max_s4_retries:
-                                self.update_status(
-                                    f"Warning: Skipping Part {part_num} in Stage 4 after repeated no-response."
-                                )
-                            continue
-
-                        if s4_response_text:
-                            break
-
-                    if not s4_response_text:
-                        self.update_status(
-                            f"Warning: No valid text response in Stage 4 for Part {part_num} after retries."
-                        )
-                    else:
-                        # ذخیره خروجی Stage 4 این پارت به‌صورت فایل متنی
-                        try:
-                            base_dir = os.path.dirname(stage1_path) or os.getcwd()
-                            base_name, _ = os.path.splitext(os.path.basename(stage1_path))
-                            s4_txt_name = f"{base_name}_part{part_num}_stage4.txt"
-                            s4_txt_path = os.path.join(base_dir, s4_txt_name)
-                            with open(s4_txt_path, "w", encoding="utf-8") as f:
-                                f.write(s4_response_text)
-                            self.update_status(
-                                f"Stage 4 raw text saved for Part {part_num}: {s4_txt_path}"
-                            )
-                            stage4_txt_files.append(s4_txt_path)
-                        except Exception as e:
-                            self.update_status(
-                                f"Error saving Stage 4 text output for Part {part_num}: {e}"
-                            )
-
-                processed_parts += 1
-                _update_progress(processed_parts, "Completed")
-
-            # --- After all parts: build final JSON with flattened points and PointId ---
-            self.update_status("Building final JSON with PointId from Stage 4 TXT files...")
-
-            # Sort Stage 4 files by Part number to ensure correct order
-            def extract_part_number(file_path: str) -> int:
-                """Extract part number from filename like '*_part3_stage4.txt'"""
-                import re
-                match = re.search(r'_part(\d+)_stage4\.txt', os.path.basename(file_path))
-                if match:
-                    return int(match.group(1))
-                return 0  # Default to 0 if not found
+            # Use new Document Processing method
+            self.update_status("Starting Document Processing with OCR Extraction JSON...")
             
-            sorted_stage4_files = sorted(stage4_txt_files, key=extract_part_number)
-            self.logger.info(f"Processing {len(sorted_stage4_files)} Stage 4 files in order: {[extract_part_number(f) for f in sorted_stage4_files]}")
-
-            # Convert each Stage 4 TXT to JSON, flatten, and accumulate rows
-            converter = ThirdStageConverter()
-
-            for s4_txt_path in sorted_stage4_files:
-                part_num = extract_part_number(s4_txt_path)
-                self.update_status(f"Processing Stage 4 file for Part {part_num}: {os.path.basename(s4_txt_path)}")
+            def progress_callback(message: str):
+                self.update_status(message)
+            
+            final_output_path = self.multi_part_post_processor.process_document_processing_from_ocr_json(
+                ocr_json_path=ocr_json_path,
+                user_prompt=document_prompt,
+                model_name=model_name,
+                book_id=book_id,
+                chapter_id=chapter_id_num,
+                start_point_index=current_index,
+                progress_callback=progress_callback,
+            )
+            
+            if not final_output_path or not os.path.exists(final_output_path):
+                self.update_status("Document Processing failed.")
+                messagebox.showerror("Error", "Document Processing failed. Check logs for details.")
+                return
+            
+            self.update_status(f"✓ Document Processing completed successfully: {os.path.basename(final_output_path)}")
+            
+            # Load and display final output
+            try:
+                with open(final_output_path, "r", encoding="utf-8") as f:
+                    final_data = json.load(f)
                 
-                json_obj = load_stage_txt_as_json(s4_txt_path)
-                if not json_obj:
-                    self.logger.warning(
-                        "Skipping Stage 4 TXT (could not extract JSON): %s", s4_txt_path
-                    )
-                    continue
-
-                # Handle chunk structure: if JSON has chunk_index and payload, extract payload
-                # This matches how Stage V handles chunked responses
-                if isinstance(json_obj, dict) and "chunk_index" in json_obj and "payload" in json_obj:
-                    payload = json_obj.get("payload", {})
-                    if isinstance(payload, dict):
-                        # Use payload as the main JSON structure
-                        json_obj = payload
-                        self.logger.info(f"Extracted payload from chunk structure for Part {part_num}")
-
-                try:
-                    flat_rows = converter._flatten_to_points(json_obj)
-                    self.logger.info(f"Part {part_num}: Extracted {len(flat_rows)} points from Stage 4")
-                    all_stage4_rows.extend(flat_rows)
-                except Exception as e:
-                    self.logger.error(
-                        "Failed to flatten Stage 4 JSON for %s: %s", s4_txt_path, e
-                    )
-                    continue
-
-            if not all_stage4_rows:
-                self.update_status("No valid points extracted from Stage 4 outputs.")
-                messagebox.showerror(
-                    "Error",
-                    "No valid JSON/points could be extracted from Stage 4 TXT files.\n"
-                    "Please check the logs and model outputs.",
-                )
-                return
-
-            # Log summary of extracted points
-            self.logger.info(f"Total {len(all_stage4_rows)} points extracted from {len(sorted_stage4_files)} Stage 4 files")
-            self.update_status(f"Extracted {len(all_stage4_rows)} points from {len(sorted_stage4_files)} Stage 4 files")
-
-            # Assign PointId sequentially across all parts, starting from user-provided index
-            total_points = len(all_stage4_rows)
-            assigned_points: List[Dict[str, Any]] = []
-
-            self.update_status(f"Assigning PointId to {total_points} points (starting from {start_pointid_str})...")
-            for idx, row in enumerate(all_stage4_rows, 1):
-                point_id = f"{book_id:03d}{chapter_id_num:03d}{current_index:04d}"
-                row["PointId"] = point_id
-                current_index += 1
-                assigned_points.append(row)
-                if idx % 100 == 0:
-                    self.update_status(f"Assigned PointId to {idx}/{total_points} points...")
-            
-            self.logger.info(f"Assigned PointId to {len(assigned_points)} points (next free index: {current_index})")
-            self.update_status(f"Assigned PointId to all {len(assigned_points)} points")
-
-            # --- Build final merged JSON with metadata + points ---
-            base_dir = os.path.dirname(stage1_path) or os.getcwd()
-            base_name, _ = os.path.splitext(os.path.basename(stage1_path))
-            merged_filename = f"{base_name}_final_points.json"
-            merged_path = os.path.join(base_dir, merged_filename)
-
-            metadata = {
-                "chapter": chapter_name,
-                "book_id": book_id,
-                "chapter_id": chapter_id_num,
-                "processed_parts": processed_parts,
-                "total_points": total_points,
-                "start_point_index": int(start_pointid_str[6:10]),
-                "next_free_index": current_index,
-                "processed_at": datetime.now().isoformat(),
-                "source_stage1": os.path.basename(stage1_path),
-                "source_stage2": os.path.basename(stage2_path),
-                "model_stage3": stage3_model,
-                "model_stage4": stage4_model if stage4_prompt else None,
-                "stage3_text_files": stage3_txt_files,
-                "stage4_text_files": stage4_txt_files,
-            }
-
-            merged_data = {
-                "metadata": metadata,
-                "points": assigned_points,
-            }
-
-            try:
-                with open(merged_path, "w", encoding="utf-8") as f:
-                    json.dump(merged_data, f, ensure_ascii=False, indent=2)
-            except Exception as e:
-                self.logger.error(f"Failed to save merged pipeline JSON: {e}", exc_info=True)
-                messagebox.showerror("Error", f"Failed to save merged pipeline JSON:\n{str(e)}")
-                return
-
-            self.last_corrected_path = merged_path
-            self.update_status(f"Full pipeline completed. Merged JSON saved to: {merged_path}")
-            self.pipeline_progress_bar.set(1.0)
-            self.pipeline_progress_label.configure(
-                text=f"Completed {processed_parts}/{total_parts} parts.",
-                text_color="green",
-            )
-
-            # Show final result to user
-            try:
-                response_text = json.dumps(merged_data, ensure_ascii=False, indent=2)
-                self.show_response_window(response_text, merged_path, False, True)
+                total_points = final_data.get("metadata", {}).get("total_points", 0)
                 messagebox.showinfo(
                     "Success",
-                    f"Full pipeline completed.\n\nMerged JSON saved to:\n{merged_path}",
+                    f"Document Processing completed successfully!\n\n"
+                    f"Output file: {os.path.basename(final_output_path)}\n"
+                    f"Total points: {total_points}\n"
+                    f"Next free index: {final_data.get('metadata', {}).get('next_free_index', current_index)}"
                 )
+                
+                # Store path for future use
+                self.last_document_processing_path = final_output_path
+                
             except Exception as e:
-                self.logger.error(f"Failed to display merged pipeline JSON: {e}", exc_info=True)
+                self.logger.error(f"Error loading final output: {str(e)}")
+                messagebox.showerror("Error", f"Failed to load final output:\n{str(e)}")
+                return
 
         except Exception as e:
-            self.logger.error(f"Error in full per-part pipeline: {str(e)}", exc_info=True)
-            messagebox.showerror("Error", f"Full per-part pipeline error:\n{str(e)}")
+            self.logger.error(f"Error in Document Processing: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"Document Processing error:\n{str(e)}")
         finally:
             try:
                 self.root.after(
                     0,
-                    lambda: start_button.configure(state="normal", text="Run Full Pipeline (Stage 2 → 3 → 4 per Part)")
+                    lambda: start_button.configure(state="normal", text="Run Document Processing")
                 )
             except Exception:
                 pass
@@ -3247,15 +3086,15 @@ class ContentAutomationGUI:
         """Switch from main view to tabview"""
         self.main_stages_1_4_frame.pack_forget()
         self.main_tabview.pack(fill="both", expand=True, padx=10, pady=10)
-        # Force switch to Document Processing tab in tabview
+        # Force switch to Pre-OCR Topic Extraction tab (first tab) in tabview
         # Use after() to ensure the tabview is fully packed before setting tab
         def set_tab():
             try:
-                self.main_tabview.set("Document Processing")
+                self.main_tabview.set("Pre-OCR Topic Extraction")
                 # Double-check after a short delay
-                self.root.after(50, lambda: self.main_tabview.set("Document Processing"))
+                self.root.after(50, lambda: self.main_tabview.set("Pre-OCR Topic Extraction"))
             except Exception as e:
-                self.logger.warning(f"Error setting tab to Document Processing: {e}")
+                self.logger.warning(f"Error setting tab to Pre-OCR Topic Extraction: {e}")
         self.root.after(10, set_tab)
     
     def show_main_view(self):
@@ -3296,6 +3135,214 @@ class ContentAutomationGUI:
             label.configure(text=f"{stage}: Error", text_color="red")
         else:
             label.configure(text=f"{stage}: Waiting", text_color="gray")
+    
+    def setup_ocr_extraction_ui(self, parent):
+        """Setup UI for OCR Extraction"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="OCR Extraction", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Extract OCR content from PDF using topics from Pre-OCR Topic Extraction.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # PDF File Selection
+        pdf_frame = ctk.CTkFrame(main_frame)
+        pdf_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(pdf_frame, text="PDF File:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'ocr_extraction_pdf_var'):
+            self.ocr_extraction_pdf_var = ctk.StringVar()
+        
+        entry_frame_pdf = ctk.CTkFrame(pdf_frame)
+        entry_frame_pdf.pack(fill="x", padx=10, pady=5)
+        
+        pdf_entry = ctk.CTkEntry(entry_frame_pdf, textvariable=self.ocr_extraction_pdf_var)
+        pdf_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_pdf, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.ocr_extraction_pdf_var, 
+                                                                 filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'ocr_extraction_pdf_valid'):
+            self.ocr_extraction_pdf_valid = ctk.CTkLabel(entry_frame_pdf, text="", width=30)
+        self.ocr_extraction_pdf_valid.pack(side="right", padx=5)
+        
+        # Pre-OCR Topic File Selection (t{book}{chapter}.json)
+        topic_frame = ctk.CTkFrame(main_frame)
+        topic_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(topic_frame, text="Pre-OCR Topic File (t{book}{chapter}.json):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'ocr_extraction_topic_var'):
+            self.ocr_extraction_topic_var = ctk.StringVar()
+        
+        entry_frame_topic = ctk.CTkFrame(topic_frame)
+        entry_frame_topic.pack(fill="x", padx=10, pady=5)
+        
+        topic_entry = ctk.CTkEntry(entry_frame_topic, textvariable=self.ocr_extraction_topic_var)
+        topic_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_topic, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.ocr_extraction_topic_var, 
+                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'ocr_extraction_topic_valid'):
+            self.ocr_extraction_topic_valid = ctk.CTkLabel(entry_frame_topic, text="", width=30)
+        self.ocr_extraction_topic_valid.pack(side="right", padx=5)
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for OCR Extraction:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=5)
+        
+        # OCR Extraction prompt mode (default vs custom)
+        ocr_mode_frame = ctk.CTkFrame(prompt_frame)
+        ocr_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'ocr_extraction_prompt_type_var'):
+            self.ocr_extraction_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            ocr_mode_frame,
+            text="Use Default Prompt",
+            variable=self.ocr_extraction_prompt_type_var,
+            value="default",
+            command=self.on_ocr_extraction_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            ocr_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.ocr_extraction_prompt_type_var,
+            value="custom",
+            command=self.on_ocr_extraction_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        
+        # Default OCR Extraction prompt combobox
+        ocr_default_frame = ctk.CTkFrame(prompt_frame)
+        ocr_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            ocr_default_frame,
+            text="Default OCR Extraction Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+        
+        ocr_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_ocr_name = "Document Processing"  # Use Document Processing prompt as default
+        if preferred_ocr_name in ocr_prompt_names:
+            ocr_default_value = preferred_ocr_name
+        else:
+            ocr_default_value = ocr_prompt_names[0] if ocr_prompt_names else ""
+        if not hasattr(self, 'ocr_extraction_default_prompt_var'):
+            self.ocr_extraction_default_prompt_var = ctk.StringVar(value=ocr_default_value)
+        self.ocr_extraction_default_prompt_combo = ctk.CTkComboBox(
+            ocr_default_frame,
+            values=ocr_prompt_names,
+            variable=self.ocr_extraction_default_prompt_var,
+            width=400,
+            command=self.on_ocr_extraction_default_prompt_selected,
+        )
+        self.ocr_extraction_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Textbox for OCR Extraction prompt (default-filled or custom)
+        if not hasattr(self, 'ocr_extraction_prompt_text'):
+            self.ocr_extraction_prompt_text = ctk.CTkTextbox(prompt_frame, height=140, font=self.farsi_text_font)
+        else:
+            try:
+                self.ocr_extraction_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.ocr_extraction_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Load default prompt
+        self.on_ocr_extraction_prompt_type_change()
+        if hasattr(self, 'ocr_extraction_default_prompt_var'):
+            default_prompt_name = self.ocr_extraction_default_prompt_var.get()
+            if default_prompt_name:
+                self.on_ocr_extraction_default_prompt_selected(default_prompt_name)
+        
+        # Model Selection
+        model_frame = ctk.CTkFrame(main_frame)
+        model_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(model_frame, text="Select Gemini Model:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'ocr_extraction_model_var'):
+            self.ocr_extraction_model_var = ctk.StringVar(value="gemini-2.5-pro")
+        ocr_model_combo = ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, 
+                                         variable=self.ocr_extraction_model_var, width=400)
+        ocr_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # Process Button
+        process_frame = ctk.CTkFrame(main_frame)
+        process_frame.pack(fill="x", pady=10)
+        
+        if not hasattr(self, 'ocr_extraction_process_btn'):
+            self.ocr_extraction_process_btn = ctk.CTkButton(
+                process_frame,
+                text="Extract OCR",
+                command=self.process_ocr_extraction,
+                width=200,
+                height=40,
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+        self.ocr_extraction_process_btn.pack(side="left", padx=10, pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'ocr_extraction_status_label'):
+            self.ocr_extraction_status_label = ctk.CTkLabel(
+                process_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.ocr_extraction_status_label.pack(side="left", padx=10, pady=10)
+        
+        # Output File Path
+        output_frame = ctk.CTkFrame(main_frame)
+        output_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(output_frame, text="Output JSON File:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'ocr_extraction_output_var'):
+            self.ocr_extraction_output_var = ctk.StringVar()
+        output_entry = ctk.CTkEntry(output_frame, textvariable=self.ocr_extraction_output_var, 
+                                    width=400, state="readonly")
+        output_entry.pack(fill="x", padx=10, pady=(0, 10))
     
     def setup_stage_e_ui(self, parent):
         """Setup UI for Stage E: Image Notes Processing"""
@@ -3381,6 +3428,34 @@ class ContentAutomationGUI:
         # Validation indicator
         self.stage_e_stage1_valid = ctk.CTkLabel(entry_frame1, text="", width=30)
         self.stage_e_stage1_valid.pack(side="right", padx=5)
+        
+        # OCR Extraction JSON File Selection
+        ocr_extraction_frame = ctk.CTkFrame(main_frame)
+        ocr_extraction_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON File:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_e_ocr_extraction_json_var'):
+            self.stage_e_ocr_extraction_json_var = ctk.StringVar()
+            # Auto-fill if available
+            if hasattr(self, 'last_ocr_extraction_path') and self.last_ocr_extraction_path and os.path.exists(self.last_ocr_extraction_path):
+                self.stage_e_ocr_extraction_json_var.set(self.last_ocr_extraction_path)
+        
+        entry_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
+        entry_frame_ocr.pack(fill="x", padx=10, pady=5)
+        
+        ocr_extraction_entry = ctk.CTkEntry(entry_frame_ocr, textvariable=self.stage_e_ocr_extraction_json_var, width=400)
+        ocr_extraction_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_ocr, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_e_ocr_extraction_json_var, 
+                                                                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_e_ocr_extraction_valid'):
+            self.stage_e_ocr_extraction_valid = ctk.CTkLabel(entry_frame_ocr, text="", width=30)
+        self.stage_e_ocr_extraction_valid.pack(side="right", padx=5)
         
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -3509,6 +3584,7 @@ class ContentAutomationGUI:
         # Auto-validate files on change
         self.stage_e_stage4_var.trace('w', lambda *args: self.validate_stage_e_files())
         self.stage_e_stage1_var.trace('w', lambda *args: self.validate_stage_e_files())
+        self.stage_e_ocr_extraction_json_var.trace('w', lambda *args: self.validate_stage_e_files())
     
     def browse_file_for_stage(self, var: ctk.StringVar, filetypes: list = None):
         """Browse for file and set variable"""
@@ -3526,6 +3602,7 @@ class ContentAutomationGUI:
         """Validate Stage E input files"""
         stage4_path = self.stage_e_stage4_var.get()
         stage1_path = self.stage_e_stage1_var.get()
+        ocr_extraction_path = self.stage_e_ocr_extraction_json_var.get() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
         
         # Validate Stage 4
         if stage4_path and os.path.exists(stage4_path):
@@ -3554,6 +3631,18 @@ class ContentAutomationGUI:
                 self.stage_e_stage1_valid.configure(text="X", text_color="red")
         else:
             self.stage_e_stage1_valid.configure(text="", text_color="gray")
+        
+        # Validate OCR Extraction JSON
+        if ocr_extraction_path:
+            if os.path.exists(ocr_extraction_path):
+                if ocr_extraction_path.lower().endswith('.json'):
+                    self.stage_e_ocr_extraction_valid.configure(text="OK", text_color="green")
+                else:
+                    self.stage_e_ocr_extraction_valid.configure(text="W", text_color="orange")
+            else:
+                self.stage_e_ocr_extraction_valid.configure(text="X", text_color="red")
+        else:
+            self.stage_e_ocr_extraction_valid.configure(text="", text_color="gray")
     
     def process_stage_e(self):
         """Process Stage E in background thread"""
@@ -3566,8 +3655,10 @@ class ContentAutomationGUI:
                 # Validate inputs
                 stage4_path = self.stage_e_stage4_var.get().strip()
                 stage1_path = self.stage_e_stage1_var.get().strip()
+                ocr_extraction_json_path = self.stage_e_ocr_extraction_json_var.get().strip() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
                 prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
-                model_name = self.stage_e_model_var.get()
+                # Always use default model from main view settings
+                model_name = self.get_default_model()
                 
                 if not stage4_path or not os.path.exists(stage4_path):
                     messagebox.showerror("Error", "Please select a valid Content Processing JSON file")
@@ -3575,6 +3666,11 @@ class ContentAutomationGUI:
                 
                 if not stage1_path or not os.path.exists(stage1_path):
                     messagebox.showerror("Error", "Please select a valid Content Extraction JSON file")
+                    return
+                
+                if not ocr_extraction_json_path or not os.path.exists(ocr_extraction_json_path):
+                    self.root.after(0, lambda: self.stage_e_status_label.configure(text="Error: Please select a valid OCR Extraction JSON file", text_color="red"))
+                    messagebox.showerror("Error", "Please select a valid OCR Extraction JSON file")
                     return
                 
                 if not prompt:
@@ -3589,12 +3685,14 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_e_status_label.configure(text=msg))
                 
-                # Process Stage E
+                # Process Stage E (use default output dir from main view)
                 output_path = self.stage_e_processor.process_stage_e(
                     stage4_path=stage4_path,
                     stage1_path=stage1_path,
+                    ocr_extraction_json_path=ocr_extraction_json_path,
                     prompt=prompt,
                     model_name=model_name,
+                    output_dir=self.get_default_output_dir(stage4_path),
                     progress_callback=progress_callback
                 )
                 
@@ -3621,6 +3719,94 @@ class ContentAutomationGUI:
                 self.root.after(0, lambda: self.stage_e_process_btn.configure(state="normal", text="Process Image Notes Generation"))
         
         # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def process_ocr_extraction(self):
+        """Process OCR Extraction in background thread"""
+        def worker():
+            try:
+                self.ocr_extraction_process_btn.configure(state="disabled", text="Processing...")
+                self.ocr_extraction_status_label.configure(text="Processing OCR Extraction...", text_color="blue")
+                
+                # Validate inputs
+                pdf_path = self.ocr_extraction_pdf_var.get().strip()
+                topic_file_path = self.ocr_extraction_topic_var.get().strip()
+                prompt = self.ocr_extraction_prompt_text.get("1.0", tk.END).strip()
+                # Always use default model from main view settings
+                model_name = self.get_default_model()
+                
+                if not pdf_path or not os.path.exists(pdf_path):
+                    self.ocr_extraction_status_label.configure(text="Error: Please select a valid PDF file", text_color="red")
+                    messagebox.showerror("Error", "Please select a valid PDF file")
+                    return
+                
+                if not topic_file_path or not os.path.exists(topic_file_path):
+                    self.ocr_extraction_status_label.configure(text="Error: Please select a valid Pre-OCR Topic file (t{book}{chapter}.json)", text_color="red")
+                    messagebox.showerror("Error", "Please select a valid Pre-OCR Topic file (t{book}{chapter}.json)")
+                    return
+                
+                if not prompt:
+                    self.ocr_extraction_status_label.configure(text="Error: Please enter a prompt", text_color="red")
+                    messagebox.showerror("Error", "Please enter a prompt for OCR extraction")
+                    return
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    self.ocr_extraction_status_label.configure(text="Error: Please load API keys first", text_color="red")
+                    messagebox.showerror("Error", "Please load API keys first")
+                    return
+                
+                # Load topic file to get book_id and chapter_id (for reference, not used in processing yet)
+                try:
+                    with open(topic_file_path, 'r', encoding='utf-8') as f:
+                        topic_data = json.load(f)
+                    metadata = topic_data.get('metadata', {})
+                    book_id = metadata.get('book_id', 105)
+                    chapter_id = metadata.get('chapter_id', 3)
+                    self.logger.info(f"Using topic file: {topic_file_path}, Book ID: {book_id}, Chapter ID: {chapter_id}")
+                except Exception as e:
+                    self.logger.warning(f"Could not extract book/chapter from topic file: {e}")
+                    book_id = 105
+                    chapter_id = 3
+                
+                def progress_callback(msg: str):
+                    self.root.after(0, lambda: self.ocr_extraction_status_label.configure(text=msg))
+                
+                # Process OCR Extraction using multi_part_processor
+                # Note: The topic file will be used in later stages (Document Processing)
+                # Use default output dir from main view
+                output_dir = self.get_default_output_dir(pdf_path)
+                
+                final_output_path = self.multi_part_processor.process_multi_part(
+                    pdf_path=pdf_path,
+                    base_prompt=prompt,
+                    model_name=model_name,
+                    temperature=0.7,
+                    resume=True,
+                    progress_callback=progress_callback,
+                    output_dir=output_dir
+                )
+                
+                if final_output_path and os.path.exists(final_output_path):
+                    # Update output path display
+                    self.ocr_extraction_output_var.set(final_output_path)
+                    self.ocr_extraction_status_label.configure(
+                        text=f"OCR Extraction completed successfully!\nOutput: {os.path.basename(final_output_path)}",
+                        text_color="green"
+                    )
+                    messagebox.showinfo("Success", f"OCR Extraction completed!\n\nOutput saved to:\n{final_output_path}")
+                else:
+                    self.ocr_extraction_status_label.configure(text="OCR Extraction failed. Check logs for details.", text_color="red")
+                    messagebox.showerror("Error", "OCR Extraction processing failed. Check logs for details.")
+            
+            except Exception as e:
+                self.logger.error(f"Error in OCR Extraction processing: {e}", exc_info=True)
+                self.ocr_extraction_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"OCR Extraction processing error:\n{str(e)}")
+            finally:
+                self.ocr_extraction_process_btn.configure(state="normal", text="Extract OCR")
+        
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
     
@@ -3755,9 +3941,10 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_f_status_label.configure(text=msg))
                 
-                # Process Stage F
+                # Process Stage F (use default output dir from main view)
                 output_path = self.stage_f_processor.process_stage_f(
                     stage_e_path=stage_e_path,
+                    output_dir=self.get_default_output_dir(stage_e_path),
                     progress_callback=progress_callback
                 )
                 
@@ -4102,7 +4289,8 @@ class ContentAutomationGUI:
                 word_path = self.stage_j_word_var.get().strip()
                 stage_f_path = self.stage_j_stage_f_var.get().strip() if hasattr(self, 'stage_j_stage_f_var') else ""
                 prompt = self.stage_j_prompt_text.get("1.0", tk.END).strip()
-                model_name = self.stage_j_model_var.get()
+                # Always use default model from main view settings
+                model_name = self.get_default_model()
                 
                 if not stage_e_path or not os.path.exists(stage_e_path):
                     messagebox.showerror("Error", "Please select a valid Stage E JSON file")
@@ -4129,13 +4317,14 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_j_status_label.configure(text=msg))
                 
-                # Process Stage J
+                # Process Stage J (use default output dir from main view)
                 output_path = self.stage_j_processor.process_stage_j(
                     stage_e_path=stage_e_path,
                     word_file_path=word_path,
                     stage_f_path=stage_f_path if stage_f_path else None,
                     prompt=prompt,
                     model_name=model_name,
+                    output_dir=self.get_default_output_dir(stage_e_path),
                     progress_callback=progress_callback
                 )
                 
@@ -4210,7 +4399,8 @@ class ContentAutomationGUI:
                 stage_j_path = self.stage_h_stage_j_var.get().strip()
                 stage_f_path = self.stage_h_stage_f_var.get().strip()
                 prompt = self.stage_h_prompt_text.get("1.0", tk.END).strip()
-                model_name = self.stage_h_model_var.get()
+                # Always use default model from main view settings
+                model_name = self.get_default_model()
                 
                 if not stage_j_path or not os.path.exists(stage_j_path):
                     messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
@@ -4232,12 +4422,13 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_h_status_label.configure(text=msg))
                 
-                # Process Stage H
+                # Process Stage H (always use default output dir from main view)
                 output_path = self.stage_h_processor.process_stage_h(
                     stage_j_path=stage_j_path,
                     stage_f_path=stage_f_path,
                     prompt=prompt,
                     model_name=model_name,
+                    output_dir=self.get_default_output_dir(stage_j_path),
                     progress_callback=progress_callback
                 )
                 
@@ -4915,11 +5106,12 @@ class ContentAutomationGUI:
                 stage_j_path = self.stage_v_stage_j_var.get().strip()
                 word_path = self.stage_v_word_var.get().strip()
                 prompt_1 = self.stage_v_prompt1_text.get("1.0", tk.END).strip()
-                model_name_1 = self.stage_v_model1_var.get()
+                # Always use default model from main view settings
+                model_name_1 = self.get_default_model()
                 prompt_2 = self.stage_v_prompt2_text.get("1.0", tk.END).strip()
-                model_name_2 = self.stage_v_model2_var.get()
+                model_name_2 = self.get_default_model()
                 prompt_3 = self.stage_v_prompt3_text.get("1.0", tk.END).strip()
-                model_name_3 = self.stage_v_model3_var.get()
+                model_name_3 = self.get_default_model()
                 
                 if not stage_j_path or not os.path.exists(stage_j_path):
                     messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
@@ -4949,7 +5141,7 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_v_status_label.configure(text=msg))
                 
-                # Process Stage V
+                # Process Stage V (use default output dir from main view)
                 output_path = self.stage_v_processor.process_stage_v(
                     stage_j_path=stage_j_path,
                     word_file_path=word_path,
@@ -4959,6 +5151,7 @@ class ContentAutomationGUI:
                     model_name_2=model_name_2,
                     prompt_3=prompt_3,
                     model_name_3=model_name_3,
+                    output_dir=self.get_default_output_dir(stage_j_path),
                     progress_callback=progress_callback
                 )
                 
@@ -5119,8 +5312,10 @@ class ContentAutomationGUI:
                     self.root.after(0, lambda: self.stage_m_status_label.configure(text=msg))
 
                 # Detect book/chapter for status convenience (optional)
+                # Always use default output dir from main view
                 output_path = self.stage_m_processor.process_stage_m(
                     stage_h_path=stage_h_path,
+                    output_dir=self.get_default_output_dir(stage_h_path),
                     progress_callback=progress_callback
                 )
 
@@ -5413,7 +5608,8 @@ class ContentAutomationGUI:
                     return
 
                 prompt = self.stage_l_prompt_text.get("1.0", tk.END).strip()
-                model_name = self.stage_l_model_var.get()
+                # Always use default model from main view settings
+                model_name = self.get_default_model()
 
                 if not prompt:
                     messagebox.showerror("Error", "Please enter a prompt for Chapter Summary")
@@ -5427,12 +5623,13 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_l_status_label.configure(text=msg))
 
-                # Process Stage L
+                # Process Stage L (always use default output dir from main view)
                 output_path = self.stage_l_processor.process_stage_l(
                     stage_j_path=stage_j_path,
                     stage_v_path=stage_v_path,
                     prompt=prompt,
                     model_name=model_name,
+                    output_dir=self.get_default_output_dir(stage_j_path),
                     progress_callback=progress_callback
                 )
 
@@ -5724,100 +5921,103 @@ class ContentAutomationGUI:
         
         desc = ctk.CTkLabel(
             main_frame,
-            text="Detect deleted content by comparing old book PDF extraction with current Stage A data.",
+            text="Step 1: Extract PDF from old reference (2 parts). Step 2: Detect deletions by comparing OCR Extraction JSON with extracted PDF.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
         
-        # Stage A File
-        stage_a_frame = ctk.CTkFrame(main_frame)
-        stage_a_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(stage_a_frame, text="Stage A JSON (a file):",
+        # Step 1: Old Reference PDF File
+        old_pdf_frame = ctk.CTkFrame(main_frame)
+        old_pdf_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(old_pdf_frame, text="Old Reference PDF File (Step 1):",
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_y_stage_a_var'):
-            self.stage_y_stage_a_var = ctk.StringVar()
-            if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path:
-                self.stage_y_stage_a_var.set(self.last_stage_j_path)
+        if not hasattr(self, 'stage_y_old_pdf_var'):
+            self.stage_y_old_pdf_var = ctk.StringVar()
         
-        entry_frame_a = ctk.CTkFrame(stage_a_frame)
-        entry_frame_a.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_a, textvariable=self.stage_y_stage_a_var).pack(side="left", fill="x", expand=True, padx=5)
+        entry_frame_old_pdf = ctk.CTkFrame(old_pdf_frame)
+        entry_frame_old_pdf.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_old_pdf, textvariable=self.stage_y_old_pdf_var).pack(side="left", fill="x", expand=True, padx=5)
         ctk.CTkButton(
-            entry_frame_a,
+            entry_frame_old_pdf,
             text="Browse",
-            command=lambda: self.stage_y_stage_a_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+            command=lambda: self.stage_y_old_pdf_var.set(filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")]))
         ).pack(side="right")
         
-        # PDF Extracted JSON
-        pdf_extracted_frame = ctk.CTkFrame(main_frame)
-        pdf_extracted_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(pdf_extracted_frame, text="PDF Extracted JSON (from Stage X Part 1):",
+        # Step 1: OCR Extraction Prompt
+        ocr_prompt_frame = ctk.CTkFrame(main_frame)
+        ocr_prompt_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(ocr_prompt_frame, text="OCR Extraction Prompt (Step 1):",
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_y_pdf_extracted_var'):
-            self.stage_y_pdf_extracted_var = ctk.StringVar()
+        if not hasattr(self, 'stage_y_ocr_prompt_text'):
+            self.stage_y_ocr_prompt_text = ctk.CTkTextbox(ocr_prompt_frame, height=100, font=self.farsi_text_font)
+        self.stage_y_ocr_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
         
-        entry_frame_pdf = ctk.CTkFrame(pdf_extracted_frame)
-        entry_frame_pdf.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_pdf, textvariable=self.stage_y_pdf_extracted_var).pack(side="left", fill="x", expand=True, padx=5)
+        # Step 1: OCR Extraction Model
+        ocr_model_frame = ctk.CTkFrame(main_frame)
+        ocr_model_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(ocr_model_frame, text="OCR Extraction Model (Step 1):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_ocr_model_var'):
+            self.stage_y_ocr_model_var = ctk.StringVar(value="gemini-2.5-pro")
+        ctk.CTkComboBox(ocr_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_y_ocr_model_var, width=400).pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # Step 2: OCR Extraction JSON File
+        ocr_extraction_frame = ctk.CTkFrame(main_frame)
+        ocr_extraction_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON (Step 2 - from OCR Extraction stage):",
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_ocr_extraction_var'):
+            self.stage_y_ocr_extraction_var = ctk.StringVar()
+            # Try to auto-fill from last OCR extraction output if available
+            if hasattr(self, 'ocr_extraction_output_var') and self.ocr_extraction_output_var.get():
+                self.stage_y_ocr_extraction_var.set(self.ocr_extraction_output_var.get())
+        
+        entry_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
+        entry_frame_ocr.pack(fill="x", padx=10, pady=5)
+        ctk.CTkEntry(entry_frame_ocr, textvariable=self.stage_y_ocr_extraction_var).pack(side="left", fill="x", expand=True, padx=5)
         ctk.CTkButton(
-            entry_frame_pdf,
+            entry_frame_ocr,
             text="Browse",
-            command=lambda: self.stage_y_pdf_extracted_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
+            command=lambda: self.stage_y_ocr_extraction_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
         ).pack(side="right")
         
-        # Stage X Output
-        stage_x_frame = ctk.CTkFrame(main_frame)
-        stage_x_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(stage_x_frame, text="Stage X Output JSON:",
+        # Step 2: Deletion Detection Prompt
+        deletion_prompt_frame = ctk.CTkFrame(main_frame)
+        deletion_prompt_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(deletion_prompt_frame, text="Deletion Detection Prompt (Step 2):",
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_y_stage_x_var'):
-            self.stage_y_stage_x_var = ctk.StringVar()
-        
-        entry_frame_x = ctk.CTkFrame(stage_x_frame)
-        entry_frame_x.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_x, textvariable=self.stage_y_stage_x_var).pack(side="left", fill="x", expand=True, padx=5)
-        ctk.CTkButton(
-            entry_frame_x,
-            text="Browse",
-            command=lambda: self.stage_y_stage_x_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
-        ).pack(side="right")
-        
-        # Prompt Section
-        prompt_frame = ctk.CTkFrame(main_frame)
-        prompt_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(prompt_frame, text="Prompt for Deletion Detection:",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        # Stage Y prompt mode (default vs custom)
-        stage_y_mode_frame = ctk.CTkFrame(prompt_frame)
-        stage_y_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
-        if not hasattr(self, 'stage_y_prompt_type_var'):
-            self.stage_y_prompt_type_var = ctk.StringVar(value="default")
+        # Stage Y deletion prompt mode (default vs custom)
+        stage_y_deletion_mode_frame = ctk.CTkFrame(deletion_prompt_frame)
+        stage_y_deletion_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_y_deletion_prompt_type_var'):
+            self.stage_y_deletion_prompt_type_var = ctk.StringVar(value="default")
         ctk.CTkRadioButton(
-            stage_y_mode_frame,
+            stage_y_deletion_mode_frame,
             text="Use Default Prompt",
-            variable=self.stage_y_prompt_type_var,
+            variable=self.stage_y_deletion_prompt_type_var,
             value="default",
-            command=self.on_stage_y_prompt_type_change,
+            command=self.on_stage_y_deletion_prompt_type_change,
         ).pack(side="left", padx=(0, 10), pady=5)
         ctk.CTkRadioButton(
-            stage_y_mode_frame,
+            stage_y_deletion_mode_frame,
             text="Use Custom Prompt",
-            variable=self.stage_y_prompt_type_var,
+            variable=self.stage_y_deletion_prompt_type_var,
             value="custom",
-            command=self.on_stage_y_prompt_type_change,
+            command=self.on_stage_y_deletion_prompt_type_change,
         ).pack(side="left", padx=(0, 10), pady=5)
         
-        # Default Stage Y prompt combobox
-        stage_y_default_frame = ctk.CTkFrame(prompt_frame)
-        stage_y_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+        # Default Stage Y deletion prompt combobox
+        stage_y_deletion_default_frame = ctk.CTkFrame(deletion_prompt_frame)
+        stage_y_deletion_default_frame.pack(fill="x", padx=10, pady=(0, 10))
         
         ctk.CTkLabel(
-            stage_y_default_frame,
+            stage_y_deletion_default_frame,
             text="Default Deletion Detection Prompt:",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", pady=(0, 5))
@@ -5825,39 +6025,32 @@ class ContentAutomationGUI:
         stage_y_prompt_names = self.prompt_manager.get_prompt_names()
         preferred_stage_y_name = "Deletion Detection Prompt"
         if preferred_stage_y_name in stage_y_prompt_names:
-            stage_y_default_value = preferred_stage_y_name
+            stage_y_deletion_default_value = preferred_stage_y_name
         else:
-            stage_y_default_value = stage_y_prompt_names[0] if stage_y_prompt_names else ""
-        if not hasattr(self, 'stage_y_default_prompt_var'):
-            self.stage_y_default_prompt_var = ctk.StringVar(value=stage_y_default_value)
-        if not hasattr(self, 'stage_y_default_prompt_combo'):
-            self.stage_y_default_prompt_combo = ctk.CTkComboBox(
-                stage_y_default_frame,
+            stage_y_deletion_default_value = stage_y_prompt_names[0] if stage_y_prompt_names else ""
+        if not hasattr(self, 'stage_y_deletion_default_prompt_var'):
+            self.stage_y_deletion_default_prompt_var = ctk.StringVar(value=stage_y_deletion_default_value)
+        if not hasattr(self, 'stage_y_deletion_default_prompt_combo'):
+            self.stage_y_deletion_default_prompt_combo = ctk.CTkComboBox(
+                stage_y_deletion_default_frame,
                 values=stage_y_prompt_names,
-                variable=self.stage_y_default_prompt_var,
+                variable=self.stage_y_deletion_default_prompt_var,
                 width=400,
-                command=self.on_stage_y_default_prompt_selected,
+                command=self.on_stage_y_deletion_default_prompt_selected,
             )
-        self.stage_y_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        self.stage_y_deletion_default_prompt_combo.pack(anchor="w", pady=(0, 5))
         
-        # Textbox for Stage Y prompt
-        if not hasattr(self, 'stage_y_prompt_text'):
-            self.stage_y_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
-        self.stage_y_prompt_text.pack(fill="x", padx=10, pady=(0, 5))
+        # Textbox for Stage Y deletion prompt
+        if not hasattr(self, 'stage_y_deletion_prompt_text'):
+            self.stage_y_deletion_prompt_text = ctk.CTkTextbox(deletion_prompt_frame, height=150, font=self.farsi_text_font)
+        self.stage_y_deletion_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
         
-        # Initialize Stage Y prompt textbox
-        self.on_stage_y_prompt_type_change()
-        
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(model_frame, text="Model:",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        if not hasattr(self, 'stage_y_model_var'):
-            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
-            self.stage_y_model_var = ctk.StringVar(value=default_model)
-        ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_y_model_var, width=300).pack(anchor="w", padx=10, pady=5)
+        # Initialize Stage Y deletion prompt textbox
+        self.on_stage_y_deletion_prompt_type_change()
+        if hasattr(self, 'stage_y_deletion_default_prompt_var'):
+            default_prompt_name = self.stage_y_deletion_default_prompt_var.get()
+            if default_prompt_name:
+                self.on_stage_y_deletion_default_prompt_selected(default_prompt_name)
         
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
@@ -6096,8 +6289,9 @@ class ContentAutomationGUI:
                     messagebox.showerror("Error", "Please enter change detection prompt.")
                     return
                 
-                pdf_model = self.stage_x_pdf_model_var.get()
-                change_model = self.stage_x_change_model_var.get()
+                # Always use default model from main view settings
+                pdf_model = self.get_default_model()
+                change_model = self.get_default_model()
                 
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_x_status_label.configure(text=msg))
@@ -6109,6 +6303,7 @@ class ContentAutomationGUI:
                     stage_a_path=stage_a_path,
                     changes_prompt=change_prompt,
                     changes_model=change_model,
+                    output_dir=self.get_default_output_dir(stage_a_path),
                     progress_callback=progress_callback
                 )
                 
@@ -6141,38 +6336,41 @@ class ContentAutomationGUI:
                 self.stage_y_status_label.configure(text="Processing Deletion Detection...", text_color="blue")
                 
                 # Validate inputs
-                stage_a_path = self.stage_y_stage_a_var.get().strip()
-                pdf_extracted_path = self.stage_y_pdf_extracted_var.get().strip()
-                stage_x_path = self.stage_y_stage_x_var.get().strip()
-                prompt = self.stage_y_prompt_text.get("1.0", tk.END).strip()
+                old_pdf_path = self.stage_y_old_pdf_var.get().strip()
+                ocr_extraction_prompt = self.stage_y_ocr_prompt_text.get("1.0", tk.END).strip()
+                # Always use default model from main view settings
+                ocr_extraction_model = self.get_default_model()
+                ocr_extraction_json_path = self.stage_y_ocr_extraction_var.get().strip()
+                deletion_detection_prompt = self.stage_y_deletion_prompt_text.get("1.0", tk.END).strip()
+                deletion_detection_model = self.get_default_model()
                 
-                if not stage_a_path or not os.path.exists(stage_a_path):
-                    messagebox.showerror("Error", "Please select a valid Stage A JSON file.")
+                if not old_pdf_path or not os.path.exists(old_pdf_path):
+                    messagebox.showerror("Error", "Please select a valid old reference PDF file.")
                     return
                 
-                if not pdf_extracted_path or not os.path.exists(pdf_extracted_path):
-                    messagebox.showerror("Error", "Please select a valid PDF extracted JSON file.")
+                if not ocr_extraction_prompt:
+                    messagebox.showerror("Error", "Please enter OCR Extraction prompt.")
                     return
                 
-                if not stage_x_path or not os.path.exists(stage_x_path):
-                    messagebox.showerror("Error", "Please select a valid Stage X output JSON file.")
+                if not ocr_extraction_json_path or not os.path.exists(ocr_extraction_json_path):
+                    messagebox.showerror("Error", "Please select a valid OCR Extraction JSON file.")
                     return
                 
-                if not prompt:
-                    messagebox.showerror("Error", "Please enter a prompt for Deletion Detection.")
+                if not deletion_detection_prompt:
+                    messagebox.showerror("Error", "Please enter Deletion Detection prompt.")
                     return
-                
-                model_name = self.stage_y_model_var.get()
                 
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_y_status_label.configure(text=msg))
                 
                 output_path = self.stage_y_processor.process_stage_y(
-                    stage_a_path=stage_a_path,
-                    pdf_extracted_json_path=pdf_extracted_path,
-                    stage_x_output_path=stage_x_path,
-                    prompt=prompt,
-                    model_name=model_name,
+                    old_book_pdf_path=old_pdf_path,
+                    ocr_extraction_prompt=ocr_extraction_prompt,
+                    ocr_extraction_model=ocr_extraction_model,
+                    ocr_extraction_json_path=ocr_extraction_json_path,
+                    deletion_detection_prompt=deletion_detection_prompt,
+                    deletion_detection_model=deletion_detection_model,
+                    output_dir=self.get_default_output_dir(ocr_extraction_json_path),
                     progress_callback=progress_callback
                 )
                 
@@ -6226,7 +6424,8 @@ class ContentAutomationGUI:
                     messagebox.showerror("Error", "Please enter a prompt for RichText Generation.")
                     return
                 
-                model_name = self.stage_z_model_var.get()
+                # Always use default model from main view settings
+                model_name = self.get_default_model()
                 
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_z_status_label.configure(text=msg))
@@ -6237,6 +6436,7 @@ class ContentAutomationGUI:
                     stage_y_output_path=stage_y_path,
                     prompt=prompt,
                     model_name=model_name,
+                    output_dir=self.get_default_output_dir(stage_a_path),
                     progress_callback=progress_callback
                 )
                 
@@ -6293,8 +6493,8 @@ class ContentAutomationGUI:
             messagebox.showerror("Error", "Please select or enter a prompt for Stage 1.")
             return
         
-        # Get model
-        stage1_model = self.model_var.get()
+        # Get model (use default from main view)
+        stage1_model = self.get_default_model()
         
         # Disable button
         self.auto_pipeline_start_btn.configure(state="disabled", text="Running Pipeline...")
@@ -6319,7 +6519,7 @@ class ContentAutomationGUI:
             else:
                 stage1_prompt = self.prompt_manager.get_prompt(self.selected_prompt_name) or ""
             
-            stage1_model = self.model_var.get()
+            stage1_model = self.get_default_model()
             
             # Get Stage 2, 3, 4 prompts from prompt_manager
             stage2_prompt = self.prompt_manager.get_prompt("Stage 2 - Structured Clinical Lesson (JSON)") or ""
@@ -6364,8 +6564,8 @@ class ContentAutomationGUI:
             # Initialize orchestrator
             orchestrator = AutomatedPipelineOrchestrator(self.api_client)
             
-            # Output directory
-            output_dir = os.path.dirname(pdf_path) or os.getcwd()
+            # Output directory (use default from main view)
+            output_dir = self.get_default_output_dir(pdf_path)
             
             # Run pipeline
             results = orchestrator.run_automated_pipeline(

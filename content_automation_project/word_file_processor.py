@@ -126,3 +126,9 @@ class WordFileProcessor:
         ext = os.path.splitext(file_path)[1].lower()
         return ext in ['.docx', '.doc']
 
+
+
+
+
+
+

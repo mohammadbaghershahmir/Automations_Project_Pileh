@@ -6,7 +6,6 @@ Generates flashcards from Stage J (without Imp column) and Stage F data.
 import json
 import logging
 import os
-import tempfile
 from typing import Optional, Dict, List, Any, Callable
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
@@ -110,15 +109,16 @@ class StageHProcessor(BaseStageProcessor):
         
         _progress(f"Loaded {len(stage_f_records)} records from Stage F")
         
-        # Split Stage J data into four parts (for prompt)
+        # Split Stage J data into five parts (for prompt)
         total_records = len(stage_j_records_for_prompt)
-        part_size = total_records // 4
+        part_size = total_records // 5
         part1_data = stage_j_records_for_prompt[:part_size]
         part2_data = stage_j_records_for_prompt[part_size:part_size * 2]
         part3_data = stage_j_records_for_prompt[part_size * 2:part_size * 3]
-        part4_data = stage_j_records_for_prompt[part_size * 3:]
+        part4_data = stage_j_records_for_prompt[part_size * 3:part_size * 4]
+        part5_data = stage_j_records_for_prompt[part_size * 4:]
         
-        _progress(f"Splitting Stage J data into 4 parts: Part 1 ({len(part1_data)} records), Part 2 ({len(part2_data)} records), Part 3 ({len(part3_data)} records), Part 4 ({len(part4_data)} records)")
+        _progress(f"Splitting Stage J data into 5 parts: Part 1 ({len(part1_data)} records), Part 2 ({len(part2_data)} records), Part 3 ({len(part3_data)} records), Part 4 ({len(part4_data)} records), Part 5 ({len(part5_data)} records)")
         
         # Prepare Stage F JSON string
         stage_f_json_str = json.dumps(stage_f_records, ensure_ascii=False, indent=2)
@@ -291,6 +291,39 @@ Stage J Data - Part 4 (without Imp and Type columns):
             self.logger.error("No response from model for Part 4")
             return None
         
+        # Process Part 5
+        _progress("Processing Part 5...")
+        part5_json_str = json.dumps(part5_data, ensure_ascii=False, indent=2)
+        part5_prompt = f"""{base_prompt_template}
+
+Stage J Data - Part 5 (without Imp and Type columns):
+{part5_json_str}"""
+        
+        part5_response = None
+        for attempt in range(max_retries):
+            try:
+                part5_response = self.api_client.process_text(
+                    text=part5_prompt,
+                    system_prompt=None,
+                    model_name=model_name,
+                    temperature=APIConfig.DEFAULT_TEMPERATURE,
+                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                )
+                if part5_response:
+                    _progress(f"Part 5 response received ({len(part5_response)} characters)")
+                    break
+            except Exception as e:
+                self.logger.warning(f"Part 5 model call attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    _progress(f"Retrying Part 5... (attempt {attempt + 2}/{max_retries})")
+                else:
+                    self.logger.error("All Part 5 model call attempts failed")
+                    return None
+        
+        if not part5_response:
+            self.logger.error("No response from model for Part 5")
+            return None
+        
         # Save raw responses to TXT file (just the responses, no headers)
         base_dir = os.path.dirname(stage_j_path) or os.getcwd()
         base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
@@ -305,11 +338,13 @@ Stage J Data - Part 4 (without Imp and Type columns):
                 f.write(part3_response)
                 f.write("\n\n")
                 f.write(part4_response)
+                f.write("\n\n")
+                f.write(part5_response)
             _progress(f"Saved raw model responses to: {txt_path}")
         except Exception as e:
             self.logger.warning(f"Failed to save TXT file: {e}")
         
-        # Extract JSON from all four responses
+        # Extract JSON from all five responses
         _progress("Extracting JSON from Part 1 response...")
         part1_output = self.extract_json_from_response(part1_response)
         if not part1_output:
@@ -338,80 +373,38 @@ Stage J Data - Part 4 (without Imp and Type columns):
             _progress("Trying to extract Part 4 JSON from text...")
             part4_output = self.load_txt_as_json_from_text(part4_response)
         
-        # Combine all four outputs
-        _progress("Combining JSON from all four parts...")
+        _progress("Extracting JSON from Part 5 response...")
+        part5_output = self.extract_json_from_response(part5_response)
+        if not part5_output:
+            # Try loading from text directly
+            _progress("Trying to extract Part 5 JSON from text...")
+            part5_output = self.load_txt_as_json_from_text(part5_response)
+        
+        # Combine all five outputs
+        _progress("Combining JSON from all five parts...")
         part1_data_list = self.get_data_from_json(part1_output) if part1_output else []
         part2_data_list = self.get_data_from_json(part2_output) if part2_output else []
         part3_data_list = self.get_data_from_json(part3_output) if part3_output else []
         part4_data_list = self.get_data_from_json(part4_output) if part4_output else []
+        part5_data_list = self.get_data_from_json(part5_output) if part5_output else []
         
         # Create combined model output
-        combined_model_data = part1_data_list + part2_data_list + part3_data_list + part4_data_list
+        combined_model_data = part1_data_list + part2_data_list + part3_data_list + part4_data_list + part5_data_list
         
         if not combined_model_data:
             self.logger.error("Failed to extract JSON from model responses")
-            # Try loading from TXT file as fallback - split by parts and extract complete objects
-            _progress("Trying to load JSON from TXT file as fallback (splitting by parts)...")
-            try:
-                with open(txt_path, 'r', encoding='utf-8') as f:
-                    txt_content = f.read()
-                
-                # Split by double newline to get individual parts
-                parts = txt_content.split('\n\n')
-                self.logger.info(f"Found {len(parts)} parts in TXT file")
-                
-                all_parts_data = []
-                for part_idx, part_text in enumerate(parts, 1):
-                    if not part_text.strip():
-                        continue
-                    
-                    _progress(f"Extracting JSON from TXT Part {part_idx}...")
-                    # First try extract_json_from_response
-                    part_json = self.extract_json_from_response(part_text)
-                    if not part_json:
-                        # Then try load_txt_as_json_from_text
-                        part_json = self.load_txt_as_json_from_text(part_text)
-                    
-                    if part_json:
-                        part_data = self.get_data_from_json(part_json)
-                        if part_data:
-                            all_parts_data.extend(part_data)
-                            self.logger.info(f"TXT Part {part_idx}: Extracted {len(part_data)} records")
-                        else:
-                            self.logger.warning(f"TXT Part {part_idx}: No data extracted from JSON")
-                    else:
-                        # Last resort: use txt_stage_json_utils which can extract complete objects from incomplete JSON
-                        _progress(f"Trying robust extraction for TXT Part {part_idx}...")
-                        from txt_stage_json_utils import load_stage_txt_as_json
-                        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
-                            tmp_file.write(part_text)
-                            tmp_path = tmp_file.name
-                        
-                        try:
-                            part_json = load_stage_txt_as_json(tmp_path)
-                            if part_json:
-                                part_data = self.get_data_from_json(part_json)
-                                if part_data:
-                                    all_parts_data.extend(part_data)
-                                    self.logger.info(f"TXT Part {part_idx}: Extracted {len(part_data)} records using robust extraction")
-                        finally:
-                            try:
-                                os.unlink(tmp_path)
-                            except:
-                                pass
-                
-                if all_parts_data:
-                    combined_model_data = all_parts_data
-                    _progress(f"Extracted {len(combined_model_data)} records from TXT file fallback")
-            except Exception as e:
-                self.logger.error(f"Error loading from TXT file: {e}")
+            # Try loading from TXT file as fallback
+            _progress("Trying to load JSON from TXT file as fallback...")
+            model_output = self.load_txt_as_json(txt_path)
+            if model_output:
+                combined_model_data = self.get_data_from_json(model_output)
         
         if not combined_model_data:
             self.logger.error("Failed to extract JSON from model responses")
             return None
         
         model_data = combined_model_data
-        _progress(f"Extracted {len(model_data)} records from combined model output (Part 1: {len(part1_data_list)}, Part 2: {len(part2_data_list)}, Part 3: {len(part3_data_list)}, Part 4: {len(part4_data_list)})")
+        _progress(f"Extracted {len(model_data)} records from combined model output (Part 1: {len(part1_data_list)}, Part 2: {len(part2_data_list)}, Part 3: {len(part3_data_list)}, Part 4: {len(part4_data_list)}, Part 5: {len(part5_data_list)})")
         
         # Create a mapping from model output
         pointid_to_flashcard = {}
