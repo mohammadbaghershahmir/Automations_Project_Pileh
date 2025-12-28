@@ -48,235 +48,213 @@ class MultiPartProcessor:
         temperature: float = 0.7,
         resume: bool = False,
         progress_callback: Optional[Callable[[str], None]] = None,
+        output_dir: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Process PDF file in 2 parts: save each part as TXT, convert to JSON, then merge.
+        Process entire PDF file at once: send full PDF to model and save output.
 
         Args:
             pdf_path: Path to PDF file
             base_prompt: User's prompt (will be used as-is)
             model_name: Gemini model name
             temperature: Temperature for generation
-            resume: Whether to resume from saved parts (currently disabled)
+            resume: Whether to resume from saved parts (not used in single-part mode)
             progress_callback: Optional callback for progress updates
+            output_dir: Optional output directory (overrides instance output_dir if provided)
 
         Returns:
-            Path to final combined JSON file, or None on error
+            Path to final JSON file, or None on error
         """
         if not os.path.exists(pdf_path):
             self.logger.error(f"PDF file not found: {pdf_path}")
             return None
 
-        if progress_callback:
-            progress_callback("Starting 2-part PDF processing...")
+        # Update output_dir if provided
+        if output_dir:
+            self.output_dir = Path(output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.info(f"Using output directory: {self.output_dir}")
 
-        # Get PDF page count using PDFProcessor
+        if progress_callback:
+            progress_callback("Starting PDF processing (full document)...")
+
+        # Get PDF page count using PDFProcessor (for info only)
+        total_pages = None
         try:
             from pdf_processor import PDFProcessor
             pdf_proc = PDFProcessor()
             total_pages = pdf_proc.count_pages(pdf_path)
             if total_pages == 0:
-                self.logger.error("PDF has no pages or failed to count pages")
-                return None
+                self.logger.warning("PDF has no pages or failed to count pages")
+            elif progress_callback:
+                progress_callback(f"PDF has {total_pages} pages. Processing entire document...")
         except Exception as e:
-            self.logger.error(f"Failed to get PDF page count: {e}")
-            return None
-
-        # Divide PDF into 2 parts
-        mid_page = total_pages // 2
-        part1_end = mid_page
-        part2_start = mid_page + 1
-
-        if progress_callback:
-            progress_callback(f"PDF has {total_pages} pages. Part 1: pages 1-{part1_end}, Part 2: pages {part2_start}-{total_pages}")
+            self.logger.warning(f"Failed to get PDF page count: {e}")
 
         # Initialize model
         if not self.api_client.initialize_text_client(model_name):
             self.logger.error("Failed to initialize text client")
             return None
 
-        # Load PDF file
-        try:
-            import google.generativeai as genai
-            pdf_file = genai.upload_file(path=pdf_path)
-        except Exception as e:
-            self.logger.error(f"Failed to upload PDF file: {e}")
+        # Extract text from PDF instead of uploading file
+        if progress_callback:
+            progress_callback("Extracting text from PDF...")
+        
+        from pdf_processor import PDFProcessor
+        pdf_proc = PDFProcessor()
+        extracted_text = pdf_proc.extract_text(pdf_path)
+        
+        if not extracted_text:
+            self.logger.error("Failed to extract text from PDF")
             return None
+        
+        char_count = len(extracted_text)
+        self.logger.info(f"Extracted {char_count} characters from PDF")
+        if progress_callback:
+            progress_callback(f"Extracted {char_count:,} characters from PDF. Processing with model...")
 
         base_name = Path(pdf_path).stem
-        all_txt_responses = []
-        all_json_rows = []
 
-        # Process Part 1
+        # Process extracted text
         if progress_callback:
-            progress_callback(f"Processing Part 1 (pages 1-{part1_end})...")
+            progress_callback("Processing PDF text with model...")
         
-        part1_prompt = f"{base_prompt}\n\nIMPORTANT: Process ONLY pages 1 to {part1_end} of the PDF. Output JSON format."
-        part1_response = self._process_part(
-            pdf_file, part1_prompt, model_name, temperature, 1, part1_end, progress_callback
+        # Use base prompt with extracted text
+        full_response = self._process_part_with_text(
+            extracted_text, base_prompt, model_name, temperature, 1, total_pages if total_pages else 999, progress_callback
         )
 
-        if part1_response:
-            # Save Part 1 TXT FIRST (before JSON extraction)
-            txt_filename_1 = f"{base_name}_part1.txt"
-            txt_path_1 = self.output_dir / txt_filename_1
-            try:
-                with open(txt_path_1, 'w', encoding='utf-8') as f:
-                    f.write(f"=== PART 1 (Pages 1-{part1_end}) ===\n\n")
-                    f.write(part1_response)
-                if progress_callback:
-                    progress_callback(f"Saved Part 1 TXT: {txt_filename_1}")
-                self.logger.info(f"Saved Part 1 raw response to: {txt_path_1}")
-            except Exception as e:
-                self.logger.warning(f"Failed to save Part 1 TXT: {e}")
-
-            all_txt_responses.append(part1_response)
-
-            # Extract JSON from Part 1 TXT file (like Stage V)
-            if progress_callback:
-                progress_callback("Extracting JSON from Part 1 TXT...")
-            # First try: extract from response text
-            part1_json = self.base_processor.extract_json_from_response(part1_response)
-            if not part1_json:
-                if progress_callback:
-                    progress_callback("Trying to extract Part 1 JSON from text using fallback...")
-                # Second try: extract from text using converter
-                part1_json = self.base_processor.load_txt_as_json_from_text(part1_response)
-            if not part1_json:
-                if progress_callback:
-                    progress_callback("Trying to load Part 1 JSON from TXT file...")
-                # Third try: load from saved TXT file
-                part1_json = self.base_processor.load_txt_as_json(str(txt_path_1))
-            
-            if part1_json:
-                # Handle both list and dict JSON structures (like Stage V)
-                if isinstance(part1_json, list):
-                    all_json_rows.extend(part1_json)
-                    if progress_callback:
-                        progress_callback(f"Part 1: Extracted {len(part1_json)} rows")
-                elif isinstance(part1_json, dict):
-                    rows = part1_json.get("rows", part1_json.get("data", []))
-                    if isinstance(rows, list):
-                        all_json_rows.extend(rows)
-                        if progress_callback:
-                            progress_callback(f"Part 1: Extracted {len(rows)} rows")
-                    else:
-                        all_json_rows.append(part1_json)
-                        if progress_callback:
-                            progress_callback("Part 1: Extracted 1 row")
-        else:
-            self.logger.warning("Part 1 returned no response")
-
-        # Process Part 2
-        if progress_callback:
-            progress_callback(f"Processing Part 2 (pages {part2_start}-{total_pages})...")
-        
-        part2_prompt = f"{base_prompt}\n\nIMPORTANT: Process ONLY pages {part2_start} to {total_pages} of the PDF. Output JSON format."
-        part2_response = self._process_part(
-            pdf_file, part2_prompt, model_name, temperature, part2_start, total_pages, progress_callback
-        )
-
-        if part2_response:
-            # Save Part 2 TXT FIRST (before JSON extraction)
-            txt_filename_2 = f"{base_name}_part2.txt"
-            txt_path_2 = self.output_dir / txt_filename_2
-            try:
-                with open(txt_path_2, 'w', encoding='utf-8') as f:
-                    f.write(f"=== PART 2 (Pages {part2_start}-{total_pages}) ===\n\n")
-                    f.write(part2_response)
-                if progress_callback:
-                    progress_callback(f"Saved Part 2 TXT: {txt_filename_2}")
-                self.logger.info(f"Saved Part 2 raw response to: {txt_path_2}")
-            except Exception as e:
-                self.logger.warning(f"Failed to save Part 2 TXT: {e}")
-
-            all_txt_responses.append(part2_response)
-
-            # Extract JSON from Part 2 TXT file (like Stage V)
-            if progress_callback:
-                progress_callback("Extracting JSON from Part 2 TXT...")
-            # First try: extract from response text
-            part2_json = self.base_processor.extract_json_from_response(part2_response)
-            if not part2_json:
-                if progress_callback:
-                    progress_callback("Trying to extract Part 2 JSON from text using fallback...")
-                # Second try: extract from text using converter
-                part2_json = self.base_processor.load_txt_as_json_from_text(part2_response)
-            if not part2_json:
-                if progress_callback:
-                    progress_callback("Trying to load Part 2 JSON from TXT file...")
-                # Third try: load from saved TXT file
-                part2_json = self.base_processor.load_txt_as_json(str(txt_path_2))
-            
-            if part2_json:
-                # Handle both list and dict JSON structures (like Stage V)
-                if isinstance(part2_json, list):
-                    all_json_rows.extend(part2_json)
-                    if progress_callback:
-                        progress_callback(f"Part 2: Extracted {len(part2_json)} rows")
-                elif isinstance(part2_json, dict):
-                    rows = part2_json.get("rows", part2_json.get("data", []))
-                    if isinstance(rows, list):
-                        all_json_rows.extend(rows)
-                        if progress_callback:
-                            progress_callback(f"Part 2: Extracted {len(rows)} rows")
-                    else:
-                        all_json_rows.append(part2_json)
-                        if progress_callback:
-                            progress_callback("Part 2: Extracted 1 row")
-        else:
-            self.logger.warning("Part 2 returned no response")
-
-        # Clean up uploaded file
-        try:
-            genai.delete_file(pdf_file.name)
-        except:
-            pass
-
-        if not all_json_rows:
-            self.logger.error("No JSON data extracted from any part")
+        if not full_response:
+            self.logger.error("No response received from model")
             return None
 
-        # Save combined TXT file
-        combined_txt_path = self.output_dir / f"{base_name}_all_parts.txt"
+        # Save full response TXT
+        txt_filename = f"{base_name}_full.txt"
+        txt_path = self.output_dir / txt_filename
         try:
-            with open(combined_txt_path, 'w', encoding='utf-8') as f:
-                for idx, response in enumerate(all_txt_responses, 1):
-                    f.write(f"=== PART {idx} RESPONSE ===\n")
-                    f.write(response)
-                    f.write("\n\n")
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(full_response)
             if progress_callback:
-                progress_callback(f"Saved combined TXT: {os.path.basename(combined_txt_path)}")
+                progress_callback(f"Saved full response TXT: {txt_filename}")
+            self.logger.info(f"Saved full response to: {txt_path}")
         except Exception as e:
-            self.logger.warning(f"Failed to save combined TXT: {e}")
+            self.logger.warning(f"Failed to save full TXT: {e}")
 
-        # Deduplicate rows
-        seen = set()
-        unique_rows = []
-        for row in all_json_rows:
-            if not isinstance(row, dict):
-                continue
-            row_str = json.dumps(row, sort_keys=True, ensure_ascii=False)
-            if row_str not in seen:
-                seen.add(row_str)
-                unique_rows.append(row)
+        # Extract JSON from response
+        if progress_callback:
+            progress_callback("Extracting JSON from response...")
+        
+        # First try: extract from response text
+        json_data = self.base_processor.extract_json_from_response(full_response)
+        if not json_data:
+            if progress_callback:
+                progress_callback("Trying to extract JSON from text using fallback...")
+            # Second try: extract from text using converter
+            json_data = self.base_processor.load_txt_as_json_from_text(full_response)
+        if not json_data:
+            if progress_callback:
+                progress_callback("Trying to load JSON from TXT file...")
+            # Third try: load from saved TXT file
+            json_data = self.base_processor.load_txt_as_json(str(txt_path))
 
-        # Sort rows by Number (as float)
-        unique_rows.sort(key=self._sort_key)
+        if not json_data:
+            self.logger.error("No JSON data extracted from response")
+            return None
 
         # Build final output structure
         timestamp = datetime.now().isoformat()
-        final_output = {
-            "metadata": {
-                "source_pdf": os.path.basename(pdf_path),
-                "total_parts": 2,
-                "total_rows": len(unique_rows),
-                "processed_at": timestamp,
-                "model": model_name,
-                "txt_file": str(combined_txt_path)
-            },
-            "rows": unique_rows,
-        }
+        
+        # Check if we have the new "chapters" structure
+        if isinstance(json_data, dict) and "chapters" in json_data:
+            # New structure: {"chapters": [...]}
+            chapters = json_data.get("chapters", [])
+            final_output = {
+                "metadata": {
+                    "source_pdf": os.path.basename(pdf_path),
+                    "total_pages": total_pages,
+                    "total_chapters": len(chapters),
+                    "processed_at": timestamp,
+                    "model": model_name,
+                    "txt_file": str(txt_path)
+                },
+                "chapters": chapters,
+            }
+            if progress_callback:
+                progress_callback(f"Extracted chapters structure ({len(chapters)} chapters)")
+        elif isinstance(json_data, dict) and ("rows" in json_data or "data" in json_data):
+            # Old structure: {"rows": [...]} or {"data": [...]}
+            rows = json_data.get("rows", json_data.get("data", []))
+            if isinstance(rows, list):
+                # Deduplicate rows
+                seen = set()
+                unique_rows = []
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    row_str = json.dumps(row, sort_keys=True, ensure_ascii=False)
+                    if row_str not in seen:
+                        seen.add(row_str)
+                        unique_rows.append(row)
+                
+                # Sort rows by Number (as float)
+                unique_rows.sort(key=self._sort_key)
+                
+                final_output = {
+                    "metadata": {
+                        "source_pdf": os.path.basename(pdf_path),
+                        "total_pages": total_pages,
+                        "total_rows": len(unique_rows),
+                        "processed_at": timestamp,
+                        "model": model_name,
+                        "txt_file": str(txt_path)
+                    },
+                    "rows": unique_rows,
+                }
+                if progress_callback:
+                    progress_callback(f"Extracted {len(unique_rows)} rows")
+            else:
+                # Single object
+                final_output = {
+                    "metadata": {
+                        "source_pdf": os.path.basename(pdf_path),
+                        "total_pages": total_pages,
+                        "processed_at": timestamp,
+                        "model": model_name,
+                        "txt_file": str(txt_path)
+                    },
+                    "data": json_data,
+                }
+                if progress_callback:
+                    progress_callback("Extracted single JSON object")
+        elif isinstance(json_data, list):
+            # List structure
+            final_output = {
+                "metadata": {
+                    "source_pdf": os.path.basename(pdf_path),
+                    "total_pages": total_pages,
+                    "total_items": len(json_data),
+                    "processed_at": timestamp,
+                    "model": model_name,
+                    "txt_file": str(txt_path)
+                },
+                "data": json_data,
+            }
+            if progress_callback:
+                progress_callback(f"Extracted {len(json_data)} items")
+        else:
+            # Unknown structure, wrap it
+            final_output = {
+                "metadata": {
+                    "source_pdf": os.path.basename(pdf_path),
+                    "total_pages": total_pages,
+                    "processed_at": timestamp,
+                    "model": model_name,
+                    "txt_file": str(txt_path)
+                },
+                "data": json_data,
+            }
+            if progress_callback:
+                progress_callback("Extracted JSON data")
 
         # Save final JSON
         final_json_filename = f"{base_name}_final_output.json"
@@ -290,27 +268,39 @@ class MultiPartProcessor:
             self.logger.error(f"Failed to save final JSON: {e}")
             return None
 
-        # Generate CSV file
+        # Generate CSV file (only if we have rows structure)
         csv_filename = f"{base_name}_final_output.csv"
         csv_path = self.output_dir / csv_filename
 
         try:
-            if unique_rows:
-                headers = set()
-                for row in unique_rows:
-                    headers.update(row.keys())
-                headers = sorted(headers)
+            if "rows" in final_output:
+                unique_rows = final_output["rows"]
+                if unique_rows:
+                    headers = set()
+                    for row in unique_rows:
+                        headers.update(row.keys())
+                    headers = sorted(headers)
 
-                with open(csv_path, "w", encoding="utf-8", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
-                    writer.writeheader()
-                    writer.writerows(unique_rows)
-                self.logger.info(f"CSV file saved to: {csv_path}")
+                    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
+                        writer.writeheader()
+                        writer.writerows(unique_rows)
+                    self.logger.info(f"CSV file saved to: {csv_path}")
         except Exception as e:
             self.logger.warning(f"Failed to save CSV file: {e}")
 
         if progress_callback:
-            progress_callback(f"✓ Processing completed. {len(unique_rows)} rows extracted.")
+            if "chapters" in final_output:
+                chapters = final_output["chapters"]
+                progress_callback(f"✓ Processing completed. {len(chapters)} chapters extracted.")
+            elif "rows" in final_output:
+                unique_rows = final_output["rows"]
+                progress_callback(f"✓ Processing completed. {len(unique_rows)} rows extracted.")
+            elif "data" in final_output:
+                if isinstance(final_output["data"], list):
+                    progress_callback(f"✓ Processing completed. {len(final_output['data'])} items extracted.")
+                else:
+                    progress_callback("✓ Processing completed. JSON data extracted.")
 
         return str(final_json_path)
 
@@ -318,7 +308,32 @@ class MultiPartProcessor:
         self, pdf_file, prompt: str, model_name: str, temperature: float,
         start_page: int, end_page: int, progress_callback: Optional[Callable[[str], None]] = None
     ) -> Optional[str]:
-        """Process a single part of PDF and return raw response text."""
+        """
+        Legacy method for processing PDF file (kept for backward compatibility).
+        This method is deprecated - use _process_part_with_text instead.
+        """
+        self.logger.warning("_process_part with PDF file is deprecated. Use _process_part_with_text instead.")
+        return None
+    
+    def _process_part_with_text(
+        self, extracted_text: str, prompt: str, model_name: str, temperature: float,
+        start_page: int, end_page: int, progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Optional[str]:
+        """
+        Process extracted PDF text and return raw response text.
+        
+        Args:
+            extracted_text: Text extracted from PDF
+            prompt: User prompt
+            model_name: Model name
+            temperature: Temperature for generation
+            start_page: Start page (for logging)
+            end_page: End page (for logging)
+            progress_callback: Optional progress callback
+            
+        Returns:
+            Response text or None if failed
+        """
         try:
             import google.generativeai as genai
             
@@ -342,18 +357,22 @@ class MultiPartProcessor:
             
             generation_config = genai.types.GenerationConfig(
                 temperature=temperature,
-                max_output_tokens=model_max_tokens,  # Use model-specific maximum instead of fixed 8192
+                max_output_tokens=model_max_tokens,
             )
 
-            content_parts = [prompt, pdf_file]
+            # Combine prompt with extracted text
+            full_content = f"{prompt}\n\n--- PDF Content ---\n{extracted_text}"
+            
             response = self.api_client.text_client.generate_content(
-                content_parts,
+                full_content,
                 generation_config=generation_config,
                 stream=False
             )
 
             return response.text if hasattr(response, 'text') and response.text else None
         except Exception as e:
-            self.logger.error(f"Part processing (pages {start_page}-{end_page}) failed: {e}")
+            self.logger.error(f"Text processing (pages {start_page}-{end_page}) failed: {e}")
             return None
+
+
 

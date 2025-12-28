@@ -785,44 +785,44 @@ class AutomatedPipelineOrchestrator:
             result.status = StageStatus.RUNNING
             
             try:
-                # Get Stage J output path (Stage A file)
-                stage_j_result = self.stage_results.get("J")
-                if not stage_j_result or stage_j_result.status != StageStatus.SUCCESS:
-                    raise Exception("Stage J must complete successfully before Stage Y")
+                # Get Stage 1 output path (OCR Extraction JSON)
+                stage1_result = self.stage_results.get("1")
+                if not stage1_result or stage1_result.status != StageStatus.SUCCESS:
+                    raise Exception("Stage 1 (OCR Extraction) must complete successfully before Stage Y")
                 
-                stage_a_path = stage_j_result.output_path
+                ocr_extraction_json_path = stage1_result.output_path
                 
-                # Get Stage X output
+                # Get old book PDF path from Stage X metadata
+                old_book_pdf_path = None
                 stage_x_result = self.stage_results.get("X")
-                if not stage_x_result or stage_x_result.status != StageStatus.SUCCESS:
-                    raise Exception("Stage X must complete successfully before Stage Y")
+                if stage_x_result and stage_x_result.status == StageStatus.SUCCESS:
+                    with open(stage_x_result.output_path, 'r', encoding='utf-8') as f:
+                        stage_x_data = json.load(f)
+                    stage_x_metadata = stage_x_data.get("metadata", {})
+                    old_book_pdf_path = stage_x_metadata.get("old_book_pdf_path")
                 
-                stage_x_path = stage_x_result.output_path
-                
-                # Get PDF extracted path from Stage X metadata
-                with open(stage_x_path, 'r', encoding='utf-8') as f:
-                    stage_x_data = json.load(f)
-                
-                stage_x_metadata = stage_x_data.get("metadata", {})
-                pdf_extracted_path = stage_x_metadata.get("pdf_extracted_path")
-                
-                if not pdf_extracted_path or not os.path.exists(pdf_extracted_path):
-                    raise Exception(f"PDF extracted path from Stage X not found: {pdf_extracted_path}")
+                if not old_book_pdf_path or not os.path.exists(old_book_pdf_path):
+                    raise Exception(f"Old book PDF path not found. Stage X must complete successfully before Stage Y, or old_book_pdf_path must be provided. Path: {old_book_pdf_path}")
                 
                 # Validate required inputs
                 if not stage_y_prompt:
-                    raise Exception("Stage Y prompt is required")
+                    raise Exception("Stage Y deletion detection prompt is required")
                 
                 # Use default model if not provided
                 y_model = stage_y_model or stage1_model
                 
+                # For OCR extraction prompt and model, use Stage 1 settings (same as OCR Extraction stage)
+                ocr_extraction_prompt = stage1_prompt
+                ocr_extraction_model = stage1_model
+                
                 # Run Stage Y
                 stage_y_output = self.stage_y_processor.process_stage_y(
-                    stage_a_path=stage_a_path,
-                    pdf_extracted_json_path=pdf_extracted_path,
-                    stage_x_output_path=stage_x_path,
-                    prompt=stage_y_prompt,
-                    model_name=y_model,
+                    old_book_pdf_path=old_book_pdf_path,
+                    ocr_extraction_prompt=ocr_extraction_prompt,
+                    ocr_extraction_model=ocr_extraction_model,
+                    ocr_extraction_json_path=ocr_extraction_json_path,
+                    deletion_detection_prompt=stage_y_prompt,
+                    deletion_detection_model=y_model,
                     output_dir=output_dir,
                     progress_callback=progress_callback
                 )

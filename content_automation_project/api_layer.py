@@ -211,6 +211,7 @@ class GeminiAPIClient:
         # Initialize clients
         self.tts_client: Optional[genai_new.Client] = None
         self.text_client: Optional[genai.GenerativeModel] = None
+        self._current_model_name: Optional[str] = None  # Track current model name
         
         # Track response truncation
         self._response_truncated = False
@@ -335,6 +336,7 @@ class GeminiAPIClient:
                 
             genai.configure(api_key=key)
             self.text_client = genai.GenerativeModel(model_name)
+            self._current_model_name = model_name
             self.logger.info(f"Text client initialized with model: {model_name}")
             return True
             
@@ -516,15 +518,18 @@ class GeminiAPIClient:
             
         def _do_process():
             """Inner function to perform the actual processing"""
-            # Initialize client if needed
-            if not self.text_client or api_key:
-                key = api_key or self.key_manager.get_next_key()
-                if not key:
-                    self.logger.error("No API key available")
-                    return None
-                    
+            # Initialize or recreate client if needed (model changed or client doesn't exist)
+            key = api_key or self.key_manager.get_next_key()
+            if not key:
+                self.logger.error("No API key available")
+                return None
+            
+            # Recreate client if model changed or client doesn't exist
+            if not self.text_client or self._current_model_name != model_name or api_key:
                 genai.configure(api_key=key)
                 self.text_client = genai.GenerativeModel(model_name)
+                self._current_model_name = model_name
+                self.logger.info(f"Initialized/recreated text client with model: {model_name}")
             
             # Prepare prompt
             if system_prompt:

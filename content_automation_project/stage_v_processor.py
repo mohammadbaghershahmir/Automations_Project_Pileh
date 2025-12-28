@@ -85,46 +85,216 @@ class StageVProcessor(BaseStageProcessor):
         
         _progress(f"Detected Book ID: {book_id}, Chapter ID: {chapter_id}")
         
-        # ========== STEP 1: Generate Initial Test Questions ==========
-        _progress("=" * 60)
-        _progress("STEP 1: Generating initial test questions...")
-        _progress("=" * 60)
+        # Group Stage J records by Topic
+        _progress("Grouping Stage J records by Topic...")
+        topics: Dict[str, List[Dict[str, Any]]] = {}
+        unmatched_records = []
         
-        step1_output = self._step1_generate_initial_questions(
-            stage_j_path=stage_j_path,
-            word_file_path=word_file_path,
-            prompt=prompt_1,
-            model_name=model_name_1,
-            output_dir=output_dir,
-            progress_callback=progress_callback
-        )
+        for record in stage_j_records:
+            if not isinstance(record, dict):
+                continue
+            topic_value = record.get("topic", "") or record.get("Topic", "")
+            if topic_value:
+                topic_key = str(topic_value).strip().lower()
+                topics.setdefault(topic_key, []).append(record)
+            else:
+                unmatched_records.append(record)
         
-        if not step1_output:
-            self.logger.error("Step 1 failed")
+        # Assign unmatched records to default topic
+        if unmatched_records:
+            if "default" not in topics:
+                topics["default"] = []
+            topics["default"].extend(unmatched_records)
+        
+        if not topics:
+            self.logger.error("No valid Topic information found in Stage J data")
             return None
         
-        _progress(f"Step 1 completed. Output saved to: {step1_output}")
+        sorted_topics = sorted(topics.keys())
+        _progress(f"Found {len(sorted_topics)} topics: {sorted_topics}")
         
-        # ========== STEP 2: Refine Questions (NO QId Mapping) ==========
+        # ========== STEP 1: Generate Initial Test Questions (per Topic) ==========
         _progress("=" * 60)
-        _progress("STEP 2: Refining questions (without QId mapping)...")
+        _progress("STEP 1: Generating initial test questions (per Topic)...")
         _progress("=" * 60)
         
-        step2_output = self._step2_refine_questions(
-            stage_j_path=stage_j_path,
-            word_file_path=word_file_path,
-            step1_output_path=step1_output,
-            prompt=prompt_2,
-            model_name=model_name_2,
-            output_dir=output_dir,
-            progress_callback=progress_callback
-        )
+        step1_topic_outputs: Dict[str, str] = {}
+        for topic_id in sorted_topics:
+            topic_records = topics[topic_id]
+            _progress(f"Processing Step 1 for Topic '{topic_id}' ({len(topic_records)} records)...")
+            
+            # Create temporary Stage J JSON for this topic
+            topic_stage_j_data = {
+                "metadata": stage_j_data.get("metadata", {}),
+                "data": topic_records
+            }
+            
+            # Save temporary JSON file
+            import tempfile
+            temp_dir = output_dir or os.path.dirname(stage_j_path) or os.getcwd()
+            temp_stage_j_path = os.path.join(temp_dir, f"temp_stage_j_topic_{topic_id.replace('/', '_').replace(' ', '_')}.json")
+            try:
+                with open(temp_stage_j_path, 'w', encoding='utf-8') as f:
+                    json.dump(topic_stage_j_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                self.logger.error(f"Failed to create temporary Stage J file for topic {topic_id}: {e}")
+                continue
+            
+            topic_step1_output = self._step1_generate_initial_questions(
+                stage_j_path=temp_stage_j_path,
+                word_file_path=word_file_path,
+                prompt=prompt_1,
+                model_name=model_name_1,
+                output_dir=output_dir,
+                progress_callback=progress_callback
+            )
+            
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_stage_j_path):
+                    os.remove(temp_stage_j_path)
+            except:
+                pass
+            
+            if topic_step1_output:
+                step1_topic_outputs[topic_id] = topic_step1_output
+                _progress(f"Step 1 completed for Topic '{topic_id}': {topic_step1_output}")
+            else:
+                self.logger.warning(f"Step 1 failed for Topic '{topic_id}', skipping...")
         
-        if not step2_output:
-            self.logger.error("Step 2 failed")
+        if not step1_topic_outputs:
+            self.logger.error("Step 1 failed for all topics")
             return None
         
-        _progress(f"Step 2 completed. Output saved to: {step2_output}")
+        # Combine Step 1 outputs from all topics
+        _progress("Combining Step 1 outputs from all topics...")
+        step1_combined_data = []
+        for topic_id, topic_step1_path in step1_topic_outputs.items():
+            topic_step1_data = self.load_json_file(topic_step1_path)
+            if topic_step1_data:
+                topic_records = self.get_data_from_json(topic_step1_data)
+                if topic_records:
+                    step1_combined_data.extend(topic_records)
+        
+        if not step1_combined_data:
+            self.logger.error("Failed to combine Step 1 outputs")
+            return None
+        
+        # Save combined Step 1 output
+        step1_combined_path = os.path.join(output_dir or os.path.dirname(stage_j_path) or os.getcwd(), 
+                                          f"step1_combined_{book_id}{chapter_id:03d}.json")
+        step1_combined_json = {
+            "metadata": {
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "source": "Stage V - Step 1 (Combined from Topics)",
+                "total_topics": len(step1_topic_outputs),
+                "total_records": len(step1_combined_data)
+            },
+            "data": step1_combined_data
+        }
+        try:
+            with open(step1_combined_path, 'w', encoding='utf-8') as f:
+                json.dump(step1_combined_json, f, ensure_ascii=False, indent=2)
+            _progress(f"Step 1 combined output saved to: {step1_combined_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save combined Step 1 output: {e}")
+            return None
+        
+        step1_output = step1_combined_path
+        
+        # ========== STEP 2: Refine Questions (NO QId Mapping) (per Topic) ==========
+        _progress("=" * 60)
+        _progress("STEP 2: Refining questions (without QId mapping) (per Topic)...")
+        _progress("=" * 60)
+        
+        step2_topic_outputs: Dict[str, str] = {}
+        for topic_id in sorted_topics:
+            if topic_id not in step1_topic_outputs:
+                continue
+            
+            topic_records = topics[topic_id]
+            _progress(f"Processing Step 2 for Topic '{topic_id}' ({len(topic_records)} records)...")
+            
+            # Create temporary Stage J JSON for this topic
+            topic_stage_j_data = {
+                "metadata": stage_j_data.get("metadata", {}),
+                "data": topic_records
+            }
+            
+            # Save temporary JSON file
+            temp_dir = output_dir or os.path.dirname(stage_j_path) or os.getcwd()
+            temp_stage_j_path = os.path.join(temp_dir, f"temp_stage_j_topic_{topic_id.replace('/', '_').replace(' ', '_')}.json")
+            try:
+                with open(temp_stage_j_path, 'w', encoding='utf-8') as f:
+                    json.dump(topic_stage_j_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                self.logger.error(f"Failed to create temporary Stage J file for topic {topic_id}: {e}")
+                continue
+            
+            topic_step2_output = self._step2_refine_questions(
+                stage_j_path=temp_stage_j_path,
+                word_file_path=word_file_path,
+                step1_output_path=step1_topic_outputs[topic_id],
+                prompt=prompt_2,
+                model_name=model_name_2,
+                output_dir=output_dir,
+                progress_callback=progress_callback
+            )
+            
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_stage_j_path):
+                    os.remove(temp_stage_j_path)
+            except:
+                pass
+            
+            if topic_step2_output:
+                step2_topic_outputs[topic_id] = topic_step2_output
+                _progress(f"Step 2 completed for Topic '{topic_id}': {topic_step2_output}")
+            else:
+                self.logger.warning(f"Step 2 failed for Topic '{topic_id}', skipping...")
+        
+        if not step2_topic_outputs:
+            self.logger.error("Step 2 failed for all topics")
+            return None
+        
+        # Combine Step 2 outputs from all topics
+        _progress("Combining Step 2 outputs from all topics...")
+        step2_combined_data = []
+        for topic_id, topic_step2_path in step2_topic_outputs.items():
+            topic_step2_data = self.load_json_file(topic_step2_path)
+            if topic_step2_data:
+                topic_records = self.get_data_from_json(topic_step2_data)
+                if topic_records:
+                    step2_combined_data.extend(topic_records)
+        
+        if not step2_combined_data:
+            self.logger.error("Failed to combine Step 2 outputs")
+            return None
+        
+        # Save combined Step 2 output
+        step2_combined_path = os.path.join(output_dir or os.path.dirname(stage_j_path) or os.getcwd(), 
+                                          f"step2_combined_{book_id}{chapter_id:03d}.json")
+        step2_combined_json = {
+            "metadata": {
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "source": "Stage V - Step 2 (Combined from Topics)",
+                "total_topics": len(step2_topic_outputs),
+                "total_records": len(step2_combined_data)
+            },
+            "data": step2_combined_data
+        }
+        try:
+            with open(step2_combined_path, 'w', encoding='utf-8') as f:
+                json.dump(step2_combined_json, f, ensure_ascii=False, indent=2)
+            _progress(f"Step 2 combined output saved to: {step2_combined_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save combined Step 2 output: {e}")
+            return None
+        
+        step2_output = step2_combined_path
         
         # ========== STEP 3: Add QId Mapping ==========
         _progress("=" * 60)

@@ -385,7 +385,8 @@ class StageXProcessor(BaseStageProcessor):
             "processed_at": self._get_timestamp(),
             "model": changes_model,
             "pdf_extracted_path": pdf_extracted_path,
-            "stage_a_path": stage_a_path
+            "stage_a_path": stage_a_path,
+            "old_book_pdf_path": old_book_pdf_path  # Store old PDF path for Stage Y
         }
         
         success = self.save_json_file(validated_changes, output_path, output_metadata, "X")
@@ -461,19 +462,21 @@ class StageXProcessor(BaseStageProcessor):
             self.logger.error("Failed to initialize text client")
             return None
         
-        # Load PDF file
-        try:
-            import google.generativeai as genai
-            pdf_file = genai.upload_file(path=pdf_path)
-        except Exception as e:
-            self.logger.error(f"Failed to upload PDF file: {e}")
-            return None
+        # Extract text from PDF parts
+        from pdf_processor import PDFProcessor
+        pdf_proc = PDFProcessor()
         
         # Process Part 1
-        _progress(f"Processing Part 1 (pages 1-{part1_end})...")
-        part1_prompt = f"{prompt}\n\nIMPORTANT: Process ONLY pages 1 to {part1_end} of the PDF. Output JSON format."
-        part1_response = self._process_part(
-            pdf_file, part1_prompt, model_name, 0.7, 1, part1_end, progress_callback
+        _progress(f"Extracting text from Part 1 (pages 1-{part1_end})...")
+        part1_text = pdf_proc.extract_text_range(pdf_path, 1, part1_end)
+        if not part1_text:
+            self.logger.error(f"Failed to extract text from pages 1-{part1_end}")
+            return None
+        
+        _progress(f"Processing Part 1 with model...")
+        part1_prompt = f"{prompt}\n\nIMPORTANT: Process ONLY pages 1 to {part1_end} of the PDF. Output JSON format.\n\n--- PDF Content (Pages 1-{part1_end}) ---\n{part1_text}"
+        part1_response = self._process_part_with_text(
+            part1_text, part1_prompt, model_name, 0.7, 1, part1_end, progress_callback
         )
 
         if part1_response:
@@ -509,10 +512,16 @@ class StageXProcessor(BaseStageProcessor):
             self.logger.warning("Part 1 returned no response")
 
         # Process Part 2
-        _progress(f"Processing Part 2 (pages {part2_start}-{total_pages})...")
-        part2_prompt = f"{prompt}\n\nIMPORTANT: Process ONLY pages {part2_start} to {total_pages} of the PDF. Output JSON format."
-        part2_response = self._process_part(
-            pdf_file, part2_prompt, model_name, 0.7, part2_start, total_pages, progress_callback
+        _progress(f"Extracting text from Part 2 (pages {part2_start}-{total_pages})...")
+        part2_text = pdf_proc.extract_text_range(pdf_path, part2_start, total_pages)
+        if not part2_text:
+            self.logger.error(f"Failed to extract text from pages {part2_start}-{total_pages}")
+            return None
+        
+        _progress(f"Processing Part 2 with model...")
+        part2_prompt = f"{prompt}\n\nIMPORTANT: Process ONLY pages {part2_start} to {total_pages} of the PDF. Output JSON format.\n\n--- PDF Content (Pages {part2_start}-{total_pages}) ---\n{part2_text}"
+        part2_response = self._process_part_with_text(
+            part2_text, part2_prompt, model_name, 0.7, part2_start, total_pages, progress_callback
         )
 
         if part2_response:
@@ -546,12 +555,6 @@ class StageXProcessor(BaseStageProcessor):
                     _progress("Part 2: Extracted 1 row")
         else:
             self.logger.warning("Part 2 returned no response")
-        
-        # Clean up uploaded file
-        try:
-            genai.delete_file(pdf_file.name)
-        except:
-            pass
         
         if not all_json_rows:
             self.logger.error("No JSON data extracted from any batch")
@@ -597,9 +600,34 @@ class StageXProcessor(BaseStageProcessor):
         self, pdf_file, prompt: str, model_name: str, temperature: float,
         start_page: int, end_page: int, progress_callback: Optional[Callable[[str], None]] = None
     ) -> Optional[str]:
-        """Process a single part of PDF and return raw response text."""
+        """
+        Legacy method for processing PDF file (kept for backward compatibility).
+        This method is deprecated - use _process_part_with_text instead.
+        """
+        self.logger.warning("_process_part with PDF file is deprecated. Use _process_part_with_text instead.")
+        return None
+    
+    def _process_part_with_text(
+        self, extracted_text: str, prompt: str, model_name: str, temperature: float,
+        start_page: int, end_page: int, progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Optional[str]:
+        """Process extracted PDF text and return raw response text."""
         try:
             import google.generativeai as genai
+            
+            # Ensure text_client is using the correct model
+            # Recreate client if model changed
+            if (not hasattr(self.api_client, '_current_model_name') or 
+                self.api_client._current_model_name != model_name):
+                # Get API key
+                key = self.api_client.key_manager.get_next_key()
+                if not key:
+                    self.logger.error("No API key available")
+                    return None
+                genai.configure(api_key=key)
+                self.api_client.text_client = genai.GenerativeModel(model_name)
+                self.api_client._current_model_name = model_name
+                self.logger.info(f"Recreated text_client with model: {model_name}")
             
             # Determine maximum tokens based on model (same logic as api_layer.py)
             # gemini-2.5-pro: up to 32768 tokens
@@ -621,19 +649,18 @@ class StageXProcessor(BaseStageProcessor):
             
             generation_config = genai.types.GenerationConfig(
                 temperature=temperature,
-                max_output_tokens=model_max_tokens,  # Use model-specific maximum instead of fixed 8192
+                max_output_tokens=model_max_tokens,
             )
 
-            content_parts = [prompt, pdf_file]
             response = self.api_client.text_client.generate_content(
-                content_parts,
+                prompt,
                 generation_config=generation_config,
                 stream=False
             )
 
             return response.text if hasattr(response, 'text') and response.text else None
         except Exception as e:
-            self.logger.error(f"Part processing (pages {start_page}-{end_page}) failed: {e}")
+            self.logger.error(f"Text processing (pages {start_page}-{end_page}) failed: {e}")
             return None
 
     def _get_timestamp(self) -> str:
