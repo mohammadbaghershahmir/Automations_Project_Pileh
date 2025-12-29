@@ -976,10 +976,11 @@ class MultiPartPostProcessor:
             topic_idx = min(point_idx // points_per_topic, len(topics_list) - 1)
             topic_info = topics_list[topic_idx]
             
-            # Add chapter/subchapter/topic from OCR Extraction JSON
+            # Add chapter/subchapter from OCR Extraction JSON
+            # Note: topic field is kept from model output, not replaced
             row["chapter"] = topic_info.get("chapter", "")
             row["subchapter"] = topic_info.get("subchapter", "")
-            row["topic"] = topic_info.get("topic", "")
+            # row["topic"] = topic_info.get("topic", "")  # Don't replace topic - keep model output
             
             current_index += 1
         
@@ -992,7 +993,7 @@ class MultiPartPostProcessor:
         if base_name.endswith("_final_output"):
             base_name = base_name[:-13]
         
-        output_filename = f"{base_name}_document_processing_final.json"
+        output_filename = f"Lesson_file_{book_id}_{chapter_id}.json"
         output_path = os.path.join(base_dir, output_filename)
         
         final_output = {
