@@ -587,7 +587,7 @@ class MultiPartPostProcessor:
             self.logger.error(f"Failed to save post-processed JSON: {e}")
             return None, {}
 
-    def process_final_json_by_topics(
+    def process_final_json_by_subchapters(
         self,
         json_path: str,
         topic_file_path: str,
@@ -595,7 +595,7 @@ class MultiPartPostProcessor:
         model_name: str,
     ) -> Optional[Tuple[str, Dict[str, str]]]:
         """
-        Take final_output.json, split rows by Topic (from topic file), send each Topic with the given prompt
+        Take final_output.json, split rows by Subchapter (from topic file), send each Subchapter with the given prompt
         to the language model (via process_text), collect all JSON responses, and save
         a combined final JSON file.
 
@@ -606,7 +606,7 @@ class MultiPartPostProcessor:
             model_name: Gemini model name to use
 
         Returns:
-            Tuple of (Path to combined final JSON file, Dict of topic_id -> response_text), or (None, {}) on error.
+            Tuple of (Path to combined final JSON file, Dict of subchapter_id -> response_text), or (None, {}) on error.
         """
         if not os.path.exists(json_path):
             self.logger.error(f"JSON file not found: {json_path}")
@@ -624,7 +624,7 @@ class MultiPartPostProcessor:
             self.logger.error(f"Failed to load JSON file {json_path}: {e}")
             return None, {}
 
-        rows = data.get("rows", []) or data.get("data", [])
+        rows = data.get("rows", []) or data.get("data", []) or data.get("points", [])
         if not isinstance(rows, list) or not rows:
             self.logger.error("Input JSON has no rows to process")
             return None, {}
@@ -638,98 +638,157 @@ class MultiPartPostProcessor:
             self.logger.error(f"Failed to load topic file {topic_file_path}: {e}")
             return None, {}
 
-        # Extract topics list from topic file
+        # Extract subchapters list from topic file
         topics_list = topic_data if isinstance(topic_data, list) else topic_data.get("data", topic_data.get("topics", []))
         if not topics_list:
-            self.logger.error("Topic file has no topics")
+            self.logger.error("Topic file has no subchapters")
             return None, {}
 
-        self.logger.info(f"Found {len(rows)} rows in input JSON. Grouping by Topic...")
+        # Extract subchapter names from topic file structure
+        subchapter_names_from_file = set()
+        for item in topics_list:
+            if isinstance(item, dict):
+                subchapter_name = item.get("Subchapter", "") or item.get("subchapter", "")
+                if subchapter_name:
+                    subchapter_names_from_file.add(subchapter_name.strip().lower())
         
-        # Group rows by Topic
-        # We'll match rows to topics based on topic field in rows
-        topics: Dict[str, List[Dict[str, Any]]] = {}
+        self.logger.info(f"Found {len(rows)} rows in input JSON. Starting division by Subchapter...")
+        self.logger.info(f"Subchapters found in topic file: {len(subchapter_names_from_file)} - {sorted(subchapter_names_from_file)}")
+        
+        # Group rows by Subchapter
+        # We'll match rows to subchapters based on subchapter field in rows
+        subchapters: Dict[str, List[Dict[str, Any]]] = {}
         unmatched_rows = []
         
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            # Try to find topic in row
-            topic_value = row.get("topic", "") or row.get("Topic", "")
-            if topic_value:
-                # Normalize topic value for matching
-                topic_key = str(topic_value).strip().lower()
-                if topic_key not in topics:
-                    topics[topic_key] = []
-                topics[topic_key].append(row)
-            else:
-                unmatched_rows.append(row)
+        # Log division statistics
+        division_stats = {}
         
-        # If we have unmatched rows, try to match them to topics from topic file
+        for idx, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
+                self.logger.warning(f"Row {idx} is not a dictionary, skipping")
+                continue
+            
+            # Try to find subchapter in row
+            subchapter_value = row.get("subchapter", "") or row.get("Subchapter", "")
+            if subchapter_value:
+                # Normalize subchapter value for matching
+                subchapter_key = str(subchapter_value).strip()
+                subchapter_key_lower = subchapter_key.lower()
+                
+                if subchapter_key_lower not in subchapters:
+                    subchapters[subchapter_key_lower] = []
+                    division_stats[subchapter_key_lower] = {
+                        "name": subchapter_key,
+                        "count": 0,
+                        "first_row_index": idx
+                    }
+                
+                subchapters[subchapter_key_lower].append(row)
+                division_stats[subchapter_key_lower]["count"] += 1
+                
+                # Log first occurrence of each subchapter
+                if division_stats[subchapter_key_lower]["count"] == 1:
+                    self.logger.info(f"  [DIVISION] Subchapter '{subchapter_key}' - First row at index {idx}")
+            else:
+                unmatched_rows.append((idx, row))
+        
+        # Log division summary
+        self.logger.info("=" * 80)
+        self.logger.info("DIVISION BY SUBCHAPTER - SUMMARY")
+        self.logger.info("=" * 80)
+        for subchapter_key, stats in sorted(division_stats.items()):
+            self.logger.info(f"  Subchapter: '{stats['name']}'")
+            self.logger.info(f"    - Total rows: {stats['count']}")
+            self.logger.info(f"    - First row index: {stats['first_row_index']}")
+            self.logger.info(f"    - Last row index: {stats['first_row_index'] + stats['count'] - 1}")
+        
         if unmatched_rows:
-            self.logger.warning(f"Found {len(unmatched_rows)} rows without topic field. Attempting to match...")
-            # For now, we'll assign unmatched rows to a default topic
-            if "default" not in topics:
-                topics["default"] = []
-            topics["default"].extend(unmatched_rows)
+            self.logger.warning(f"  Found {len(unmatched_rows)} rows without subchapter field:")
+            for row_idx, row in unmatched_rows[:10]:  # Log first 10
+                self.logger.warning(f"    - Row {row_idx}: {str(row)[:100]}...")
+            if len(unmatched_rows) > 10:
+                self.logger.warning(f"    ... and {len(unmatched_rows) - 10} more rows")
+            
+            # Assign unmatched rows to a default subchapter
+            if "default" not in subchapters:
+                subchapters["default"] = []
+                division_stats["default"] = {
+                    "name": "default (unmatched)",
+                    "count": 0,
+                    "first_row_index": unmatched_rows[0][0] if unmatched_rows else 0
+                }
+            for row_idx, row in unmatched_rows:
+                subchapters["default"].append(row)
+                division_stats["default"]["count"] += 1
+            
+            self.logger.warning(f"  Assigned {len(unmatched_rows)} unmatched rows to 'default' subchapter")
+        
+        self.logger.info("=" * 80)
+        self.logger.info(f"Total subchapters after division: {len(subchapters)}")
+        self.logger.info(f"Total rows processed: {sum(len(rows) for rows in subchapters.values())}")
+        self.logger.info("=" * 80)
 
-        if not topics:
-            self.logger.error("No valid Topic information found in rows")
+        if not subchapters:
+            self.logger.error("No valid Subchapter information found in rows")
             return None, {}
 
-        sorted_topics = sorted(topics.keys())
-        self.logger.info(f"Processing {len(sorted_topics)} topics: {sorted_topics}")
+        sorted_subchapters = sorted(subchapters.keys())
+        self.logger.info(f"Processing {len(sorted_subchapters)} subchapters: {[division_stats[k]['name'] for k in sorted_subchapters]}")
         all_responses: List[str] = []
-        topic_responses: Dict[str, str] = {}
+        subchapter_responses: Dict[str, str] = {}
 
-        for topic_id in sorted_topics:
-            topic_rows = topics[topic_id]
-            if not topic_rows:
+        for subchapter_idx, subchapter_id in enumerate(sorted_subchapters, 1):
+            subchapter_rows = subchapters[subchapter_id]
+            if not subchapter_rows:
+                self.logger.warning(f"Subchapter '{division_stats[subchapter_id]['name']}' has no rows, skipping")
                 continue
 
-            # Build text payload: just the JSON for this topic
-            topic_json_text = json.dumps(topic_rows, ensure_ascii=False, indent=2)
+            subchapter_name = division_stats[subchapter_id]["name"]
+            self.logger.info(f"[{subchapter_idx}/{len(sorted_subchapters)}] Processing Subchapter '{subchapter_name}' ({len(subchapter_rows)} rows)...")
+
+            # Build text payload: just the JSON for this subchapter
+            subchapter_json_text = json.dumps(subchapter_rows, ensure_ascii=False, indent=2)
 
             # Use only user's prompt, no additions
-            self.logger.info(f"Processing Topic {topic_id} ({len(topic_rows)} rows) with second-stage prompt...")
             response_text = self.api_client.process_text(
-                text=topic_json_text,
+                text=subchapter_json_text,
                 system_prompt=user_prompt,
                 model_name=model_name,
             )
 
             if not response_text:
-                self.logger.error(f"No response received for Topic {topic_id}, aborting post-process")
+                self.logger.error(f"No response received for Subchapter '{subchapter_name}', aborting post-process")
                 return None, {}
 
-            self.logger.info(f"Topic {topic_id} processed successfully. Response length: {len(response_text)} characters")
+            self.logger.info(f"Subchapter '{subchapter_name}' processed successfully. Response length: {len(response_text)} characters")
             # Store response as-is (no parsing, no conversion)
             all_responses.append(response_text)
-            topic_responses[topic_id] = response_text
+            subchapter_responses[subchapter_id] = response_text
 
         if not all_responses:
             self.logger.error("No responses produced by second-stage processing")
             return None, {}
 
         # Extract JSON blocks from each response separately, then combine
-        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per topic)...")
+        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per subchapter)...")
         all_json_blocks = []
         
-        for topic_id, response_text in zip(sorted_topics, all_responses):
-            self.logger.debug(f"Topic {topic_id}: Extracting JSON from response ({len(response_text)} chars)...")
+        for subchapter_id, response_text in zip(sorted_subchapters, all_responses):
+            subchapter_name = division_stats[subchapter_id]["name"]
+            self.logger.debug(f"Subchapter '{subchapter_name}': Extracting JSON from response ({len(response_text)} chars)...")
             # Extract JSON blocks from this response
-            topic_json_blocks = self._extract_json_blocks_from_text(response_text)
-            if topic_json_blocks:
-                all_json_blocks.extend(topic_json_blocks)
-                self.logger.debug(f"Topic {topic_id}: Extracted {len(topic_json_blocks)} JSON block(s)")
+            subchapter_json_blocks = self._extract_json_blocks_from_text(response_text)
+            if subchapter_json_blocks:
+                all_json_blocks.extend(subchapter_json_blocks)
+                self.logger.debug(f"Subchapter '{subchapter_name}': Extracted {len(subchapter_json_blocks)} JSON block(s)")
             else:
-                self.logger.warning(f"Topic {topic_id}: No JSON blocks found in response")
+                self.logger.warning(f"Subchapter '{subchapter_name}': No JSON blocks found in response")
         
         if not all_json_blocks:
             self.logger.error("No JSON blocks extracted from any response")
             return None, {}
 
-        self.logger.info(f"Total {len(all_json_blocks)} JSON block(s) extracted from all topics")
+        self.logger.info(f"Total {len(all_json_blocks)} JSON block(s) extracted from all subchapters")
         
         # Combine all JSON blocks into final structure
         self.logger.info("Combining JSON blocks into final structure...")
@@ -751,7 +810,7 @@ class MultiPartPostProcessor:
             with open(json_path_final, "w", encoding="utf-8") as f:
                 json.dump(json_data, f, ensure_ascii=False, indent=2)
             self.logger.info(f"Post-processed JSON saved successfully: {json_path_final}")
-            return json_path_final, topic_responses
+            return json_path_final, subchapter_responses
         except Exception as e:
             self.logger.error(f"Failed to save post-processed JSON: {e}")
             return None, {}
@@ -808,12 +867,26 @@ class MultiPartPostProcessor:
             self.logger.error("OCR JSON has no 'chapters' structure")
             return None
         
-        # Collect all topics with their subchapter and chapter info
-        topics_list = []
+        # Extract chapter name from JSON input (from metadata or first chapter)
+        chapter_name_from_input = ocr_data.get("metadata", {}).get("chapter", "")
+        if not chapter_name_from_input and chapters:
+            chapter_name_from_input = chapters[0].get("chapter", "")
+        
+        if not chapter_name_from_input:
+            self.logger.warning("No chapter name found in OCR JSON, will use empty string")
+        
+        self.logger.info(f"Chapter name from input JSON: {chapter_name_from_input}")
+        
+        # Collect all topics with their subchapter info
+        # Process topic by topic, but for EACH topic send the FULL subchapter (all its topics) as context to the model.
+        topics_list = []  # List of (subchapter_name, topic_data) tuples
+        subchapters_dict = {}  # subchapter_name -> list of topic names (for logging / txt saving)
+        # subchapter_name -> list of full topic dicts {"topic": ..., "extractions": [...]}
+        subchapter_full_topics: Dict[str, List[Dict[str, Any]]] = {}
+        
         for chapter in chapters:
             if not isinstance(chapter, dict):
                 continue
-            chapter_name = chapter.get("chapter", "")
             subchapters = chapter.get("subchapters", [])
             
             for subchapter in subchapters:
@@ -822,6 +895,16 @@ class MultiPartPostProcessor:
                 subchapter_name = subchapter.get("subchapter", "")
                 topics = subchapter.get("topics", [])
                 
+                if not subchapter_name:
+                    continue
+                
+                # Initialize structures for this subchapter if not exists
+                if subchapter_name not in subchapters_dict:
+                    subchapters_dict[subchapter_name] = []
+                if subchapter_name not in subchapter_full_topics:
+                    subchapter_full_topics[subchapter_name] = []
+                
+                # Collect each topic individually and also build full subchapter topics list
                 for topic in topics:
                     if not isinstance(topic, dict):
                         continue
@@ -829,47 +912,103 @@ class MultiPartPostProcessor:
                     extractions = topic.get("extractions", [])
                     
                     if topic_name and extractions:
-                        topics_list.append({
-                            "chapter": chapter_name,
-                            "subchapter": subchapter_name,
+                        topic_data = {
                             "topic": topic_name,
                             "extractions": extractions
-                        })
+                        }
+                        # For per-topic processing
+                        topics_list.append((subchapter_name, topic_data))
+                        # For logging
+                        subchapters_dict[subchapter_name].append(topic_name)
+                        # For model context (FULL subchapter for every topic)
+                        subchapter_full_topics[subchapter_name].append(topic_data)
         
         if not topics_list:
             self.logger.error("No topics found in OCR JSON")
             return None
         
+        # Count unique subchapters
+        unique_subchapters = set(subchapter_name for subchapter_name, _ in topics_list)
+        
+        self.logger.info("=" * 80)
+        self.logger.info("DOCUMENT PROCESSING - PROCESSING BY TOPIC")
+        self.logger.info("=" * 80)
         self.logger.info(f"Found {len(topics_list)} topics to process")
+        self.logger.info(f"Found {len(unique_subchapters)} unique subchapters")
+        self.logger.info("")
+        
+        # Log subchapters and their topics
+        subchapter_idx_map = {}
+        for idx, subchapter_name in enumerate(sorted(unique_subchapters), 1):
+            subchapter_idx_map[subchapter_name] = idx
+            topic_names = subchapters_dict[subchapter_name]
+            self.logger.info(f"  Subchapter {idx}: '{subchapter_name}' - {len(topic_names)} topics")
+            for topic_idx, topic_name in enumerate(topic_names, 1):
+                self.logger.info(f"    Topic {topic_idx}: '{topic_name}'")
+        self.logger.info("=" * 80)
+        
         if progress_callback:
-            progress_callback(f"Found {len(topics_list)} topics to process")
+            progress_callback(f"Found {len(topics_list)} topics in {len(unique_subchapters)} subchapters to process")
         
-        # Process each topic
+        # Prepare base directory and filename for txt files and JSON files
+        base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
+        input_name = os.path.basename(ocr_json_path)
+        base_name, _ = os.path.splitext(input_name)
+        
+        # Process each topic individually
         all_responses = []
-        topic_responses = {}
+        # Store topic/subchapter info for each response to maintain correct mapping
+        response_topic_info = []  # List of topic_info dicts, one per response
+        # Group responses by subchapter for txt file saving
+        subchapter_responses_dict: Dict[str, List[Dict[str, str]]] = {}  # subchapter_name -> list of {topic, response}
         
-        for idx, topic_info in enumerate(topics_list, 1):
-            topic_name = topic_info["topic"]
-            subchapter_name = topic_info["subchapter"]
-            extractions = topic_info["extractions"]
+        for topic_idx, (subchapter_name, topic_data) in enumerate(topics_list, 1):
+            topic_name = topic_data["topic"]
+            extractions = topic_data["extractions"]
             
-            self.logger.info(f"Processing topic {idx}/{len(topics_list)}: {topic_name} (Subchapter: {subchapter_name})")
+            self.logger.info("")
+            self.logger.info("=" * 80)
+            self.logger.info(f"PROCESSING TOPIC {topic_idx}/{len(topics_list)}")
+            self.logger.info("=" * 80)
+            self.logger.info(f"  Subchapter: '{subchapter_name}'")
+            self.logger.info(f"  Topic: '{topic_name}'")
+            self.logger.info(f"  Number of extractions: {len(extractions)}")
+            
             if progress_callback:
-                progress_callback(f"Processing topic {idx}/{len(topics_list)}: {topic_name}")
+                progress_callback(f"Processing topic {topic_idx}/{len(topics_list)}: {subchapter_name} > {topic_name}")
             
-            # Replace placeholders in prompt
-            topic_prompt = user_prompt.replace("{Topic_NAME}", topic_name)
-            topic_prompt = topic_prompt.replace("{Subchapter_Name}", subchapter_name)
+            # Replace placeholders in prompt with current topic and subchapter
+            topic_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name)
+            topic_prompt = topic_prompt.replace("{Topic_NAME}", topic_name)
             
-            # Build JSON payload for this topic
+            # Build JSON payload for this topic:
+            # IMPORTANT: the model should see the FULL subchapter (all topics of this subchapter)
+            # as context, but focus only on the current topic defined by {Topic_NAME} in the prompt.
+            full_subchapter_topics = subchapter_full_topics.get(subchapter_name, [])
+            if not full_subchapter_topics:
+                # Fallback: at least send the current topic if for some reason subchapter list is empty
+                full_subchapter_topics = [
+                    {
+                        "topic": topic_name,
+                        "extractions": extractions
+                    }
+                ]
+            
             topic_json = {
-                "topic": topic_name,
                 "subchapter": subchapter_name,
-                "extractions": extractions
+                "chapter": chapter_name_from_input,
+                # FULL subchapter context (all topics), not just the current topic
+                "topics": full_subchapter_topics
             }
             topic_json_text = json.dumps(topic_json, ensure_ascii=False, indent=2)
             
+            # Log JSON size before sending to model
+            json_size = len(topic_json_text.encode('utf-8'))
+            self.logger.info(f"  JSON payload size: {json_size:,} bytes ({json_size/1024:.2f} KB)")
+            self.logger.info(f"  Sending topic JSON to model (full subchapter context with {len(full_subchapter_topics)} topics)...")
+            
             # Process with model
+            self.logger.info(f"  Calling model API...")
             response_text = self.api_client.process_text(
                 text=topic_json_text,
                 system_prompt=topic_prompt,
@@ -877,35 +1016,175 @@ class MultiPartPostProcessor:
             )
             
             if not response_text:
-                self.logger.error(f"No response received for topic: {topic_name}")
+                self.logger.error(f"  ✗ No response received for topic: {subchapter_name} > {topic_name}")
                 continue
             
-            self.logger.info(f"Topic {topic_name} processed successfully. Response length: {len(response_text)} characters")
+            response_size = len(response_text.encode('utf-8'))
+            self.logger.info(f"  ✓ Topic '{topic_name}' processed successfully")
+            self.logger.info(f"  Response size: {response_size:,} bytes ({response_size/1024:.2f} KB)")
+            self.logger.info(f"  Response length: {len(response_text):,} characters")
+            
+            # Store response and its corresponding topic info
             all_responses.append(response_text)
-            topic_responses[topic_name] = response_text
+            response_topic_info.append({
+                "subchapter": subchapter_name,
+                "topic": topic_name,
+                "chapter": chapter_name_from_input
+            })
+            
+            # Group response by subchapter for txt file saving
+            if subchapter_name not in subchapter_responses_dict:
+                subchapter_responses_dict[subchapter_name] = []
+            subchapter_responses_dict[subchapter_name].append({
+                "topic": topic_name,
+                "response": response_text
+            })
+            
+            self.logger.info(f"  ✓ Topic '{topic_name}' completed")
+            self.logger.info("=" * 80)
+        
+        # Save txt files for each subchapter after all its topics are processed
+        self.logger.info("")
+        self.logger.info("=" * 80)
+        self.logger.info("SAVING TXT FILES FOR EACH SUBCHAPTER")
+        self.logger.info("=" * 80)
+        
+        for subchapter_name, topic_responses_list in subchapter_responses_dict.items():
+            subchapter_idx = subchapter_idx_map.get(subchapter_name, 0)
+            self._save_subchapter_txt_file(
+                subchapter_name,
+                topic_responses_list,
+                base_dir,
+                base_name,
+                subchapter_idx,
+                len(unique_subchapters),
+                progress_callback
+            )
+        
+        self.logger.info("=" * 80)
         
         if not all_responses:
             self.logger.error("No responses produced by Document Processing")
             return None
         
-        # Extract JSON blocks from each response
-        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses...")
+        # Extract JSON blocks from each response (one per topic)
+        self.logger.info("=" * 80)
+        self.logger.info("EXTRACTING JSON BLOCKS FROM RESPONSES")
+        self.logger.info("=" * 80)
+        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per topic)...")
         if progress_callback:
             progress_callback("Extracting JSON from responses...")
         
         all_json_blocks = []
-        for topic_name, response_text in zip([t["topic"] for t in topics_list], all_responses):
-            self.logger.debug(f"Topic {topic_name}: Extracting JSON from response...")
+        # Track number of blocks per topic to maintain correct mapping after flattening
+        blocks_per_topic = []  # List of (topic_info, num_blocks) tuples
+        
+        for response_idx, (topic_info_stored, response_text) in enumerate(zip(response_topic_info, all_responses), 1):
+            subchapter_name = topic_info_stored["subchapter"]
+            topic_name = topic_info_stored["topic"]
+            self.logger.info(f"  Topic {response_idx}/{len(all_responses)}: '{subchapter_name}' > '{topic_name}'")
+            self.logger.debug(f"    Extracting JSON from response ({len(response_text):,} characters)...")
+            
             topic_json_blocks = self._extract_json_blocks_from_text(response_text)
             if topic_json_blocks:
                 all_json_blocks.extend(topic_json_blocks)
-                self.logger.debug(f"Topic {topic_name}: Extracted {len(topic_json_blocks)} JSON block(s)")
+                blocks_per_topic.append((topic_info_stored, len(topic_json_blocks)))
+                self.logger.info(f"    ✓ Extracted {len(topic_json_blocks)} JSON block(s)")
             else:
-                self.logger.warning(f"Topic {topic_name}: No JSON blocks found in response")
+                blocks_per_topic.append((topic_info_stored, 0))
+                self.logger.warning(f"    ✗ No JSON blocks found in response")
+        
+        self.logger.info(f"Total JSON blocks extracted: {len(all_json_blocks)}")
+        self.logger.info("=" * 80)
         
         if not all_json_blocks:
             self.logger.error("No JSON blocks extracted from any response")
             return None
+        
+        # Group blocks by subchapter and calculate points per subchapter
+        self.logger.info("=" * 80)
+        self.logger.info("CALCULATING POINTS PER SUBCHAPTER")
+        self.logger.info("=" * 80)
+        from third_stage_converter import ThirdStageConverter
+        converter = ThirdStageConverter()
+        
+        # Group blocks by subchapter
+        blocks_by_subchapter = {}  # subchapter_name -> list of (topic_info, blocks)
+        block_start_idx = 0
+        
+        for topic_info_stored, num_blocks in blocks_per_topic:
+            subchapter_name = topic_info_stored["subchapter"]
+            if subchapter_name not in blocks_by_subchapter:
+                blocks_by_subchapter[subchapter_name] = {
+                    "topics": [],
+                    "blocks": []
+                }
+            
+            # Get blocks for this topic
+            topic_blocks = all_json_blocks[block_start_idx:block_start_idx + num_blocks]
+            block_start_idx += num_blocks
+            
+            blocks_by_subchapter[subchapter_name]["topics"].append(topic_info_stored)
+            blocks_by_subchapter[subchapter_name]["blocks"].extend(topic_blocks)
+        
+        # Track points count for each subchapter
+        points_per_subchapter_list = []  # List of (subchapter_info, num_points) tuples
+        
+        for subchapter_name, subchapter_data in blocks_by_subchapter.items():
+            subchapter_blocks = subchapter_data["blocks"]
+            topics_info = subchapter_data["topics"]
+            
+            if not subchapter_blocks:
+                # Create subchapter_info from first topic (all topics in same subchapter have same chapter/subchapter)
+                first_topic_info = topics_info[0] if topics_info else {}
+                subchapter_info = {
+                    "subchapter": subchapter_name,
+                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "num_topics": len(topics_info),
+                    "topic_names": [t.get("topic", "") for t in topics_info]
+                }
+                points_per_subchapter_list.append((subchapter_info, 0))
+                self.logger.info(f"  Subchapter '{subchapter_name}': 0 points (no blocks)")
+                continue
+            
+            # Combine blocks for this subchapter
+            subchapter_json_data = self._combine_json_blocks(subchapter_blocks)
+            if not subchapter_json_data:
+                first_topic_info = topics_info[0] if topics_info else {}
+                subchapter_info = {
+                    "subchapter": subchapter_name,
+                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "num_topics": len(topics_info),
+                    "topic_names": [t.get("topic", "") for t in topics_info]
+                }
+                points_per_subchapter_list.append((subchapter_info, 0))
+                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to combine blocks")
+                continue
+            
+            # Flatten to get point count for this subchapter
+            try:
+                subchapter_flat_rows = converter._flatten_to_points(subchapter_json_data)
+                first_topic_info = topics_info[0] if topics_info else {}
+                subchapter_info = {
+                    "subchapter": subchapter_name,
+                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "num_topics": len(topics_info),
+                    "topic_names": [t.get("topic", "") for t in topics_info]
+                }
+                points_per_subchapter_list.append((subchapter_info, len(subchapter_flat_rows)))
+                self.logger.info(f"  Subchapter '{subchapter_name}': {len(subchapter_flat_rows)} points ({len(topics_info)} topics)")
+            except Exception as e:
+                first_topic_info = topics_info[0] if topics_info else {}
+                subchapter_info = {
+                    "subchapter": subchapter_name,
+                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "num_topics": len(topics_info),
+                    "topic_names": [t.get("topic", "") for t in topics_info]
+                }
+                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to count points - {e}")
+                points_per_subchapter_list.append((subchapter_info, 0))
+        
+        self.logger.info("=" * 80)
         
         # Combine all JSON blocks
         self.logger.info("Combining JSON blocks into final structure...")
@@ -922,11 +1201,7 @@ class MultiPartPostProcessor:
         if progress_callback:
             progress_callback("Flattening to points...")
         
-        from third_stage_converter import ThirdStageConverter
-        converter = ThirdStageConverter()
-        
-        # Extract chapter name from first topic if available
-        chapter_name = topics_list[0]["chapter"] if topics_list else ""
+        # Chapter name comes from input JSON (already extracted above)
         
         try:
             flat_rows = converter._flatten_to_points(json_data)
@@ -959,30 +1234,68 @@ class MultiPartPostProcessor:
         if progress_callback:
             progress_callback(f"Assigning PointId to {len(flat_rows)} points...")
         
-        # Calculate points distribution across topics
-        total_topics = len(topics_list)
-        points_per_topic = len(flat_rows) // total_topics if total_topics > 0 else 0
-        if points_per_topic == 0:
-            points_per_topic = 1
+        # Use tracked points per subchapter to maintain correct mapping
+        total_tracked_points = sum(count for _, count in points_per_subchapter_list)
+        self.logger.info("=" * 80)
+        self.logger.info("ASSIGNING POINT IDs AND SUBCHAPTER INFO")
+        self.logger.info("=" * 80)
+        self.logger.info(f"Using tracked points per subchapter for correct mapping:")
+        for info, count in points_per_subchapter_list:
+            self.logger.info(f"  Subchapter '{info['subchapter']}': {count} points")
+        self.logger.info(f"Total tracked points: {total_tracked_points}, Actual flattened points: {len(flat_rows)}")
         
-        self.logger.info(f"Distributing {len(flat_rows)} points across {total_topics} topics (~{points_per_topic} points per topic)")
+        if total_tracked_points != len(flat_rows):
+            self.logger.warning(f"Point count mismatch: tracked {total_tracked_points} but got {len(flat_rows)}. This may affect subchapter mapping accuracy.")
         
         current_index = start_point_index
-        for point_idx, row in enumerate(flat_rows):
-            point_id = f"{book_id:03d}{chapter_id:03d}{current_index:04d}"
-            row["PointId"] = point_id
+        point_idx = 0
+        
+        # Assign subchapter info based on tracked points per subchapter (maintains order)
+        for subchapter_info_stored, num_points in points_per_subchapter_list:
+            subchapter_name = subchapter_info_stored["subchapter"]
+            self.logger.info(f"  Assigning PointIds for subchapter '{subchapter_name}' ({num_points} points)...")
+            # Assign topic info to points in this range
+            for i in range(num_points):
+                if point_idx >= len(flat_rows):
+                    self.logger.warning(f"More points tracked than available in flat_rows. Stopping assignment.")
+                    break
+                
+                row = flat_rows[point_idx]
+                point_id = f"{book_id:03d}{chapter_id:03d}{current_index:04d}"
+                row["PointId"] = point_id
+                
+                # Chapter always comes from input JSON (not from model output)
+                row["chapter"] = subchapter_info_stored["chapter"]
+                
+                # Use subchapter from model output, fallback to stored info only if missing
+                if "subchapter" not in row or not row.get("subchapter"):
+                    row["subchapter"] = subchapter_info_stored.get("subchapter", "")
+                
+                point_idx += 1
+                current_index += 1
             
-            # Determine which topic this point belongs to based on index
-            topic_idx = min(point_idx // points_per_topic, len(topics_list) - 1)
-            topic_info = topics_list[topic_idx]
+            self.logger.info(f"    ✓ Assigned {num_points} PointIds for subchapter '{subchapter_name}'")
             
-            # Add chapter/subchapter from OCR Extraction JSON
-            # Note: topic field is kept from model output, not replaced
-            row["chapter"] = topic_info.get("chapter", "")
-            row["subchapter"] = topic_info.get("subchapter", "")
-            # row["topic"] = topic_info.get("topic", "")  # Don't replace topic - keep model output
-            
-            current_index += 1
+            if point_idx >= len(flat_rows):
+                break
+        
+        # Handle any remaining points (shouldn't happen, but safety check)
+        if point_idx < len(flat_rows):
+            self.logger.warning(f"Some points ({len(flat_rows) - point_idx}) were not assigned subchapter info. Using fallback.")
+            for i in range(point_idx, len(flat_rows)):
+                row = flat_rows[i]
+                point_id = f"{book_id:03d}{chapter_id:03d}{current_index:04d}"
+                row["PointId"] = point_id
+                # Chapter always comes from input JSON
+                row["chapter"] = chapter_name_from_input
+                # Use subchapter from model output, fallback to stored info only if missing
+                if "subchapter" not in row or not row.get("subchapter"):
+                    if points_per_subchapter_list:
+                        last_subchapter_info = points_per_subchapter_list[-1][0]
+                        row["subchapter"] = last_subchapter_info.get("subchapter", "")
+                current_index += 1
+        
+        self.logger.info("=" * 80)
         
         # Build final output
         from datetime import datetime
@@ -998,7 +1311,7 @@ class MultiPartPostProcessor:
         
         final_output = {
             "metadata": {
-                "chapter": chapter_name,
+                "chapter": chapter_name_from_input,  # Chapter from input JSON
                 "book_id": book_id,
                 "chapter_id": chapter_id,
                 "total_points": len(flat_rows),
@@ -1022,6 +1335,60 @@ class MultiPartPostProcessor:
         except Exception as e:
             self.logger.error(f"Failed to save Document Processing output: {e}")
             return None
+
+    def _save_subchapter_txt_file(
+        self,
+        subchapter_name: str,
+        topic_responses_list: List[Dict[str, str]],
+        base_dir: str,
+        base_name: str,
+        subchapter_idx: int,
+        total_subchapters: int,
+        progress_callback: Optional[Any] = None
+    ):
+        """
+        Save a subchapter's responses to a txt file.
+        
+        Args:
+            subchapter_name: Name of the subchapter
+            topic_responses_list: List of dicts with 'topic' and 'response' keys
+            base_dir: Base directory for saving files
+            base_name: Base name for the file (without extension)
+            subchapter_idx: Index of this subchapter (1-based)
+            total_subchapters: Total number of subchapters
+            progress_callback: Optional callback for progress updates
+        """
+        # Create safe filename from subchapter name
+        safe_subchapter_name = subchapter_name.replace('/', '_').replace(' ', '_').replace('\\', '_')
+        safe_subchapter_name = ''.join(c for c in safe_subchapter_name if c.isalnum() or c in ('_', '-', '.'))
+        
+        # Create txt filename
+        txt_filename = f"{base_name}_subchapter_{subchapter_idx}_{safe_subchapter_name}.txt"
+        txt_path = os.path.join(base_dir, txt_filename)
+        
+        try:
+            # Combine all topic responses for this subchapter
+            combined_text = f"=== Subchapter: {subchapter_name} ===\n\n"
+            combined_text += f"Total topics in this subchapter: {len(topic_responses_list)}\n\n"
+            combined_text += "=" * 80 + "\n\n"
+            
+            for topic_idx, topic_response_item in enumerate(topic_responses_list, 1):
+                topic_name = topic_response_item["topic"]
+                response_text = topic_response_item["response"]
+                
+                combined_text += f"--- Topic {topic_idx}: {topic_name} ---\n\n"
+                combined_text += response_text
+                combined_text += "\n\n" + "=" * 80 + "\n\n"
+            
+            # Save to file
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(combined_text)
+            
+            self.logger.info(f"Saved subchapter '{subchapter_name}' response to: {txt_path} ({len(topic_responses_list)} topics)")
+            if progress_callback:
+                progress_callback(f"Saved subchapter {subchapter_idx}/{total_subchapters}: {subchapter_name}")
+        except Exception as e:
+            self.logger.error(f"Failed to save txt file for subchapter '{subchapter_name}': {e}")
 
 
 
