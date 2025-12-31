@@ -352,6 +352,12 @@ class ContentAutomationGUI:
             self.pre_ocr_prompt_text = ctk.CTkTextbox(prompt_frame, height=120, font=self.farsi_text_font)
         self.pre_ocr_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
         
+        # Load default prompt from prompts.json
+        default_prompt = self.prompt_manager.get_prompt("Pre OCR Topic") or ""
+        if default_prompt and not self.pre_ocr_prompt_text.get("1.0", tk.END).strip():
+            self.pre_ocr_prompt_text.delete("1.0", tk.END)
+            self.pre_ocr_prompt_text.insert("1.0", default_prompt)
+        
         # Model Selection
         model_frame = ctk.CTkFrame(main_frame)
         model_frame.pack(fill="x", pady=10)
@@ -808,7 +814,6 @@ class ContentAutomationGUI:
             'stage_h_model_var',
             'stage_v_model1_var',
             'stage_v_model2_var',
-            'stage_v_model3_var',
             'stage_l_model_var',
             'stage_x_pdf_model_var',
             'stage_x_change_model_var',
@@ -1999,7 +2004,7 @@ class ContentAutomationGUI:
 
         stage2_prompt_names = self.prompt_manager.get_prompt_names()
         # Prefer the dedicated Stage 2 prompt if available
-        preferred_stage2_name = "Stage 2 - Structured Clinical Lesson (JSON)"
+        preferred_stage2_name = "Document Processing Prompt"
         if preferred_stage2_name in stage2_prompt_names:
             stage2_default_value = preferred_stage2_name
         else:
@@ -2409,7 +2414,7 @@ class ContentAutomationGUI:
         ).pack(anchor="w", pady=(0, 5))
 
         stage2_prompt_names_tab = self.prompt_manager.get_prompt_names()
-        preferred_stage2_name = "Stage 2 - Structured Clinical Lesson (JSON)"
+        preferred_stage2_name = "Document Processing Prompt"
         if preferred_stage2_name in stage2_prompt_names_tab:
             stage2_default_value_tab = preferred_stage2_name
         else:
@@ -3260,7 +3265,7 @@ class ContentAutomationGUI:
         ).pack(anchor="w", pady=(0, 5))
         
         ocr_prompt_names = self.prompt_manager.get_prompt_names()
-        preferred_ocr_name = "Document Processing"  # Use Document Processing prompt as default
+        preferred_ocr_name = "OCR Extraction Prompt"  # Use Document Processing prompt as default
         if preferred_ocr_name in ocr_prompt_names:
             ocr_default_value = preferred_ocr_name
         else:
@@ -3402,32 +3407,6 @@ class ContentAutomationGUI:
         # Validation indicator
         self.stage_e_stage4_valid = ctk.CTkLabel(entry_frame, text="", width=30)
         self.stage_e_stage4_valid.pack(side="right", padx=5)
-        
-        # Stage 1 File Selection
-        stage1_frame = ctk.CTkFrame(main_frame)
-        stage1_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(stage1_frame, text="Content Extraction JSON:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        self.stage_e_stage1_var = ctk.StringVar()
-        # Auto-fill if available
-        if self.last_final_output_path and os.path.exists(self.last_final_output_path):
-            self.stage_e_stage1_var.set(self.last_final_output_path)
-        
-        entry_frame1 = ctk.CTkFrame(stage1_frame)
-        entry_frame1.pack(fill="x", padx=10, pady=5)
-        
-        stage1_entry = ctk.CTkEntry(entry_frame1, textvariable=self.stage_e_stage1_var)
-        stage1_entry.pack(side="left", fill="x", expand=True, padx=5)
-        
-        ctk.CTkButton(entry_frame1, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_e_stage1_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
-        
-        # Validation indicator
-        self.stage_e_stage1_valid = ctk.CTkLabel(entry_frame1, text="", width=30)
-        self.stage_e_stage1_valid.pack(side="right", padx=5)
         
         # OCR Extraction JSON File Selection
         ocr_extraction_frame = ctk.CTkFrame(main_frame)
@@ -3583,8 +3562,8 @@ class ContentAutomationGUI:
         
         # Auto-validate files on change
         self.stage_e_stage4_var.trace('w', lambda *args: self.validate_stage_e_files())
-        self.stage_e_stage1_var.trace('w', lambda *args: self.validate_stage_e_files())
-        self.stage_e_ocr_extraction_json_var.trace('w', lambda *args: self.validate_stage_e_files())
+        if hasattr(self, 'stage_e_ocr_extraction_json_var'):
+            self.stage_e_ocr_extraction_json_var.trace('w', lambda *args: self.validate_stage_e_files())
     
     def browse_file_for_stage(self, var: ctk.StringVar, filetypes: list = None):
         """Browse for file and set variable"""
@@ -3601,7 +3580,6 @@ class ContentAutomationGUI:
     def validate_stage_e_files(self):
         """Validate Stage E input files"""
         stage4_path = self.stage_e_stage4_var.get()
-        stage1_path = self.stage_e_stage1_var.get()
         ocr_extraction_path = self.stage_e_ocr_extraction_json_var.get() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
         
         # Validate Stage 4
@@ -3617,20 +3595,6 @@ class ContentAutomationGUI:
                 self.stage_e_stage4_valid.configure(text="X", text_color="red")
         else:
             self.stage_e_stage4_valid.configure(text="", text_color="gray")
-        
-        # Validate Stage 1
-        if stage1_path and os.path.exists(stage1_path):
-            try:
-                data = json.load(open(stage1_path, 'r', encoding='utf-8'))
-                rows = data.get("data") or data.get("rows", [])
-                if rows:
-                    self.stage_e_stage1_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_e_stage1_valid.configure(text="W", text_color="orange")
-            except:
-                self.stage_e_stage1_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_e_stage1_valid.configure(text="", text_color="gray")
         
         # Validate OCR Extraction JSON
         if ocr_extraction_path:
@@ -3654,7 +3618,6 @@ class ContentAutomationGUI:
                 
                 # Validate inputs
                 stage4_path = self.stage_e_stage4_var.get().strip()
-                stage1_path = self.stage_e_stage1_var.get().strip()
                 ocr_extraction_json_path = self.stage_e_ocr_extraction_json_var.get().strip() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
                 prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
                 # Always use default model from main view settings
@@ -3664,12 +3627,7 @@ class ContentAutomationGUI:
                     messagebox.showerror("Error", "Please select a valid Content Processing JSON file")
                     return
                 
-                if not stage1_path or not os.path.exists(stage1_path):
-                    messagebox.showerror("Error", "Please select a valid Content Extraction JSON file")
-                    return
-                
                 if not ocr_extraction_json_path or not os.path.exists(ocr_extraction_json_path):
-                    self.root.after(0, lambda: self.stage_e_status_label.configure(text="Error: Please select a valid OCR Extraction JSON file", text_color="red"))
                     messagebox.showerror("Error", "Please select a valid OCR Extraction JSON file")
                     return
                 
@@ -3688,7 +3646,6 @@ class ContentAutomationGUI:
                 # Process Stage E (use default output dir from main view)
                 output_path = self.stage_e_processor.process_stage_e(
                     stage4_path=stage4_path,
-                    stage1_path=stage1_path,
                     ocr_extraction_json_path=ocr_extraction_json_path,
                     prompt=prompt,
                     model_name=model_name,
@@ -3773,17 +3730,17 @@ class ContentAutomationGUI:
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.ocr_extraction_status_label.configure(text=msg))
                 
-                # Process OCR Extraction using multi_part_processor
-                # Note: The topic file will be used in later stages (Document Processing)
+                # Process OCR Extraction using multi_part_processor with topics
+                # For each Subchapter, send PDF + prompt (with topics list) to model
                 # Use default output dir from main view
                 output_dir = self.get_default_output_dir(pdf_path)
                 
-                final_output_path = self.multi_part_processor.process_multi_part(
+                final_output_path = self.multi_part_processor.process_ocr_extraction_with_topics(
                     pdf_path=pdf_path,
+                    topic_file_path=topic_file_path,
                     base_prompt=prompt,
                     model_name=model_name,
                     temperature=0.7,
-                    resume=True,
                     progress_callback=progress_callback,
                     output_dir=output_dir
                 )
@@ -4765,6 +4722,34 @@ class ContentAutomationGUI:
             self.stage_v_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
         self.stage_v_word_valid.pack(side="right", padx=5)
         
+        # OCR Extraction JSON File Selection
+        ocr_extraction_frame = ctk.CTkFrame(main_frame)
+        ocr_extraction_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON File:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_v_ocr_extraction_var'):
+            self.stage_v_ocr_extraction_var = ctk.StringVar()
+            # Auto-fill if available
+            if hasattr(self, 'last_ocr_extraction_path') and self.last_ocr_extraction_path and os.path.exists(self.last_ocr_extraction_path):
+                self.stage_v_ocr_extraction_var.set(self.last_ocr_extraction_path)
+        
+        entry_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
+        entry_frame_ocr.pack(fill="x", padx=10, pady=5)
+        
+        ocr_extraction_entry = ctk.CTkEntry(entry_frame_ocr, textvariable=self.stage_v_ocr_extraction_var, width=400)
+        ocr_extraction_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(entry_frame_ocr, text="Browse", 
+                     command=lambda: self.browse_file_for_stage(self.stage_v_ocr_extraction_var, 
+                                                                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")])).pack(side="right")
+        
+        # Validation indicator
+        if not hasattr(self, 'stage_v_ocr_extraction_valid'):
+            self.stage_v_ocr_extraction_valid = ctk.CTkLabel(entry_frame_ocr, text="", width=30)
+        self.stage_v_ocr_extraction_valid.pack(side="right", padx=5)
+        
         # Step 1 Section
         step1_frame = ctk.CTkFrame(main_frame)
         step1_frame.pack(fill="x", pady=10)
@@ -4944,93 +4929,6 @@ class ContentAutomationGUI:
             )
         self.stage_v_model2_combo.pack(side="left", padx=5)
         
-        # Step 3 Section
-        step3_frame = ctk.CTkFrame(main_frame)
-        step3_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(step3_frame, text="Step 3: Question ID Mapping", 
-                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=10)
-        
-        # Step 3 Prompt
-        ctk.CTkLabel(step3_frame, text="Prompt for Step 3:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-
-        # Step 3 prompt mode (default vs custom)
-        step3_mode_frame = ctk.CTkFrame(step3_frame)
-        step3_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
-        if not hasattr(self, 'stage_v_prompt3_type_var'):
-            self.stage_v_prompt3_type_var = ctk.StringVar(value="default")
-        ctk.CTkRadioButton(
-            step3_mode_frame,
-            text="Use Default Prompt",
-            variable=self.stage_v_prompt3_type_var,
-            value="default",
-            command=self.on_stage_v_prompt3_type_change,
-        ).pack(side="left", padx=(0, 10), pady=5)
-        ctk.CTkRadioButton(
-            step3_mode_frame,
-            text="Use Custom Prompt",
-            variable=self.stage_v_prompt3_type_var,
-            value="custom",
-            command=self.on_stage_v_prompt3_type_change,
-        ).pack(side="left", padx=(0, 10), pady=5)
-
-        # Default prompt combobox for Step 3
-        step3_default_frame = ctk.CTkFrame(step3_frame)
-        step3_default_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        ctk.CTkLabel(
-            step3_default_frame,
-            text="Default Prompt for Step 3:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", pady=(0, 5))
-
-        preferred_step3_name = "Test Bank Generation - Step 3 Prompt"
-        if preferred_step3_name in step_prompt_names:
-            step3_default_value = preferred_step3_name
-        else:
-            step3_default_value = step_prompt_names[0] if step_prompt_names else ""
-        self.stage_v_prompt3_default_var = ctk.StringVar(value=step3_default_value)
-        self.stage_v_prompt3_default_combo = ctk.CTkComboBox(
-            step3_default_frame,
-            values=step_prompt_names,
-            variable=self.stage_v_prompt3_default_var,
-            width=400,
-            command=self.on_stage_v_prompt3_default_selected,
-        )
-        self.stage_v_prompt3_default_combo.pack(anchor="w", pady=(0, 5))
-
-        # Textbox for Step 3 prompt
-        if not hasattr(self, 'stage_v_prompt3_text'):
-            self.stage_v_prompt3_text = ctk.CTkTextbox(step3_frame, height=150, font=self.farsi_text_font)
-        else:
-            try:
-                self.stage_v_prompt3_text.pack_forget()
-            except Exception:
-                pass
-        self.stage_v_prompt3_text.pack(fill="x", padx=10, pady=5)
-
-        # Apply initial default/custom state and fill textbox
-        self.on_stage_v_prompt3_type_change()
-        
-        # Step 3 Model Selection
-        model3_frame = ctk.CTkFrame(step3_frame)
-        model3_frame.pack(fill="x", padx=10, pady=5)
-        
-        ctk.CTkLabel(model3_frame, text="Model for Step 3:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=5)
-        
-        if not hasattr(self, 'stage_v_model3_var'):
-            self.stage_v_model3_var = ctk.StringVar(value=default_model)
-        if not hasattr(self, 'stage_v_model3_combo'):
-            self.stage_v_model3_combo = ctk.CTkComboBox(
-                model3_frame,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.stage_v_model3_var,
-                width=300
-            )
-        self.stage_v_model3_combo.pack(side="left", padx=5)
-        
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
@@ -5073,6 +4971,8 @@ class ContentAutomationGUI:
         # Bind validation
         self.stage_v_stage_j_var.trace('w', lambda *args: self.validate_stage_v_files())
         self.stage_v_word_var.trace('w', lambda *args: self.validate_stage_v_files())
+        if hasattr(self, 'stage_v_ocr_extraction_var'):
+            self.stage_v_ocr_extraction_var.trace('w', lambda *args: self.validate_stage_v_files())
         
         # Initial validation
         self.validate_stage_v_files()
@@ -5081,18 +4981,26 @@ class ContentAutomationGUI:
         """Validate Stage V input files"""
         stage_j_path = self.stage_v_stage_j_var.get().strip()
         word_path = self.stage_v_word_var.get().strip()
+        ocr_extraction_path = self.stage_v_ocr_extraction_var.get().strip() if hasattr(self, 'stage_v_ocr_extraction_var') else ""
         
         # Validate Stage J file
         if stage_j_path and os.path.exists(stage_j_path):
-            self.stage_v_stage_j_valid.configure(text="Ok", text_color="green")
+            self.stage_v_stage_j_valid.configure(text="✓", text_color="green")
         else:
             self.stage_v_stage_j_valid.configure(text="", text_color="red")
         
         # Validate Word file
         if word_path and os.path.exists(word_path):
-            self.stage_v_word_valid.configure(text="Ok", text_color="green")
+            self.stage_v_word_valid.configure(text="✓", text_color="green")
         else:
             self.stage_v_word_valid.configure(text="", text_color="red")
+        
+        # Validate OCR Extraction file
+        if hasattr(self, 'stage_v_ocr_extraction_valid'):
+            if ocr_extraction_path and os.path.exists(ocr_extraction_path):
+                self.stage_v_ocr_extraction_valid.configure(text="✓", text_color="green")
+            else:
+                self.stage_v_ocr_extraction_valid.configure(text="", text_color="red")
     
     def process_stage_v(self):
         """Process Stage V in background thread"""
@@ -5105,13 +5013,12 @@ class ContentAutomationGUI:
                 # Validate inputs
                 stage_j_path = self.stage_v_stage_j_var.get().strip()
                 word_path = self.stage_v_word_var.get().strip()
+                ocr_extraction_path = self.stage_v_ocr_extraction_var.get().strip() if hasattr(self, 'stage_v_ocr_extraction_var') else ""
                 prompt_1 = self.stage_v_prompt1_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                model_name_1 = self.get_default_model()
+                # Use model from combo box if available, otherwise use default
+                model_name_1 = self.stage_v_model1_var.get() if hasattr(self, 'stage_v_model1_var') else self.get_default_model()
                 prompt_2 = self.stage_v_prompt2_text.get("1.0", tk.END).strip()
-                model_name_2 = self.get_default_model()
-                prompt_3 = self.stage_v_prompt3_text.get("1.0", tk.END).strip()
-                model_name_3 = self.get_default_model()
+                model_name_2 = self.stage_v_model2_var.get() if hasattr(self, 'stage_v_model2_var') else self.get_default_model()
                 
                 if not stage_j_path or not os.path.exists(stage_j_path):
                     messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
@@ -5121,16 +5028,16 @@ class ContentAutomationGUI:
                     messagebox.showerror("Error", "Please select a valid Word document")
                     return
                 
+                if not ocr_extraction_path or not os.path.exists(ocr_extraction_path):
+                    messagebox.showerror("Error", "Please select a valid OCR Extraction JSON file")
+                    return
+                
                 if not prompt_1:
                     messagebox.showerror("Error", "Please enter a prompt for Step 1")
                     return
                 
                 if not prompt_2:
                     messagebox.showerror("Error", "Please enter a prompt for Step 2")
-                    return
-                
-                if not prompt_3:
-                    messagebox.showerror("Error", "Please enter a prompt for Step 3")
                     return
                 
                 # Validate API keys
@@ -5145,12 +5052,11 @@ class ContentAutomationGUI:
                 output_path = self.stage_v_processor.process_stage_v(
                     stage_j_path=stage_j_path,
                     word_file_path=word_path,
+                    ocr_extraction_json_path=ocr_extraction_path,
                     prompt_1=prompt_1,
                     model_name_1=model_name_1,
                     prompt_2=prompt_2,
                     model_name_2=model_name_2,
-                    prompt_3=prompt_3,
-                    model_name_3=model_name_3,
                     output_dir=self.get_default_output_dir(stage_j_path),
                     progress_callback=progress_callback
                 )
@@ -5746,7 +5652,7 @@ class ContentAutomationGUI:
         ).pack(anchor="w", pady=(0, 5))
         
         pdf_prompt_names = self.prompt_manager.get_prompt_names()
-        preferred_pdf_prompt_name = "Document Processing"
+        preferred_pdf_prompt_name = "OCR Extraction Prompt"
         if preferred_pdf_prompt_name in pdf_prompt_names:
             pdf_prompt_default_value = preferred_pdf_prompt_name
         else:
@@ -6522,7 +6428,7 @@ class ContentAutomationGUI:
             stage1_model = self.get_default_model()
             
             # Get Stage 2, 3, 4 prompts from prompt_manager
-            stage2_prompt = self.prompt_manager.get_prompt("Stage 2 - Structured Clinical Lesson (JSON)") or ""
+            stage2_prompt = self.prompt_manager.get_prompt("Document Processing Prompt") or ""
             stage3_prompt = self.prompt_manager.get_prompt("Stage 3 - Chunked JSON Completion") or ""
             stage4_prompt = self.prompt_manager.get_prompt("Stage 4 - Prompt") or ""
             

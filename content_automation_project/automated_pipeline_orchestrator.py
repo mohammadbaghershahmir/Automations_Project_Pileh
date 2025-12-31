@@ -149,8 +149,6 @@ class AutomatedPipelineOrchestrator:
         stage_v_model_1: Optional[str] = None,
         stage_v_prompt_2: Optional[str] = None,
         stage_v_model_2: Optional[str] = None,
-        stage_v_prompt_3: Optional[str] = None,
-        stage_v_model_3: Optional[str] = None,
         
         # Output directory
         output_dir: Optional[str] = None,
@@ -197,8 +195,6 @@ class AutomatedPipelineOrchestrator:
             stage_v_model_1: Optional model for Stage V Step 1
             stage_v_prompt_2: Optional prompt for Stage V Step 2
             stage_v_model_2: Optional model for Stage V Step 2
-            stage_v_prompt_3: Optional prompt for Stage V Step 3
-            stage_v_model_3: Optional model for Stage V Step 3
             output_dir: Output directory (defaults to PDF directory)
             progress_callback: Optional callback for progress updates
             resume_from_stage: Optional stage name to resume from (e.g., "J", "V")
@@ -527,17 +523,17 @@ class AutomatedPipelineOrchestrator:
                 
                 stage4_path = stage4_result.output_path
                 
-                # Get Stage 1 path
+                # Get Stage 1 output path (OCR Extraction JSON)
                 stage1_result = self.stage_results.get("1")
                 if not stage1_result or stage1_result.status != StageStatus.SUCCESS:
-                    raise Exception("Stage 1 must complete successfully before Stage E")
+                    raise Exception("Stage 1 (OCR Extraction) must complete successfully before Stage E")
                 
-                stage1_path = stage1_result.output_path
+                ocr_extraction_json_path = stage1_result.output_path
                 
                 # Run Stage E
                 stage_e_output = self.stage_e_processor.process_stage_e(
                     stage4_path=stage4_path,
-                    stage1_path=stage1_path,
+                    ocr_extraction_json_path=ocr_extraction_json_path,
                     prompt=stage_e_prompt,
                     model_name=stage_e_model,
                     output_dir=output_dir,
@@ -687,19 +683,23 @@ class AutomatedPipelineOrchestrator:
                     raise Exception("Stage V Step 1 prompt and model are required")
                 if not stage_v_prompt_2 or not stage_v_model_2:
                     raise Exception("Stage V Step 2 prompt and model are required")
-                if not stage_v_prompt_3 or not stage_v_model_3:
-                    raise Exception("Stage V Step 3 prompt and model are required")
+                
+                # Get Stage 1 output path (OCR Extraction JSON)
+                stage1_result = self.stage_results.get("1")
+                if not stage1_result or stage1_result.status != StageStatus.SUCCESS:
+                    raise Exception("Stage 1 (OCR Extraction) must complete successfully before Stage V")
+                
+                ocr_extraction_json_path = stage1_result.output_path
                 
                 # Run Stage V
                 stage_v_output = self.stage_v_processor.process_stage_v(
                     stage_j_path=stage_j_path,
                     word_file_path=word_file_path,
+                    ocr_extraction_json_path=ocr_extraction_json_path,
                     prompt_1=stage_v_prompt_1,
                     model_name_1=stage_v_model_1,
                     prompt_2=stage_v_prompt_2,
                     model_name_2=stage_v_model_2,
-                    prompt_3=stage_v_prompt_3,
-                    model_name_3=stage_v_model_3,
                     output_dir=output_dir,
                     progress_callback=progress_callback
                 )
