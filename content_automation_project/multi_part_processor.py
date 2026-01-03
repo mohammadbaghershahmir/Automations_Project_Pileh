@@ -471,7 +471,45 @@ class MultiPartProcessor:
             self.logger.error("Failed to initialize text client")
             return None
         
-        # Process each Subchapter - فقط TXT را ذخیره می‌کنیم
+        # Initialize final JSON file path
+        output_filename = "OCR Extraction.json"
+        final_json_path = self.output_dir / output_filename
+        
+        # Initialize final output structure
+        timestamp = datetime.now().isoformat()
+        all_subchapters = []
+        total_topics = 0
+        
+        # Create initial JSON structure (will be updated incrementally)
+        final_output = {
+            "metadata": {
+                "source_pdf": os.path.basename(pdf_path),
+                "source_topic_file": os.path.basename(topic_file_path),
+                "total_pages": total_pages,
+                "total_subchapters": 0,
+                "total_topics": 0,
+                "processed_at": timestamp,
+                "model": model_name,
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "chapter": chapter_name
+            },
+            "chapters": [{
+                "chapter": chapter_name,
+                "subchapters": []
+            }]
+        }
+        
+        # Save initial structure
+        try:
+            with open(final_json_path, "w", encoding="utf-8") as f:
+                json.dump(final_output, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Initialized OCR Extraction JSON: {final_json_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize JSON file: {e}")
+            return None
+        
+        # Process each Subchapter - استخراج JSON و اضافه مستقیم به فایل نهایی
         total_subchapters = len(topics_list)
         
         for subchapter_idx, subchapter_item in enumerate(topics_list, 1):
@@ -482,19 +520,21 @@ class MultiPartProcessor:
                 self.logger.warning(f"Subchapter item {subchapter_idx} has no Subchapter name, skipping")
                 continue
             
+            # اگر topics خالی است یا لیست نیست، با topics_str خالی ادامه می‌دهیم (skip نمی‌کنیم)
             if not topics or not isinstance(topics, list):
-                self.logger.warning(f"Subchapter '{subchapter_name}' has no Topics, skipping")
-                continue
+                topics = []
+                self.logger.info(f"Subchapter '{subchapter_name}' has no Topics, will process with empty topics list")
             
+            topics_count = len(topics) if topics else 0
             if progress_callback:
-                progress_callback(f"Processing Subchapter {subchapter_idx}/{total_subchapters}: {subchapter_name} ({len(topics)} topics)")
+                progress_callback(f"Processing Subchapter {subchapter_idx}/{total_subchapters}: {subchapter_name} ({topics_count} topics)")
             
             # Replace {SUBCHAPTER_NAME} in prompt
             subchapter_prompt = base_prompt.replace("{SUBCHAPTER_NAME}", subchapter_name)
             
             # Replace {TOPIC_NAME} with list of Topics for this Subchapter
-            # Format: "Topic1, Topic2, Topic3, ..."
-            topics_str = ", ".join(topics)
+            # Format: "Topic1, Topic2, Topic3, ..." یا خالی اگر topics نداشت
+            topics_str = ", ".join(topics) if topics else ""
             subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME}", topics_str)
             
             # Process PDF text with replaced prompt
@@ -531,153 +571,85 @@ class MultiPartProcessor:
                     self.logger.warning(f"No response for subchapter: {subchapter_name}")
                     continue
                 
-                # Save raw response to TXT file
-                base_name = Path(pdf_path).stem
-                safe_subchapter_name = subchapter_name.replace(' ', '_').replace('/', '_')
-                txt_filename = f"{base_name}_subchapter_{subchapter_idx}_{safe_subchapter_name}.txt"
-                txt_path = self.output_dir / txt_filename
+                # استخراج JSON مستقیماً از پاسخ مدل (بدون ذخیره TXT)
+                if progress_callback:
+                    progress_callback(f"Extracting JSON from model response for: {subchapter_name}...")
+                
+                subchapter_json = self.base_processor.extract_json_from_response(response_text)
+                if not subchapter_json:
+                    subchapter_json = self.base_processor.load_txt_as_json_from_text(response_text)
+                if not subchapter_json:
+                    subchapter_json = self._extract_json_from_persian_text(response_text)
+                
+                if not subchapter_json:
+                    self.logger.warning(f"Failed to extract JSON from model response for subchapter: {subchapter_name}")
+                    continue
+                
+                # استخراج subchapter از JSON
+                extracted_subchapter = self._get_subchapter_from_json(subchapter_json, subchapter_name)
+                
+                if not extracted_subchapter:
+                    # اگر subchapter پیدا نشد، کل JSON را به عنوان subchapter اضافه می‌کنیم
+                    if isinstance(subchapter_json, dict):
+                        extracted_subchapter = subchapter_json
+                    else:
+                        self.logger.warning(f"Failed to extract subchapter '{subchapter_name}' from JSON")
+                        continue
+                
+                # استخراج chapter name از اولین subchapter اگر موجود نباشد
+                if not chapter_name and subchapter_idx == 1:
+                    if isinstance(extracted_subchapter, dict):
+                        # Check for chapters structure
+                        if "chapters" in extracted_subchapter:
+                            chapters = extracted_subchapter.get("chapters", [])
+                            if chapters and len(chapters) > 0:
+                                extracted_chapter = chapters[0].get("chapter", "")
+                                if extracted_chapter:
+                                    chapter_name = extracted_chapter
+                                    self.logger.info(f"Extracted chapter name from first subchapter: {chapter_name}")
+                        # Check if it's a single chapter structure
+                        elif "chapter" in extracted_subchapter:
+                            extracted_chapter = extracted_subchapter.get("chapter", "")
+                            if extracted_chapter:
+                                chapter_name = extracted_chapter
+                                self.logger.info(f"Extracted chapter name from first subchapter: {chapter_name}")
+                
+                # اضافه کردن subchapter به لیست
+                all_subchapters.append(extracted_subchapter)
+                
+                # محاسبه total_topics
+                if isinstance(extracted_subchapter, dict) and "topics" in extracted_subchapter:
+                    if isinstance(extracted_subchapter["topics"], list):
+                        total_topics += len(extracted_subchapter["topics"])
+                
+                # به‌روزرسانی فایل JSON به صورت incremental
+                final_output["metadata"]["total_subchapters"] = len(all_subchapters)
+                final_output["metadata"]["total_topics"] = total_topics
+                final_output["metadata"]["chapter"] = chapter_name
+                final_output["chapters"][0]["chapter"] = chapter_name
+                final_output["chapters"][0]["subchapters"] = all_subchapters
+                
+                # ذخیره فوری به فایل JSON
                 try:
-                    with open(txt_path, 'w', encoding='utf-8') as f:
-                        f.write(response_text)
-                    self.logger.info(f"Saved response for {subchapter_name} to: {txt_path}")
+                    with open(final_json_path, "w", encoding="utf-8") as f:
+                        json.dump(final_output, f, ensure_ascii=False, indent=2)
+                    self.logger.info(f"✓ Subchapter {subchapter_idx}/{total_subchapters} '{subchapter_name}' added to JSON (incremental save)")
+                    if progress_callback:
+                        progress_callback(f"✓ Subchapter {subchapter_idx}/{total_subchapters} '{subchapter_name}' processed and saved")
                 except Exception as e:
-                    self.logger.warning(f"Failed to save TXT file: {e}")
+                    self.logger.error(f"Failed to save JSON incrementally: {e}")
+                    # ادامه می‌دهیم حتی اگر ذخیره نشد
                     
             except Exception as e:
                 self.logger.error(f"Error processing subchapter {subchapter_name}: {e}", exc_info=True)
-                continue
-        
-        # استخراج JSON از همه فایل‌های TXT و ترکیب آن‌ها
-        if progress_callback:
-            progress_callback("Extracting JSON from all TXT files...")
-        
-        all_subchapters = []
-        for subchapter_idx, subchapter_item in enumerate(topics_list, 1):
-            subchapter_name = subchapter_item.get("Subchapter", "")
-            base_name = Path(pdf_path).stem
-            safe_subchapter_name = subchapter_name.replace(' ', '_').replace('/', '_')
-            txt_filename = f"{base_name}_subchapter_{subchapter_idx}_{safe_subchapter_name}.txt"
-            txt_path = self.output_dir / txt_filename
-            
-            if not txt_path.exists():
-                self.logger.warning(f"TXT file not found: {txt_path}")
-                continue
-            
-            try:
-                # خواندن فایل TXT
-                with open(txt_path, 'r', encoding='utf-8') as f:
-                    txt_content = f.read()
-                
-                # استخراج JSON از محتوای TXT - بدون هیچ تبدیل
-                subchapter_json = self.base_processor.extract_json_from_response(txt_content)
-                if not subchapter_json:
-                    subchapter_json = self.base_processor.load_txt_as_json_from_text(txt_content)
-                if not subchapter_json:
-                    subchapter_json = self._extract_json_from_persian_text(txt_content)
-                
-                if not subchapter_json:
-                    self.logger.warning(f"Failed to extract JSON from TXT file: {txt_path}")
-                    continue
-                
-                # استفاده مستقیم از JSON بدون هیچ تبدیل یا mapping
-                # اگر JSON یک subchapter است، مستقیماً اضافه می‌کنیم
-                # اگر JSON یک ساختار بزرگتر است (مثلاً chapters یا subchapters)، subchapter را استخراج می‌کنیم
-                extracted_subchapter = self._get_subchapter_from_json(subchapter_json, subchapter_name)
-                
-                if extracted_subchapter:
-                    all_subchapters.append(extracted_subchapter)
-                    self.logger.info(f"Successfully extracted subchapter '{subchapter_name}' from TXT file")
-                else:
-                    # اگر subchapter پیدا نشد، کل JSON را به عنوان subchapter اضافه می‌کنیم
-                    if isinstance(subchapter_json, dict):
-                        all_subchapters.append(subchapter_json)
-                        self.logger.info(f"Added JSON as-is for subchapter '{subchapter_name}'")
-                    else:
-                        self.logger.warning(f"Failed to extract subchapter '{subchapter_name}' from JSON")
-                    
-            except Exception as e:
-                self.logger.error(f"Error processing TXT file {txt_path}: {e}", exc_info=True)
+                # ادامه می‌دهیم با subchapter بعدی
                 continue
         
         if not all_subchapters:
             self.logger.error("No subchapters processed successfully")
             return None
         
-        # Try to extract chapter name from first TXT file if not found in topic file
-        if not chapter_name and topics_list:
-            # Only check the first TXT file (subchapter_idx = 1)
-            first_subchapter_item = topics_list[0]
-            subchapter_name = first_subchapter_item.get("Subchapter", "")
-            base_name = Path(pdf_path).stem
-            safe_subchapter_name = subchapter_name.replace(' ', '_').replace('/', '_')
-            txt_filename = f"{base_name}_subchapter_1_{safe_subchapter_name}.txt"
-            txt_path = self.output_dir / txt_filename
-            
-            if txt_path.exists():
-                try:
-                    with open(txt_path, 'r', encoding='utf-8') as f:
-                        txt_content = f.read()
-                    
-                    # Extract JSON from TXT
-                    subchapter_json = self.base_processor.extract_json_from_response(txt_content)
-                    if not subchapter_json:
-                        subchapter_json = self.base_processor.load_txt_as_json_from_text(txt_content)
-                    if not subchapter_json:
-                        subchapter_json = self._extract_json_from_persian_text(txt_content)
-                    
-                    if subchapter_json:
-                        # Try to extract chapter from JSON structure
-                        if isinstance(subchapter_json, dict):
-                            # Check for chapters structure
-                            if "chapters" in subchapter_json:
-                                chapters = subchapter_json.get("chapters", [])
-                                if chapters and len(chapters) > 0:
-                                    extracted_chapter = chapters[0].get("chapter", "")
-                                    if extracted_chapter:
-                                        chapter_name = extracted_chapter
-                                        self.logger.info(f"Extracted chapter name from first TXT file: {chapter_name}")
-                            # Check if it's a single chapter structure
-                            elif "chapter" in subchapter_json:
-                                extracted_chapter = subchapter_json.get("chapter", "")
-                                if extracted_chapter:
-                                    chapter_name = extracted_chapter
-                                    self.logger.info(f"Extracted chapter name from first TXT file: {chapter_name}")
-                except Exception as e:
-                    self.logger.debug(f"Could not extract chapter from first TXT file {txt_path}: {e}")
-        
-        # Build final structure - combine all JSON outputs as-is
-        timestamp = datetime.now().isoformat()
-        
-        # Calculate total_topics safely (only if topics field exists)
-        total_topics = 0
-        for sub in all_subchapters:
-            if isinstance(sub, dict) and "topics" in sub:
-                if isinstance(sub["topics"], list):
-                    total_topics += len(sub["topics"])
-        
-        final_output = {
-            "metadata": {
-                "source_pdf": os.path.basename(pdf_path),
-                "source_topic_file": os.path.basename(topic_file_path),
-                "total_pages": total_pages,
-                "total_subchapters": len(all_subchapters),
-                "total_topics": total_topics,
-                "processed_at": timestamp,
-                "model": model_name,
-                "book_id": book_id,
-                "chapter_id": chapter_id,
-                "chapter": chapter_name
-            },
-            "chapters": [{
-                "chapter": chapter_name,
-                "subchapters": all_subchapters
-            }]
-        }
-        
-        # Save with name "OCR Extraction.json"
-        output_filename = "OCR Extraction.json"
-        final_json_path = self.output_dir / output_filename
-        
+        # Final save (برای اطمینان)
         try:
             with open(final_json_path, "w", encoding="utf-8") as f:
                 json.dump(final_output, f, ensure_ascii=False, indent=2)
@@ -688,7 +660,7 @@ class MultiPartProcessor:
             
             return str(final_json_path)
         except Exception as e:
-            self.logger.error(f"Failed to save OCR Extraction JSON: {e}")
+            self.logger.error(f"Failed to save final OCR Extraction JSON: {e}")
             return None
 
     def _extract_json_from_persian_text(self, text: str) -> Optional[Dict | List]:

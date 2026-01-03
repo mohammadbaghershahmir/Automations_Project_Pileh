@@ -251,7 +251,7 @@ class BaseStageProcessor:
         first_record = data[0]
         return first_record.get("PointId", None)
     
-    def load_txt_as_json(self, txt_path: str) -> Optional[Dict]:
+    def load_txt_as_json(self, txt_path: str) -> Optional[Dict | List]:
         """
         Load TXT file and extract JSON from it.
         Uses txt_stage_json_utils for robust extraction.
@@ -260,7 +260,9 @@ class BaseStageProcessor:
             txt_path: Path to TXT file
             
         Returns:
-            Parsed JSON dictionary or None on error
+            Parsed JSON (dict, list, or None on error).
+            For Stage E, may return a direct array: [{...}]
+            For other stages, may return an object: {"data": [...]}
         """
         if not os.path.exists(txt_path):
             self.logger.error(f"TXT file not found: {txt_path}")

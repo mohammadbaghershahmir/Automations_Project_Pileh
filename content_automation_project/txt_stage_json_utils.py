@@ -19,7 +19,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, List
 
 from third_stage_converter import ThirdStageConverter
 
@@ -27,9 +27,12 @@ from third_stage_converter import ThirdStageConverter
 logger = logging.getLogger(__name__)
 
 
-def load_stage_txt_as_json(txt_path: str | Path) -> Optional[Dict[str, Any]]:
+def load_stage_txt_as_json(txt_path: str | Path) -> Optional[Union[Dict[str, Any], List[Any]]]:
     """
-    Robustly load a Stage 3/4 TXT file and return its JSON content as a dict.
+    Robustly load a Stage 3/4 TXT file and return its JSON content.
+    
+    For Stage E, the model may return a direct array: [{...}]
+    For other stages, it may return an object: {"data": [...]}
 
     Strategy:
       1) Read the TXT file as UTF-8.
@@ -40,11 +43,12 @@ def load_stage_txt_as_json(txt_path: str | Path) -> Optional[Dict[str, Any]]:
             - Repair some forms of incomplete JSON
       3) If that fails, try a lightweight fallback:
             - Strip leading/trailing code fences
-            - Take substring from first '{' to last '}'
+            - Try to parse as array first (for Stage E)
+            - Then try as object
             - Attempt json.loads
 
     Returns:
-        Parsed JSON object (dict) or None on failure.
+        Parsed JSON (dict, list, or None on failure).
     """
     txt_path = Path(txt_path)
 
@@ -79,8 +83,20 @@ def load_stage_txt_as_json(txt_path: str | Path) -> Optional[Dict[str, Any]]:
     fence_pattern = re.compile(r"^```[a-zA-Z0-9_-]*\s*|\s*```$", re.MULTILINE)
     cleaned = fence_pattern.sub("", text).strip()
 
-    # Try to extract complete objects from array (for incomplete JSON)
+    # First, try to parse as complete array (for Stage E direct array format)
     array_start = cleaned.find("[")
+    array_end = cleaned.rfind("]")
+    if array_start != -1 and array_end > array_start:
+        try:
+            array_candidate = cleaned[array_start:array_end + 1]
+            json_obj = json.loads(array_candidate)
+            if isinstance(json_obj, list):
+                logger.info("Successfully parsed JSON array from cleaned TXT content for %s (%d items)", txt_path, len(json_obj))
+                return json_obj
+        except json.JSONDecodeError:
+            pass  # Will try other methods below
+
+    # Try to extract complete objects from array (for incomplete JSON)
     if array_start != -1:
         objects = []
         obj_start = -1
@@ -115,7 +131,8 @@ def load_stage_txt_as_json(txt_path: str | Path) -> Optional[Dict[str, Any]]:
         
         if objects:
             logger.info("Extracted %d complete objects from incomplete JSON array for %s", len(objects), txt_path)
-            return {"data": objects}
+            # Return as list (not wrapped in dict) for Stage E compatibility
+            return objects
 
     # Fallback: try to parse as single object
     start = cleaned.find("{")

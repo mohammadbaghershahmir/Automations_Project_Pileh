@@ -501,13 +501,15 @@ class StageXProcessor(BaseStageProcessor):
                 part1_json = self.load_txt_as_json_from_text(part1_response)
 
             if part1_json:
-                rows = part1_json if isinstance(part1_json, list) else part1_json.get("rows", part1_json.get("data", []))
-                if isinstance(rows, list):
-                    all_json_rows.extend(rows)
-                    _progress(f"Part 1: Extracted {len(rows)} rows")
+                # Use get_data_from_json to handle different JSON structures (rows/data/chapters)
+                part1_rows = self.get_data_from_json(part1_json) if isinstance(part1_json, dict) else (part1_json if isinstance(part1_json, list) else [])
+                if part1_rows:
+                    all_json_rows.extend(part1_rows)
+                    _progress(f"Part 1: Extracted {len(part1_rows)} rows")
                 else:
+                    # If no data found, add the whole JSON as a row
                     all_json_rows.append(part1_json)
-                    _progress("Part 1: Extracted 1 row")
+                    _progress("Part 1: Extracted 1 row (whole JSON)")
         else:
             self.logger.warning("Part 1 returned no response")
 
@@ -546,13 +548,15 @@ class StageXProcessor(BaseStageProcessor):
                 part2_json = self.load_txt_as_json_from_text(part2_response)
 
             if part2_json:
-                rows = part2_json if isinstance(part2_json, list) else part2_json.get("rows", part2_json.get("data", []))
-                if isinstance(rows, list):
-                    all_json_rows.extend(rows)
-                    _progress(f"Part 2: Extracted {len(rows)} rows")
+                # Use get_data_from_json to handle different JSON structures (rows/data/chapters)
+                part2_rows = self.get_data_from_json(part2_json) if isinstance(part2_json, dict) else (part2_json if isinstance(part2_json, list) else [])
+                if part2_rows:
+                    all_json_rows.extend(part2_rows)
+                    _progress(f"Part 2: Extracted {len(part2_rows)} rows")
                 else:
+                    # If no data found, add the whole JSON as a row
                     all_json_rows.append(part2_json)
-                    _progress("Part 2: Extracted 1 row")
+                    _progress("Part 2: Extracted 1 row (whole JSON)")
         else:
             self.logger.warning("Part 2 returned no response")
         
