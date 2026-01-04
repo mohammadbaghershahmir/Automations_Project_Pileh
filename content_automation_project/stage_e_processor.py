@@ -477,4 +477,3 @@ class StageEProcessor(BaseStageProcessor):
                         })
         
         return mapping
-

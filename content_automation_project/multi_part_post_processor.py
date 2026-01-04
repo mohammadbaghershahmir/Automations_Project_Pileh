@@ -954,6 +954,48 @@ class MultiPartPostProcessor:
         base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
         input_name = os.path.basename(ocr_json_path)
         base_name, _ = os.path.splitext(input_name)
+        # Remove _final_output suffix if present
+        if base_name.endswith("_final_output"):
+            base_name = base_name[:-13]
+        
+        # Initialize output JSON file immediately (incremental writing)
+        if not book_id:
+            book_id = 1
+        if not chapter_id:
+            chapter_id = 1
+        
+        output_filename = f"Lesson_file_{book_id}_{chapter_id}.json"
+        output_path = os.path.join(base_dir, output_filename)
+        
+        # Create initial structure with empty points
+        from datetime import datetime
+        initial_output = {
+            "metadata": {
+                "chapter": chapter_name_from_input,
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "total_points": 0,
+                "start_point_index": start_point_index,
+                "next_free_index": start_point_index,
+                "processed_at": datetime.now().isoformat(),
+                "source_file": os.path.basename(ocr_json_path),
+                "model": model_name,
+                "processing_status": "in_progress",
+                "topics_processed": 0,
+                "total_topics": len(topics_list)
+            },
+            "points": [],
+            "raw_responses": []  # Store all raw responses to ensure nothing is lost
+        }
+        
+        # Write initial file
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(initial_output, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Initialized Document Processing JSON file: {output_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize output file: {e}")
+            return None
         
         # Process each topic individually
         all_responses = []
@@ -1017,20 +1059,52 @@ class MultiPartPostProcessor:
             
             if not response_text:
                 self.logger.error(f"  ✗ No response received for topic: {subchapter_name} > {topic_name}")
-                continue
+                # Store empty response to track that this topic was processed
+                response_text = ""
             
-            response_size = len(response_text.encode('utf-8'))
+            response_size = len(response_text.encode('utf-8')) if response_text else 0
             self.logger.info(f"  ✓ Topic '{topic_name}' processed successfully")
             self.logger.info(f"  Response size: {response_size:,} bytes ({response_size/1024:.2f} KB)")
             self.logger.info(f"  Response length: {len(response_text):,} characters")
             
             # Store response and its corresponding topic info
             all_responses.append(response_text)
-            response_topic_info.append({
+            topic_info = {
                 "subchapter": subchapter_name,
                 "topic": topic_name,
                 "chapter": chapter_name_from_input
-            })
+            }
+            response_topic_info.append(topic_info)
+            
+            # Immediately add raw response to JSON file (incremental write)
+            try:
+                # Read current file
+                with open(output_path, "r", encoding="utf-8") as f:
+                    current_data = json.load(f)
+                
+                # Add raw response entry
+                raw_response_entry = {
+                    "topic_index": topic_idx,
+                    "subchapter": subchapter_name,
+                    "topic": topic_name,
+                    "response_text": response_text,
+                    "response_size_bytes": response_size,
+                    "processed_at": datetime.now().isoformat()
+                }
+                current_data["raw_responses"].append(raw_response_entry)
+                
+                # Update metadata
+                current_data["metadata"]["topics_processed"] = len(current_data["raw_responses"])
+                current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+                
+                # Write back immediately
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(current_data, f, ensure_ascii=False, indent=2)
+                
+                self.logger.info(f"  ✓ Added raw response for topic '{topic_name}' to JSON file immediately")
+            except Exception as e:
+                self.logger.error(f"Failed to write raw response for topic '{topic_name}' to file: {e}", exc_info=True)
+                # Continue processing other topics
             
             # Group response by subchapter for txt file saving
             if subchapter_name not in subchapter_responses_dict:
@@ -1297,43 +1371,38 @@ class MultiPartPostProcessor:
         
         self.logger.info("=" * 80)
         
-        # Build final output
-        from datetime import datetime
-        base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
-        input_name = os.path.basename(ocr_json_path)
-        base_name, _ = os.path.splitext(input_name)
-        # Remove _final_output suffix if present
-        if base_name.endswith("_final_output"):
-            base_name = base_name[:-13]
-        
-        output_filename = f"Lesson_file_{book_id}_{chapter_id}.json"
-        output_path = os.path.join(base_dir, output_filename)
-        
-        final_output = {
-            "metadata": {
-                "chapter": chapter_name_from_input,  # Chapter from input JSON
-                "book_id": book_id,
-                "chapter_id": chapter_id,
-                "total_points": len(flat_rows),
-                "start_point_index": start_point_index,
-                "next_free_index": current_index,
-                "processed_at": datetime.now().isoformat(),
-                "source_file": os.path.basename(ocr_json_path),
-                "model": model_name,
-            },
-            "points": flat_rows,
-        }
-        
+        # Final update: Add processed points to existing file (incremental write)
         try:
-            self.logger.info(f"Saving Document Processing output to: {output_path}")
+            # Read current file
+            with open(output_path, "r", encoding="utf-8") as f:
+                current_data = json.load(f)
+            
+            # Update with processed points
+            current_data["points"] = flat_rows
+            current_data["metadata"]["total_points"] = len(flat_rows)
+            current_data["metadata"]["next_free_index"] = current_index
+            current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+            current_data["metadata"]["processing_status"] = "completed"
+            
+            # Remove raw_responses from final file (no longer needed after conversion)
+            if "raw_responses" in current_data:
+                del current_data["raw_responses"]
+                self.logger.info("Removed raw_responses from final output file")
+            
+            # Write final file
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(final_output, f, ensure_ascii=False, indent=2)
+                json.dump(current_data, f, ensure_ascii=False, indent=2)
+            
             self.logger.info(f"Document Processing completed successfully: {output_path}")
+            self.logger.info(f"✓ All {len(all_responses)} responses saved (including {len(flat_rows)} processed points)")
             if progress_callback:
-                progress_callback(f"✓ Document Processing completed. {len(flat_rows)} points generated.")
+                progress_callback(f"✓ Document Processing completed. {len(flat_rows)} points generated from {len(all_responses)} responses.")
             return output_path
         except Exception as e:
-            self.logger.error(f"Failed to save Document Processing output: {e}")
+            self.logger.error(f"Failed to finalize Document Processing output: {e}")
+            # File still exists with raw responses, return path anyway
+            if os.path.exists(output_path):
+                return output_path
             return None
 
     def _save_subchapter_txt_file(
