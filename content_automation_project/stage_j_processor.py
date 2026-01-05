@@ -5,6 +5,7 @@ Adds two new columns (Imp and Type) to Stage E data based on Word test file and 
 
 import json
 import logging
+import math
 import os
 import tempfile
 from typing import Optional, Dict, List, Any, Callable
@@ -121,15 +122,21 @@ class StageJProcessor(BaseStageProcessor):
             }
             model_input_data.append(model_record)
         
-        # Split Stage E data into four parts
+        # Divide Stage E data into parts of 200 records each
+        PART_SIZE = 200
         total_records = len(model_input_data)
-        part_size = total_records // 4
-        part1_data = model_input_data[:part_size]
-        part2_data = model_input_data[part_size:part_size * 2]
-        part3_data = model_input_data[part_size * 2:part_size * 3]
-        part4_data = model_input_data[part_size * 3:]
+        num_parts = math.ceil(total_records / PART_SIZE)
         
-        _progress(f"Splitting Stage E data into 4 parts: Part 1 ({len(part1_data)} records), Part 2 ({len(part2_data)} records), Part 3 ({len(part3_data)} records), Part 4 ({len(part4_data)} records)")
+        _progress(f"Dividing Stage E data into {num_parts} parts (max {PART_SIZE} records per part)")
+        
+        # Split Stage E data into parts
+        model_input_parts = []
+        for i in range(num_parts):
+            start_idx = i * PART_SIZE
+            end_idx = min((i + 1) * PART_SIZE, total_records)
+            part_data = model_input_data[start_idx:end_idx]
+            model_input_parts.append(part_data)
+            _progress(f"Part {i+1}: {len(part_data)} records (indices {start_idx} to {end_idx-1})")
         
         word_content_formatted = self.word_processor.prepare_word_for_model(
             word_content, 
@@ -180,152 +187,63 @@ For each PointId in the Stage E data, provide:
 
 Return ONLY valid JSON, no additional text."""
         
-        # Process Part 1
-        _progress("Processing Part 1...")
-        part1_json_str = json.dumps(part1_data, ensure_ascii=False, indent=2)
-        part1_prompt = f"""{base_prompt_template}
-
-Stage E Data - Part 1 (JSON):
-{part1_json_str}"""
-        
-        part1_response = None
+        # Process each part separately
+        all_part_responses = []
         max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                part1_response = self.api_client.process_text(
-                    text=part1_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
-                )
-                if part1_response:
-                    _progress(f"Part 1 response received ({len(part1_response)} characters)")
-                    break
-            except Exception as e:
-                self.logger.warning(f"Part 1 model call attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    _progress(f"Retrying Part 1... (attempt {attempt + 2}/{max_retries})")
-                else:
-                    self.logger.error("All Part 1 model call attempts failed")
-                    return None
         
-        if not part1_response:
-            self.logger.error("No response from model for Part 1")
-            return None
-        
-        # Process Part 2
-        _progress("Processing Part 2...")
-        part2_json_str = json.dumps(part2_data, ensure_ascii=False, indent=2)
-        part2_prompt = f"""{base_prompt_template}
+        for part_num, part_data in enumerate(model_input_parts, 1):
+            _progress("=" * 60)
+            _progress(f"Processing Part {part_num}/{num_parts} ({len(part_data)} records)...")
+            _progress("=" * 60)
+            
+            part_json_str = json.dumps(part_data, ensure_ascii=False, indent=2)
+            part_prompt = f"""{base_prompt_template}
 
-Stage E Data - Part 2 (JSON):
-{part2_json_str}"""
+Stage E Data - Part {part_num}/{num_parts} (JSON):
+{part_json_str}"""
+            
+            part_response = None
+            for attempt in range(max_retries):
+                try:
+                    part_response = self.api_client.process_text(
+                        text=part_prompt,
+                        system_prompt=None,
+                        model_name=model_name,
+                        temperature=APIConfig.DEFAULT_TEMPERATURE,
+                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                    )
+                    if part_response:
+                        _progress(f"Part {part_num} response received ({len(part_response)} characters)")
+                        break
+                except Exception as e:
+                    self.logger.warning(f"Part {part_num} model call attempt {attempt + 1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        _progress(f"Retrying Part {part_num}... (attempt {attempt + 2}/{max_retries})")
+                    else:
+                        self.logger.error(f"All Part {part_num} model call attempts failed")
+                        _progress(f"Error: Failed to get response for Part {part_num}. Skipping this part.")
+                        part_response = None
+            
+            if not part_response:
+                self.logger.error(f"No response from model for Part {part_num}")
+                _progress(f"Error: No response for Part {part_num}. Skipping this part.")
+                continue
+            
+            all_part_responses.append({
+                "part_num": part_num,
+                "response": part_response
+            })
         
-        part2_response = None
-        for attempt in range(max_retries):
-            try:
-                part2_response = self.api_client.process_text(
-                    text=part2_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
-                )
-                if part2_response:
-                    _progress(f"Part 2 response received ({len(part2_response)} characters)")
-                    break
-            except Exception as e:
-                self.logger.warning(f"Part 2 model call attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    _progress(f"Retrying Part 2... (attempt {attempt + 2}/{max_retries})")
-                else:
-                    self.logger.error("All Part 2 model call attempts failed")
-                    return None
-        
-        if not part2_response:
-            self.logger.error("No response from model for Part 2")
-            return None
-        
-        # Process Part 3
-        _progress("Processing Part 3...")
-        part3_json_str = json.dumps(part3_data, ensure_ascii=False, indent=2)
-        part3_prompt = f"""{base_prompt_template}
-
-Stage E Data - Part 3 (JSON):
-{part3_json_str}"""
-        
-        part3_response = None
-        for attempt in range(max_retries):
-            try:
-                part3_response = self.api_client.process_text(
-                    text=part3_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
-                )
-                if part3_response:
-                    _progress(f"Part 3 response received ({len(part3_response)} characters)")
-                    break
-            except Exception as e:
-                self.logger.warning(f"Part 3 model call attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    _progress(f"Retrying Part 3... (attempt {attempt + 2}/{max_retries})")
-                else:
-                    self.logger.error("All Part 3 model call attempts failed")
-                    return None
-        
-        if not part3_response:
-            self.logger.error("No response from model for Part 3")
-            return None
-        
-        # Process Part 4
-        _progress("Processing Part 4...")
-        part4_json_str = json.dumps(part4_data, ensure_ascii=False, indent=2)
-        part4_prompt = f"""{base_prompt_template}
-
-Stage E Data - Part 4 (JSON):
-{part4_json_str}"""
-        
-        part4_response = None
-        for attempt in range(max_retries):
-            try:
-                part4_response = self.api_client.process_text(
-                    text=part4_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
-                )
-                if part4_response:
-                    _progress(f"Part 4 response received ({len(part4_response)} characters)")
-                    break
-            except Exception as e:
-                self.logger.warning(f"Part 4 model call attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    _progress(f"Retrying Part 4... (attempt {attempt + 2}/{max_retries})")
-                else:
-                    self.logger.error("All Part 4 model call attempts failed")
-                    return None
-        
-        if not part4_response:
-            self.logger.error("No response from model for Part 4")
+        if not all_part_responses:
+            self.logger.error("No responses received from any part")
             return None
         
         # Combine all responses into one TXT file
         _progress("Combining responses from all parts...")
-        combined_response = f"""=== PART 1 RESPONSE ===
-{part1_response}
-
-=== PART 2 RESPONSE ===
-{part2_response}
-
-=== PART 3 RESPONSE ===
-{part3_response}
-
-=== PART 4 RESPONSE ===
-{part4_response}"""
+        combined_response_parts = []
+        for part_info in all_part_responses:
+            combined_response_parts.append(f"=== PART {part_info['part_num']} RESPONSE ===\n{part_info['response']}")
+        combined_response = "\n\n".join(combined_response_parts)
         
         # Save combined response to TXT file
         base_dir = os.path.dirname(stage_e_path) or os.getcwd()
@@ -339,44 +257,41 @@ Stage E Data - Part 4 (JSON):
         except Exception as e:
             self.logger.warning(f"Failed to save TXT file: {e}")
         
-        # Extract JSON from all four responses
-        _progress("Extracting JSON from Part 1 response...")
-        part1_output = self.extract_json_from_response(part1_response)
-        if not part1_output:
-            # Try loading from text directly
-            _progress("Trying to extract Part 1 JSON from text...")
-            part1_output = self.load_txt_as_json_from_text(part1_response)
+        # Extract JSON from all responses
+        all_part_data_lists = []
+        for part_info in all_part_responses:
+            part_num = part_info['part_num']
+            part_response = part_info['response']
+            
+            _progress(f"Extracting JSON from Part {part_num} response...")
+            part_output = self.extract_json_from_response(part_response)
+            if not part_output:
+                # Try loading from text directly
+                _progress(f"Trying to extract Part {part_num} JSON from text...")
+                part_output = self.load_txt_as_json_from_text(part_response)
+            
+            if part_output:
+                part_data_list = self.get_data_from_json(part_output)
+                if part_data_list:
+                    all_part_data_lists.append({
+                        "part_num": part_num,
+                        "data": part_data_list,
+                        "count": len(part_data_list)
+                    })
+                    _progress(f"Part {part_num}: Extracted {len(part_data_list)} records")
+                else:
+                    self.logger.warning(f"Part {part_num}: No data extracted from JSON")
+            else:
+                self.logger.warning(f"Part {part_num}: Failed to extract JSON")
         
-        _progress("Extracting JSON from Part 2 response...")
-        part2_output = self.extract_json_from_response(part2_response)
-        if not part2_output:
-            # Try loading from text directly
-            _progress("Trying to extract Part 2 JSON from text...")
-            part2_output = self.load_txt_as_json_from_text(part2_response)
+        # Combine all outputs
+        _progress("Combining JSON from all parts...")
+        combined_model_data = []
+        for part_info in all_part_data_lists:
+            combined_model_data.extend(part_info['data'])
         
-        _progress("Extracting JSON from Part 3 response...")
-        part3_output = self.extract_json_from_response(part3_response)
-        if not part3_output:
-            # Try loading from text directly
-            _progress("Trying to extract Part 3 JSON from text...")
-            part3_output = self.load_txt_as_json_from_text(part3_response)
-        
-        _progress("Extracting JSON from Part 4 response...")
-        part4_output = self.extract_json_from_response(part4_response)
-        if not part4_output:
-            # Try loading from text directly
-            _progress("Trying to extract Part 4 JSON from text...")
-            part4_output = self.load_txt_as_json_from_text(part4_response)
-        
-        # Combine all four outputs
-        _progress("Combining JSON from all four parts...")
-        part1_data_list = self.get_data_from_json(part1_output) if part1_output else []
-        part2_data_list = self.get_data_from_json(part2_output) if part2_output else []
-        part3_data_list = self.get_data_from_json(part3_output) if part3_output else []
-        part4_data_list = self.get_data_from_json(part4_output) if part4_output else []
-        
-        # Create combined model output
-        combined_model_data = part1_data_list + part2_data_list + part3_data_list + part4_data_list
+        part_counts = [f"Part {p['part_num']}: {p['count']}" for p in all_part_data_lists]
+        _progress(f"Extracted {len(combined_model_data)} records from combined model output ({', '.join(part_counts)})")
         
         if not combined_model_data:
             self.logger.error("Failed to extract JSON from model responses")
@@ -442,7 +357,6 @@ Stage E Data - Part 4 (JSON):
         
         model_data = combined_model_data
         
-        _progress(f"Extracted {len(model_data)} records from combined model output (Part 1: {len(part1_data_list)}, Part 2: {len(part2_data_list)}, Part 3: {len(part3_data_list)}, Part 4: {len(part4_data_list)})")
         
         # Create a mapping of PointId to Imp and Type
         pointid_to_imp_type = {}

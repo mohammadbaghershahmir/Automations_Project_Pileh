@@ -13,6 +13,7 @@ import csv
 import io
 import json
 import glob
+import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
@@ -316,30 +317,57 @@ class ContentAutomationGUI:
         )
         desc.pack(pady=(0, 20))
         
-        # PDF file selection for Pre-OCR
-        pdf_frame = ctk.CTkFrame(main_frame)
-        pdf_frame.pack(fill="x", pady=10)
+        # Multiple PDF files selection for batch processing
+        multi_pdf_frame = ctk.CTkFrame(main_frame)
+        multi_pdf_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(pdf_frame, text="PDF File:", 
+        ctk.CTkLabel(multi_pdf_frame, text="Multiple PDF Files (Batch Processing):", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'pre_ocr_pdf_file_var'):
-            self.pre_ocr_pdf_file_var = ctk.StringVar()
+        multi_file_btn_frame = ctk.CTkFrame(multi_pdf_frame)
+        multi_file_btn_frame.pack(fill="x", padx=10, pady=5)
         
-        entry_frame_pdf = ctk.CTkFrame(pdf_frame)
-        entry_frame_pdf.pack(fill="x", padx=10, pady=5)
+        ctk.CTkButton(multi_file_btn_frame, text="Browse Multiple Files", 
+                     command=self.browse_multiple_pre_ocr_pdfs, 
+                     width=150).pack(side="left", padx=5)
         
-        pre_ocr_pdf_entry = ctk.CTkEntry(entry_frame_pdf, textvariable=self.pre_ocr_pdf_file_var)
-        pre_ocr_pdf_entry.pack(side="left", fill="x", expand=True, padx=5)
+        # Delay setting
+        delay_frame = ctk.CTkFrame(multi_file_btn_frame)
+        delay_frame.pack(side="left", padx=10)
+        ctk.CTkLabel(delay_frame, text="Delay (seconds):").pack(side="left", padx=5)
+        if not hasattr(self, 'pre_ocr_delay_var'):
+            self.pre_ocr_delay_var = ctk.StringVar(value="5")
+        delay_entry = ctk.CTkEntry(delay_frame, textvariable=self.pre_ocr_delay_var, width=60)
+        delay_entry.pack(side="left", padx=5)
         
-        ctk.CTkButton(entry_frame_pdf, text="Browse", 
-                     command=self.browse_pre_ocr_pdf_file, 
-                     width=80).pack(side="right", padx=5)
+        # File list with status
+        if not hasattr(self, 'pre_ocr_file_list_frame'):
+            self.pre_ocr_file_list_frame = ctk.CTkFrame(main_frame)
+        self.pre_ocr_file_list_frame.pack(fill="both", expand=True, pady=10)
         
-        # Validation indicator
-        if not hasattr(self, 'pre_ocr_pdf_valid'):
-            self.pre_ocr_pdf_valid = ctk.CTkLabel(entry_frame_pdf, text="", width=30)
-        self.pre_ocr_pdf_valid.pack(side="right", padx=5)
+        ctk.CTkLabel(self.pre_ocr_file_list_frame, text="Selected Files:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Scrollable frame for file list
+        if not hasattr(self, 'pre_ocr_file_list_scroll'):
+            self.pre_ocr_file_list_scroll = ctk.CTkScrollableFrame(self.pre_ocr_file_list_frame, height=200)
+        self.pre_ocr_file_list_scroll.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # Progress bar
+        if not hasattr(self, 'pre_ocr_progress_bar'):
+            self.pre_ocr_progress_bar = ctk.CTkProgressBar(main_frame)
+        self.pre_ocr_progress_bar.pack(fill="x", padx=10, pady=5)
+        self.pre_ocr_progress_bar.set(0)
+        
+        # Progress label
+        if not hasattr(self, 'pre_ocr_progress_label'):
+            self.pre_ocr_progress_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                      font=ctk.CTkFont(size=12))
+        self.pre_ocr_progress_label.pack(pady=5)
+        
+        # Variables for file tracking
+        if not hasattr(self, 'pre_ocr_selected_files'):
+            self.pre_ocr_selected_files = []  # List of dicts: {'path': str, 'status_label': widget, 'frame': widget, 'output_path': str}
         
         # Prompt selection for Pre-OCR
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -375,11 +403,14 @@ class ContentAutomationGUI:
         process_frame = ctk.CTkFrame(main_frame)
         process_frame.pack(fill="x", pady=10)
         
-        if not hasattr(self, 'pre_ocr_process_btn'):
-            self.pre_ocr_process_btn = ctk.CTkButton(process_frame, text="Extract Topics", 
-                                                    command=self.process_pre_ocr_topic, width=200, height=40,
-                                                    font=ctk.CTkFont(size=14, weight="bold"))
-        self.pre_ocr_process_btn.pack(side="left", padx=10, pady=10)
+        # Process All button for batch processing
+        if not hasattr(self, 'pre_ocr_process_all_btn'):
+            self.pre_ocr_process_all_btn = ctk.CTkButton(process_frame, text="Process All Files", 
+                                                        command=self.process_multiple_pre_ocr_topics, 
+                                                        width=200, height=40,
+                                                        font=ctk.CTkFont(size=14, weight="bold"),
+                                                        fg_color="green", hover_color="darkgreen")
+        self.pre_ocr_process_all_btn.pack(side="left", padx=10, pady=10)
         
         # Status label
         if not hasattr(self, 'pre_ocr_status_label'):
@@ -739,15 +770,53 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", "Failed to load API keys from file")
     
     
-    def browse_pre_ocr_pdf_file(self):
-        """Browse for PDF file for Pre-OCR Topic Extraction"""
-        filename = filedialog.askopenfilename(
-            title="Select PDF File for Pre-OCR Topic Extraction",
+    def browse_multiple_pre_ocr_pdfs(self):
+        """Browse and select multiple PDF files"""
+        file_paths = filedialog.askopenfilenames(
+            title="Select PDF Files for Pre-OCR Topic Extraction",
             filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
         )
-        if filename:
-            self.pre_ocr_pdf_file_var.set(filename)
-            self.pre_ocr_status_label.configure(text=f"PDF selected: {os.path.basename(filename)}", text_color="green")
+        
+        if file_paths:
+            self.pre_ocr_selected_files = []
+            # Clear existing widgets
+            for widget in self.pre_ocr_file_list_scroll.winfo_children():
+                widget.destroy()
+            
+            # Add each file to the list
+            for file_path in file_paths:
+                file_frame = ctk.CTkFrame(self.pre_ocr_file_list_scroll)
+                file_frame.pack(fill="x", padx=5, pady=2)
+                
+                # File name
+                file_name = os.path.basename(file_path)
+                name_label = ctk.CTkLabel(file_frame, text=file_name, 
+                                         font=ctk.CTkFont(size=11))
+                name_label.pack(side="left", padx=5)
+                
+                # Status label
+                status_label = ctk.CTkLabel(file_frame, text="Pending", 
+                                          text_color="gray", font=ctk.CTkFont(size=11))
+                status_label.pack(side="right", padx=5)
+                
+                # Remove button
+                remove_btn = ctk.CTkButton(file_frame, text="X", width=30, height=20,
+                                          command=lambda f=file_path, w=file_frame: self.remove_pre_ocr_file(f, w))
+                remove_btn.pack(side="right", padx=2)
+                
+                self.pre_ocr_selected_files.append({
+                    'path': file_path,
+                    'status_label': status_label,
+                    'frame': file_frame,
+                    'output_path': None
+                })
+            
+            self.logger.info(f"Selected {len(self.pre_ocr_selected_files)} PDF files for batch processing")
+    
+    def remove_pre_ocr_file(self, file_path, frame_widget):
+        """Remove a file from the selection list"""
+        self.pre_ocr_selected_files = [f for f in self.pre_ocr_selected_files if f['path'] != file_path]
+        frame_widget.destroy()
     
     def browse_pdf_file(self):
         """Browse for PDF file"""
@@ -1573,71 +1642,130 @@ class ContentAutomationGUI:
             except Exception:
                 pass
 
-    def process_pre_ocr_topic(self):
-        """Process Pre-OCR Topic Extraction using LLM"""
+    def process_multiple_pre_ocr_topics(self):
+        """Process multiple PDF files for Pre-OCR Topic Extraction"""
         def worker():
             try:
-                # Disable process button
-                self.pre_ocr_process_btn.configure(state="disabled", text="Processing...")
-                self.pre_ocr_status_label.configure(text="Processing Pre-OCR Topic Extraction...", text_color="blue")
-                
-                # Validate inputs
-                pdf_path = self.pre_ocr_pdf_file_var.get().strip()
-                if not pdf_path or not os.path.exists(pdf_path):
-                    self.pre_ocr_status_label.configure(text="Error: Please select a valid PDF file", text_color="red")
-                    messagebox.showerror("Error", "Please select a valid PDF file")
+                if not self.pre_ocr_selected_files:
+                    self.root.after(0, lambda: messagebox.showwarning("Warning", "Please select at least one PDF file"))
                     return
                 
+                # Disable button
+                self.root.after(0, lambda: self.pre_ocr_process_all_btn.configure(state="disabled", text="Processing..."))
+                
+                # Get prompt
                 prompt = self.pre_ocr_prompt_text.get("1.0", tk.END).strip()
                 if not prompt:
-                    self.pre_ocr_status_label.configure(text="Error: Please enter a prompt", text_color="red")
-                    messagebox.showerror("Error", "Please enter a prompt for topic extraction")
-                    return
+                    default_prompt = self.prompt_manager.get_prompt("Pre OCR Topic")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default Pre OCR Topic prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                        return
                 
-                # Validate API keys are loaded
+                # Get delay
+                try:
+                    delay_seconds = int(self.pre_ocr_delay_var.get())
+                except ValueError:
+                    delay_seconds = 5
+                    self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
+                
+                # Validate API keys
                 if not self.api_key_manager.api_keys:
                     if not self.api_key_file_var.get():
-                        self.pre_ocr_status_label.configure(text="Error: Please load API keys", text_color="red")
-                        messagebox.showerror("Error", "Please load API keys from CSV file")
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys"))
                         return
                     else:
                         if not self.api_key_manager.load_from_csv(self.api_key_file_var.get()):
-                            self.pre_ocr_status_label.configure(text="Error: Failed to load API keys", text_color="red")
-                            messagebox.showerror("Error", "Failed to load API keys from CSV file")
+                            self.root.after(0, lambda: messagebox.showerror("Error", "Failed to load API keys"))
                             return
                 
                 model_name = self.pre_ocr_model_var.get()
+                total_files = len(self.pre_ocr_selected_files)
+                completed = 0
+                failed = 0
                 
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.pre_ocr_status_label.configure(text=msg))
+                # Reset progress bar
+                self.root.after(0, lambda: self.pre_ocr_progress_bar.set(0))
                 
-                # Process Pre-OCR Topic Extraction
-                output_path = self.pre_ocr_topic_processor.process_pre_ocr_topic(
-                    pdf_path=pdf_path,
-                    prompt=prompt,
-                    model_name=model_name,
-                    output_dir=self.get_default_output_dir(pdf_path),
-                    progress_callback=progress_callback
-                )
+                # Process each file
+                for idx, file_info in enumerate(self.pre_ocr_selected_files):
+                    file_path = file_info['path']
+                    status_label = file_info['status_label']
+                    file_name = os.path.basename(file_path)
+                    
+                    # Update status to processing
+                    self.root.after(0, lambda sl=status_label, fn=file_name: 
+                                   sl.configure(text="Processing...", text_color="blue"))
+                    
+                    self.root.after(0, lambda idx=idx, total=total_files, fp=file_path: 
+                                   self.pre_ocr_progress_label.configure(
+                                       text=f"Processing file {idx+1}/{total}: {os.path.basename(fp)}"))
+                    
+                    # Progress bar
+                    progress = idx / total_files
+                    self.root.after(0, lambda p=progress: self.pre_ocr_progress_bar.set(p))
+                    
+                    try:
+                        # Progress callback for this file
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg: self.pre_ocr_status_label.configure(text=m))
+                        
+                        # Process the file
+                        output_path = self.pre_ocr_topic_processor.process_pre_ocr_topic(
+                            pdf_path=file_path,
+                            prompt=prompt,
+                            model_name=model_name,
+                            output_dir=self.get_default_output_dir(file_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            file_info['output_path'] = output_path
+                            completed += 1
+                            self.root.after(0, lambda sl=status_label, fn=file_name, op=output_path: 
+                                          sl.configure(text="Completed", text_color="green"))
+                            self.logger.info(f"Completed: {file_name} -> {output_path}")
+                        else:
+                            failed += 1
+                            self.root.after(0, lambda sl=status_label, fn=file_name: 
+                                          sl.configure(text="Failed", text_color="red"))
+                            self.logger.error(f"Failed: {file_name}")
+                    
+                    except Exception as e:
+                        failed += 1
+                        self.root.after(0, lambda sl=status_label, fn=file_name: 
+                                       sl.configure(text="Error", text_color="red"))
+                        self.logger.error(f"Error processing {file_name}: {e}", exc_info=True)
+                    
+                    # Delay before next file (except for the last one)
+                    if idx < total_files - 1:
+                        self.root.after(0, lambda d=delay_seconds: 
+                                       self.pre_ocr_progress_label.configure(
+                                           text=f"Waiting {d} seconds before next file..."))
+                        time.sleep(delay_seconds)
                 
-                if output_path and os.path.exists(output_path):
-                    self.pre_ocr_output_var.set(output_path)
-                    self.pre_ocr_status_label.configure(
-                        text=f"Success! Output saved to: {os.path.basename(output_path)}", 
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Pre-OCR Topic Extraction completed!\nOutput: {output_path}")
-                else:
-                    self.pre_ocr_status_label.configure(text="Error: Processing failed", text_color="red")
-                    messagebox.showerror("Error", "Pre-OCR Topic Extraction failed. Check logs for details.")
+                # Final update
+                self.root.after(0, lambda: self.pre_ocr_progress_bar.set(1.0))
+                self.root.after(0, lambda c=completed, f=failed: 
+                               self.pre_ocr_progress_label.configure(
+                                   text=f"Batch processing completed! {c} succeeded, {f} failed"))
+                
+                # Show summary
+                summary = f"Batch Processing Complete!\n\n" \
+                         f"Total: {total_files}\n" \
+                         f"Completed: {completed}\n" \
+                         f"Failed: {failed}"
+                self.root.after(0, lambda s=summary: messagebox.showinfo("Batch Processing Complete", s))
                 
             except Exception as e:
-                error_msg = f"Error: {str(e)}"
-                self.pre_ocr_status_label.configure(text=error_msg, text_color="red")
-                self.logger.error(f"Pre-OCR Topic Extraction error: {e}", exc_info=True)
-                messagebox.showerror("Error", f"Pre-OCR Topic Extraction failed: {str(e)}")
+                error_msg = f"Batch processing error: {str(e)}"
+                self.logger.error(error_msg, exc_info=True)
+                self.root.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
             finally:
-                self.pre_ocr_process_btn.configure(state="normal", text="Extract Topics")
+                # Re-enable button
+                self.root.after(0, lambda: self.pre_ocr_process_all_btn.configure(state="normal", text="Process All Files"))
         
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
@@ -3174,55 +3302,63 @@ class ContentAutomationGUI:
         )
         desc.pack(pady=(0, 20))
         
-        # PDF File Selection
-        pdf_frame = ctk.CTkFrame(main_frame)
-        pdf_frame.pack(fill="x", pady=10)
+        # Batch processing section
+        batch_frame = ctk.CTkFrame(main_frame)
+        batch_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(pdf_frame, text="PDF File:", 
+        ctk.CTkLabel(batch_frame, text="Batch Processing:", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'ocr_extraction_pdf_var'):
-            self.ocr_extraction_pdf_var = ctk.StringVar()
+        batch_btn_frame = ctk.CTkFrame(batch_frame)
+        batch_btn_frame.pack(fill="x", padx=10, pady=5)
         
-        entry_frame_pdf = ctk.CTkFrame(pdf_frame)
-        entry_frame_pdf.pack(fill="x", padx=10, pady=5)
+        # Option 1: Select folder and auto-match
+        ctk.CTkButton(batch_btn_frame, text="Select Folder (Auto-Match)", 
+                     command=self.select_folder_and_match_ocr_pairs, 
+                     width=200).pack(side="left", padx=5)
         
-        pdf_entry = ctk.CTkEntry(entry_frame_pdf, textvariable=self.ocr_extraction_pdf_var)
-        pdf_entry.pack(side="left", fill="x", expand=True, padx=5)
+        # Option 2: Manual add pairs (fallback)
+        ctk.CTkButton(batch_btn_frame, text="Add Pair Manually", 
+                     command=self.add_ocr_extraction_pair_manual, 
+                     width=150).pack(side="left", padx=5)
         
-        ctk.CTkButton(entry_frame_pdf, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.ocr_extraction_pdf_var, 
-                                                                 filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")])).pack(side="right")
+        # Delay setting
+        delay_frame = ctk.CTkFrame(batch_btn_frame)
+        delay_frame.pack(side="left", padx=10)
+        ctk.CTkLabel(delay_frame, text="Delay (seconds):").pack(side="left", padx=5)
+        if not hasattr(self, 'ocr_extraction_delay_var'):
+            self.ocr_extraction_delay_var = ctk.StringVar(value="5")
+        delay_entry = ctk.CTkEntry(delay_frame, textvariable=self.ocr_extraction_delay_var, width=60)
+        delay_entry.pack(side="left", padx=5)
         
-        # Validation indicator
-        if not hasattr(self, 'ocr_extraction_pdf_valid'):
-            self.ocr_extraction_pdf_valid = ctk.CTkLabel(entry_frame_pdf, text="", width=30)
-        self.ocr_extraction_pdf_valid.pack(side="right", padx=5)
+        # Pairs list with status
+        if not hasattr(self, 'ocr_extraction_pairs_list_frame'):
+            self.ocr_extraction_pairs_list_frame = ctk.CTkFrame(main_frame)
+        self.ocr_extraction_pairs_list_frame.pack(fill="both", expand=True, pady=10)
         
-        # Pre-OCR Topic File Selection (t{book}{chapter}.json)
-        topic_frame = ctk.CTkFrame(main_frame)
-        topic_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(topic_frame, text="Pre-OCR Topic File (t{book}{chapter}.json):", 
+        ctk.CTkLabel(self.ocr_extraction_pairs_list_frame, text="Selected Pairs:", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'ocr_extraction_topic_var'):
-            self.ocr_extraction_topic_var = ctk.StringVar()
+        # Scrollable frame for pairs list
+        if not hasattr(self, 'ocr_extraction_pairs_list_scroll'):
+            self.ocr_extraction_pairs_list_scroll = ctk.CTkScrollableFrame(self.ocr_extraction_pairs_list_frame, height=200)
+        self.ocr_extraction_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=5)
         
-        entry_frame_topic = ctk.CTkFrame(topic_frame)
-        entry_frame_topic.pack(fill="x", padx=10, pady=5)
+        # Progress bar
+        if not hasattr(self, 'ocr_extraction_progress_bar'):
+            self.ocr_extraction_progress_bar = ctk.CTkProgressBar(main_frame)
+        self.ocr_extraction_progress_bar.pack(fill="x", padx=10, pady=5)
+        self.ocr_extraction_progress_bar.set(0)
         
-        topic_entry = ctk.CTkEntry(entry_frame_topic, textvariable=self.ocr_extraction_topic_var)
-        topic_entry.pack(side="left", fill="x", expand=True, padx=5)
+        # Progress label
+        if not hasattr(self, 'ocr_extraction_progress_label'):
+            self.ocr_extraction_progress_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                             font=ctk.CTkFont(size=12))
+        self.ocr_extraction_progress_label.pack(pady=5)
         
-        ctk.CTkButton(entry_frame_topic, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.ocr_extraction_topic_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
-        
-        # Validation indicator
-        if not hasattr(self, 'ocr_extraction_topic_valid'):
-            self.ocr_extraction_topic_valid = ctk.CTkLabel(entry_frame_topic, text="", width=30)
-        self.ocr_extraction_topic_valid.pack(side="right", padx=5)
+        # Variables for pairs tracking
+        if not hasattr(self, 'ocr_extraction_selected_pairs'):
+            self.ocr_extraction_selected_pairs = []
         
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -3315,16 +3451,19 @@ class ContentAutomationGUI:
         process_frame = ctk.CTkFrame(main_frame)
         process_frame.pack(fill="x", pady=10)
         
-        if not hasattr(self, 'ocr_extraction_process_btn'):
-            self.ocr_extraction_process_btn = ctk.CTkButton(
+        # Process All button for batch processing
+        if not hasattr(self, 'ocr_extraction_process_all_btn'):
+            self.ocr_extraction_process_all_btn = ctk.CTkButton(
                 process_frame,
-                text="Extract OCR",
-                command=self.process_ocr_extraction,
+                text="Process All Pairs",
+                command=self.process_multiple_ocr_extractions,
                 width=200,
                 height=40,
-                font=ctk.CTkFont(size=14, weight="bold")
+                font=ctk.CTkFont(size=14, weight="bold"),
+                fg_color="green",
+                hover_color="darkgreen"
             )
-        self.ocr_extraction_process_btn.pack(side="left", padx=10, pady=10)
+        self.ocr_extraction_process_all_btn.pack(side="left", padx=10, pady=10)
         
         # Status Label
         if not hasattr(self, 'ocr_extraction_status_label'):
@@ -3763,6 +3902,332 @@ class ContentAutomationGUI:
                 messagebox.showerror("Error", f"OCR Extraction processing error:\n{str(e)}")
             finally:
                 self.ocr_extraction_process_btn.configure(state="normal", text="Extract OCR")
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def select_folder_and_match_ocr_pairs(self):
+        """Select a folder and automatically match PDFs with Topic files"""
+        folder_path = filedialog.askdirectory(title="Select Folder Containing PDFs and Topic Files")
+        if not folder_path:
+            return
+        
+        # Find all PDFs and Topic files
+        pdf_files = []
+        topic_files = []
+        
+        for file in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file)
+            if os.path.isfile(file_path):
+                if file.lower().endswith('.pdf'):
+                    pdf_files.append(file_path)
+                elif file.lower().endswith('.json') and file.startswith('t') and len(file) >= 10:
+                    # Topic file: t{book}{chapter}.json
+                    topic_files.append(file_path)
+        
+        if not pdf_files:
+            messagebox.showwarning("Warning", "No PDF files found in selected folder")
+            return
+        
+        if not topic_files:
+            messagebox.showwarning("Warning", "No Topic files (t*.json) found in selected folder")
+            return
+        
+        # Clear existing pairs
+        self.ocr_extraction_selected_pairs = []
+        for widget in self.ocr_extraction_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        # Match PDFs with Topic files
+        matched_pairs = []
+        unmatched_pdfs = []
+        
+        for pdf_path in pdf_files:
+            pdf_name = os.path.basename(pdf_path)
+            
+            # Try to extract book_id and chapter_id from PDF filename
+            book_id, chapter_id = self._extract_book_chapter_from_pdf_name(pdf_name)
+            
+            if book_id is None or chapter_id is None:
+                # Try to find matching topic file by checking metadata
+                matched_topic = self._find_matching_topic_file_by_metadata(pdf_path, topic_files)
+                if matched_topic:
+                    matched_pairs.append((pdf_path, matched_topic))
+                else:
+                    unmatched_pdfs.append(pdf_path)
+            else:
+                # Look for topic file with pattern t{book:03d}{chapter:03d}.json
+                expected_topic_name = f"t{book_id:03d}{chapter_id:03d}.json"
+                matched_topic = None
+                for topic_path in topic_files:
+                    if os.path.basename(topic_path) == expected_topic_name:
+                        matched_topic = topic_path
+                        break
+                
+                if matched_topic:
+                    matched_pairs.append((pdf_path, matched_topic))
+                else:
+                    unmatched_pdfs.append(pdf_path)
+        
+        # Add matched pairs to UI
+        for pdf_path, topic_path in matched_pairs:
+            self._add_ocr_pair_to_ui(pdf_path, topic_path)
+        
+        # Show summary
+        summary = f"Auto-Matching Complete!\n\n" \
+                 f"PDFs found: {len(pdf_files)}\n" \
+                 f"Topic files found: {len(topic_files)}\n" \
+                 f"Matched pairs: {len(matched_pairs)}\n" \
+                 f"Unmatched PDFs: {len(unmatched_pdfs)}"
+        
+        if unmatched_pdfs:
+            summary += f"\n\nUnmatched PDFs:\n" + "\n".join([os.path.basename(p) for p in unmatched_pdfs[:5]])
+            if len(unmatched_pdfs) > 5:
+                summary += f"\n... and {len(unmatched_pdfs) - 5} more"
+        
+        messagebox.showinfo("Auto-Matching Results", summary)
+        
+        self.logger.info(f"Auto-matched {len(matched_pairs)} pairs from folder: {folder_path}")
+    
+    def _extract_book_chapter_from_pdf_name(self, pdf_name: str) -> tuple[Optional[int], Optional[int]]:
+        """Extract book_id and chapter_id from PDF filename"""
+        import re
+        # Try patterns like: book5_chapter3, b5c3, 5_3, etc.
+        patterns = [
+            r'book[_\s]*(\d+)[_\s]*chapter[_\s]*(\d+)',
+            r'b[_\s]*(\d+)[_\s]*c[_\s]*(\d+)',
+            r'(\d+)[_\s]*[_\s]*(\d+)',  # Two consecutive numbers
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, pdf_name, re.IGNORECASE)
+            if match:
+                try:
+                    book_id = int(match.group(1))
+                    chapter_id = int(match.group(2))
+                    return book_id, chapter_id
+                except (ValueError, IndexError):
+                    continue
+        
+        return None, None
+    
+    def _find_matching_topic_file_by_metadata(self, pdf_path: str, topic_files: List[str]) -> Optional[str]:
+        """Find matching topic file by checking metadata in topic files"""
+        # Try to extract book_id and chapter_id from PDF filename
+        pdf_name = os.path.basename(pdf_path)
+        book_id, chapter_id = self._extract_book_chapter_from_pdf_name(pdf_name)
+        
+        if book_id is None or chapter_id is None:
+            return None
+        
+        # Check each topic file's metadata
+        for topic_path in topic_files:
+            try:
+                with open(topic_path, 'r', encoding='utf-8') as f:
+                    topic_data = json.load(f)
+                metadata = topic_data.get('metadata', {})
+                topic_book_id = metadata.get('book_id')
+                topic_chapter_id = metadata.get('chapter_id')
+                
+                if topic_book_id == book_id and topic_chapter_id == chapter_id:
+                    return topic_path
+            except Exception:
+                continue
+        
+        return None
+    
+    def _add_ocr_pair_to_ui(self, pdf_path: str, topic_path: str):
+        """Add a matched pair to the UI list"""
+        pair_frame = ctk.CTkFrame(self.ocr_extraction_pairs_list_scroll)
+        pair_frame.pack(fill="x", padx=5, pady=2)
+        
+        # PDF name
+        pdf_name = os.path.basename(pdf_path)
+        pdf_label = ctk.CTkLabel(pair_frame, text=f"PDF: {pdf_name}", 
+                                font=ctk.CTkFont(size=10))
+        pdf_label.pack(side="left", padx=5)
+        
+        # Topic file name
+        topic_name = os.path.basename(topic_path)
+        topic_label = ctk.CTkLabel(pair_frame, text=f"Topic: {topic_name}", 
+                                  font=ctk.CTkFont(size=10))
+        topic_label.pack(side="left", padx=5)
+        
+        # Status label
+        status_label = ctk.CTkLabel(pair_frame, text="Pending", 
+                                   text_color="gray", font=ctk.CTkFont(size=11))
+        status_label.pack(side="right", padx=5)
+        
+        # Remove button
+        remove_btn = ctk.CTkButton(pair_frame, text="X", width=30, height=20,
+                                  command=lambda pf=pdf_path, tf=topic_path, w=pair_frame: 
+                                  self.remove_ocr_extraction_pair(pf, tf, w))
+        remove_btn.pack(side="right", padx=2)
+        
+        self.ocr_extraction_selected_pairs.append({
+            'pdf_path': pdf_path,
+            'topic_file_path': topic_path,
+            'status_label': status_label,
+            'frame': pair_frame,
+            'output_path': None
+        })
+    
+    def add_ocr_extraction_pair_manual(self):
+        """Add a PDF + Topic file pair manually"""
+        # Browse PDF
+        pdf_path = filedialog.askopenfilename(
+            title="Select PDF File",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        )
+        if not pdf_path:
+            return
+        
+        # Browse Topic file
+        topic_path = filedialog.askopenfilename(
+            title="Select Pre-OCR Topic File (t{book}{chapter}.json)",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        if not topic_path:
+            return
+        
+        self._add_ocr_pair_to_ui(pdf_path, topic_path)
+        self.logger.info(f"Added manual pair: PDF={os.path.basename(pdf_path)}, Topic={os.path.basename(topic_path)}")
+    
+    def remove_ocr_extraction_pair(self, pdf_path: str, topic_path: str, frame_widget):
+        """Remove a pair from the selection list"""
+        self.ocr_extraction_selected_pairs = [
+            p for p in self.ocr_extraction_selected_pairs 
+            if not (p['pdf_path'] == pdf_path and p['topic_file_path'] == topic_path)
+        ]
+        frame_widget.destroy()
+    
+    def process_multiple_ocr_extractions(self):
+        """Process multiple PDF + Topic file pairs for OCR Extraction"""
+        def worker():
+            try:
+                if not self.ocr_extraction_selected_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning("Warning", "Please add at least one PDF + Topic pair"))
+                    return
+                
+                # Disable button
+                self.root.after(0, lambda: self.ocr_extraction_process_all_btn.configure(
+                    state="disabled", text="Processing..."))
+                
+                # Get prompt
+                prompt = self.ocr_extraction_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    default_prompt = self.prompt_manager.get_prompt("OCR Extraction Prompt")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default OCR Extraction prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                        return
+                
+                # Get delay
+                try:
+                    delay_seconds = int(self.ocr_extraction_delay_var.get())
+                except ValueError:
+                    delay_seconds = 5
+                    self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
+                
+                # Validate API keys
+                if not self.api_key_manager.api_keys:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys first"))
+                    return
+                
+                model_name = self.get_default_model()
+                total_pairs = len(self.ocr_extraction_selected_pairs)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.ocr_extraction_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair_info in enumerate(self.ocr_extraction_selected_pairs):
+                    pdf_path = pair_info['pdf_path']
+                    topic_file_path = pair_info['topic_file_path']
+                    status_label = pair_info['status_label']
+                    pdf_name = os.path.basename(pdf_path)
+                    topic_name = os.path.basename(topic_file_path)
+                    
+                    # Update status to processing
+                    self.root.after(0, lambda sl=status_label: 
+                                   sl.configure(text="Processing...", text_color="blue"))
+                    
+                    self.root.after(0, lambda idx=idx, total=total_pairs, pdf=pdf_name: 
+                                   self.ocr_extraction_progress_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {pdf}"))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.ocr_extraction_progress_bar.set(p))
+                    
+                    try:
+                        # Progress callback for this pair
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg: 
+                                           self.ocr_extraction_status_label.configure(text=m))
+                        
+                        # Process the pair
+                        output_dir = self.get_default_output_dir(pdf_path)
+                        final_output_path = self.multi_part_processor.process_ocr_extraction_with_topics(
+                            pdf_path=pdf_path,
+                            topic_file_path=topic_file_path,
+                            base_prompt=prompt,
+                            model_name=model_name,
+                            temperature=0.7,
+                            progress_callback=progress_callback,
+                            output_dir=output_dir
+                        )
+                        
+                        if final_output_path and os.path.exists(final_output_path):
+                            pair_info['output_path'] = final_output_path
+                            completed += 1
+                            self.root.after(0, lambda sl=status_label, pdf=pdf_name, op=final_output_path: 
+                                           sl.configure(text="Completed", text_color="green"))
+                            self.logger.info(f"Completed: {pdf_name} + {topic_name} -> {final_output_path}")
+                        else:
+                            failed += 1
+                            self.root.after(0, lambda sl=status_label, pdf=pdf_name: 
+                                           sl.configure(text="Failed", text_color="red"))
+                            self.logger.error(f"Failed: {pdf_name} + {topic_name}")
+                    
+                    except Exception as e:
+                        failed += 1
+                        self.root.after(0, lambda sl=status_label, pdf=pdf_name: 
+                                       sl.configure(text="Error", text_color="red"))
+                        self.logger.error(f"Error processing {pdf_name} + {topic_name}: {e}", exc_info=True)
+                    
+                    # Delay before next pair (except for the last one)
+                    if idx < total_pairs - 1:
+                        self.root.after(0, lambda d=delay_seconds: 
+                                       self.ocr_extraction_progress_label.configure(
+                                           text=f"Waiting {d} seconds before next pair..."))
+                        time.sleep(delay_seconds)
+                
+                # Final update
+                self.root.after(0, lambda: self.ocr_extraction_progress_bar.set(1.0))
+                self.root.after(0, lambda c=completed, f=failed: 
+                               self.ocr_extraction_progress_label.configure(
+                                   text=f"Batch processing completed! {c} succeeded, {f} failed"))
+                
+                # Show summary
+                summary = f"Batch Processing Complete!\n\n" \
+                         f"Total: {total_pairs}\n" \
+                         f"Completed: {completed}\n" \
+                         f"Failed: {failed}"
+                self.root.after(0, lambda s=summary: messagebox.showinfo("Batch Processing Complete", s))
+                
+            except Exception as e:
+                error_msg = f"Batch processing error: {str(e)}"
+                self.logger.error(error_msg, exc_info=True)
+                self.root.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
+            finally:
+                # Re-enable button
+                self.root.after(0, lambda: self.ocr_extraction_process_all_btn.configure(
+                    state="normal", text="Process All Pairs"))
         
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()

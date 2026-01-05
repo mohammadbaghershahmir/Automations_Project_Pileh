@@ -8,6 +8,8 @@ import json
 import logging
 import math
 import os
+import time
+from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
@@ -103,25 +105,90 @@ class StageEProcessor(BaseStageProcessor):
         
         _progress(f"Last PointId in Stage 4: {last_point_id}, Starting image notes from index: {current_index}")
         
-        # Prepare OCR Extraction JSON string (Stage 1) - contains figure and table descriptions
-        _progress("Preparing OCR Extraction JSON (Stage 1)...")
-        ocr_extraction_json_str = json.dumps(ocr_extraction_data, ensure_ascii=False, indent=2)
+        # Extract subchapters from OCR Extraction JSON (Persian names)
+        _progress("Extracting subchapters from OCR Extraction JSON...")
+        ocr_subchapters = self._extract_subchapters_from_ocr(ocr_extraction_data)
         
-        # Prepare Stage 4 JSON string (complete - send full file to model)
-        _progress("Preparing Stage 4 JSON (complete)...")
-        stage4_json_str = json.dumps(stage4_points, ensure_ascii=False, indent=2)
+        if not ocr_subchapters:
+            self.logger.error("No subchapters found in OCR Extraction JSON")
+            _progress("Error: No subchapters found in OCR Extraction JSON")
+            return None
         
-        # Process Stage 4 as a single unit (no subchapter division)
+        num_parts = len(ocr_subchapters)
+        _progress(f"Found {num_parts} subchapters to process")
+        
+        # Prepare output directory
         base_dir = os.path.dirname(stage4_path) or os.getcwd()
         base_name, _ = os.path.splitext(os.path.basename(stage4_path))
+        
+        # Generate output filename
+        output_filename = self.generate_filename("e", book_id, chapter_id)
+        output_path = os.path.join(base_dir, output_filename)
+        
+        # Initialize output JSON file immediately (incremental writing)
+        _progress("Initializing output JSON file...")
+        initial_output = {
+            "metadata": {
+                "processing_status": "in_progress",
+                "subchapters_processed": 0,
+                "total_subchapters": num_parts,
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "source_stage4": os.path.basename(stage4_path),
+                "source_ocr_extraction": os.path.basename(ocr_extraction_json_path),
+                "model_used": model_name,
+                "division_method": "ocr_extraction_by_subchapter",
+                "ocr_subchapters": ocr_subchapters,
+                "stage": "E",
+            },
+            "data": [],  # Will contain merged points at the end
+            "raw_responses": []  # All raw model responses
+        }
+        
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(initial_output, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Initialized Stage E JSON file: {output_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize output file: {e}")
+            return None
+        
+        # Prepare OCR Extraction JSON string (complete - for context)
+        ocr_extraction_json_str = json.dumps(ocr_extraction_data, ensure_ascii=False, indent=2)
+        
         max_retries = 2
+        all_filepic_records = []  # Collect all filepic records from all subchapters
         
-        _progress("=" * 60)
-        _progress("Processing Stage 4 as complete file (no subchapter division)...")
-        _progress("=" * 60)
-        
-        # Prepare full prompt with both OCR Extraction JSON (Stage 1) and Stage 4 JSON
-        full_prompt = f"""{prompt}
+        # Process each subchapter individually
+        for part_num, persian_subchapter_name in enumerate(ocr_subchapters, 1):
+            _progress("=" * 60)
+            _progress(f"Processing Part {part_num}/{num_parts} - Subchapter: '{persian_subchapter_name}'...")
+            _progress("=" * 60)
+            
+            # Filter Stage 4 points for this subchapter only
+            _progress(f"Filtering Stage 4 points for subchapter '{persian_subchapter_name}'...")
+            filtered_stage4_points = [
+                point for point in stage4_points 
+                if point.get("subchapter", "").strip() == persian_subchapter_name
+            ]
+            
+            _progress(f"Found {len(filtered_stage4_points)} points for subchapter '{persian_subchapter_name}' (out of {len(stage4_points)} total)")
+            
+            if not filtered_stage4_points:
+                self.logger.warning(f"No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping this subchapter.")
+                _progress(f"Warning: No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping...")
+                continue
+            
+            # Convert filtered points to JSON string
+            stage4_json_str = json.dumps(filtered_stage4_points, ensure_ascii=False, indent=2)
+            
+            # Replace {SUBCHAPTER_NAME} placeholder in prompt with Persian subchapter name from OCR Extraction JSON
+            prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
+            
+            _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
+            
+            # Prepare full prompt with filtered Stage 4 JSON for this subchapter
+            full_prompt = f"""{prompt_with_subchapter}
 
 ==================================================
 فایل JSON متن درسی استخراج‌شده از کتاب درماتولوژی (OCR Extraction JSON):
@@ -129,105 +196,119 @@ class StageEProcessor(BaseStageProcessor):
 {ocr_extraction_json_str}
 
 ==================================================
-فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON - Complete - with PointId):
+فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON - Filtered for subchapter '{persian_subchapter_name}' - {len(filtered_stage4_points)} points):
 ==================================================
 {stage4_json_str}
 """
-        
-        # Call model with retry mechanism
-        _progress(f"Calling model {model_name} for complete Stage 4...")
-        response_text = None
-        filepic_data = None
-        
-        txt_filename = f"{base_name}_stage_e.txt"
-        txt_path = os.path.join(base_dir, txt_filename)
-        all_txt_files = []  # Track TXT files created
-        
-        for attempt in range(1, max_retries + 2):  # Initial attempt + max retries
-            if attempt > 1:
-                _progress(f"Retrying model call (attempt {attempt}/{max_retries + 1})...")
             
-            try:
-                response_text = self.api_client.process_text(
-                    text=full_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
-                )
+            # Call model with retry mechanism
+            _progress(f"Calling model {model_name} for subchapter '{persian_subchapter_name}'...")
+            response_text = None
+            filepic_data = None
+            
+            for attempt in range(1, max_retries + 2):  # Initial attempt + max retries
+                if attempt > 1:
+                    _progress(f"Retrying model call (attempt {attempt}/{max_retries + 1})...")
                 
-                if not response_text:
-                    continue
-                
-                # Save response as TXT file first
-                _progress("Saving model response as TXT file...")
                 try:
-                    with open(txt_path, "w", encoding="utf-8") as f:
-                        f.write(response_text)
-                    self.logger.info(f"Stage E raw text saved: {txt_path}")
-                    all_txt_files.append(os.path.basename(txt_path))
-                except Exception as e:
-                    self.logger.error(f"Error saving TXT file: {e}")
-                    continue
-                
-                # Try to extract JSON
-                _progress("Converting TXT to JSON...")
-                filepic_data = self.load_txt_as_json(txt_path)
-                if filepic_data:
-                    _progress(f"Successfully extracted JSON (attempt {attempt})")
-                    break
-                else:
-                    _progress(f"JSON extraction failed (attempt {attempt}), retrying...")
-                    self.logger.warning(f"Failed to extract JSON from response (attempt {attempt})")
+                    response_text = self.api_client.process_text(
+                        text=full_prompt,
+                        system_prompt=None,
+                        model_name=model_name,
+                        temperature=APIConfig.DEFAULT_TEMPERATURE,
+                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                    )
                     
-            except Exception as e:
-                self.logger.warning(f"Error calling model (attempt {attempt}): {e}")
-                response_text = None
-        
-        if not response_text:
-            self.logger.error("No response from model after retries")
-            _progress("Error: Failed to get response from model.")
-            return None
-        
-        if not filepic_data:
-            self.logger.error("Failed to extract JSON from TXT file after retries")
-            _progress("Error: Failed to extract JSON from model response.")
-            return None
-        
-        # Handle different JSON structures
-        # Model might return array directly or object with data/rows/payload
-        if isinstance(filepic_data, list):
-            filepic_records = filepic_data
-        elif isinstance(filepic_data, dict):
-            # Try common keys: data, rows, payload
-            filepic_records = filepic_data.get("data", filepic_data.get("rows", filepic_data.get("payload", [])))
-            if not filepic_records:
-                # Try to extract from nested structure - get first list value
-                for value in filepic_data.values():
-                    if isinstance(value, list):
-                        filepic_records = value
+                    if not response_text:
+                        continue
+                    
+                    # Try to extract JSON directly from response
+                    _progress("Extracting JSON from model response...")
+                    filepic_data = self.extract_json_from_response(response_text)
+                    if not filepic_data:
+                        filepic_data = self.load_txt_as_json_from_text(response_text)
+                    
+                    if filepic_data:
+                        _progress(f"Successfully extracted JSON (attempt {attempt})")
                         break
-                if not filepic_records:
-                    filepic_records = []
+                    else:
+                        _progress(f"JSON extraction failed (attempt {attempt}), retrying...")
+                        self.logger.warning(f"Failed to extract JSON from response (attempt {attempt})")
+                        
+                except Exception as e:
+                    self.logger.warning(f"Error calling model (attempt {attempt}): {e}")
+                    response_text = None
             
-            # Log the structure found
-            if filepic_records:
-                self.logger.info(f"Extracted {len(filepic_records)} records from JSON structure")
+            if not response_text:
+                self.logger.error(f"No response from model after retries for subchapter '{persian_subchapter_name}'")
+                _progress(f"Error: Failed to get response from model for subchapter '{persian_subchapter_name}'.")
+                continue
+            
+            if not filepic_data:
+                self.logger.error(f"Failed to extract JSON from model response for subchapter '{persian_subchapter_name}'")
+                _progress(f"Error: Failed to extract JSON from model response for subchapter '{persian_subchapter_name}'.")
+                continue
+            
+            # Immediately add raw response to JSON file (incremental write)
+            try:
+                with open(output_path, "r", encoding="utf-8") as f:
+                    current_data = json.load(f)
+                
+                raw_response_entry = {
+                    "subchapter_index": part_num,
+                    "subchapter": persian_subchapter_name,
+                    "response_text": response_text,
+                    "response_size_bytes": len(response_text.encode('utf-8')),
+                    "processed_at": datetime.now().isoformat()
+                }
+                current_data["raw_responses"].append(raw_response_entry)
+                
+                current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
+                current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+                
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(current_data, f, ensure_ascii=False, indent=2)
+                
+                self.logger.info(f"  ✓ Added raw response for subchapter '{persian_subchapter_name}' to JSON file immediately")
+            except Exception as e:
+                self.logger.error(f"Failed to write raw response for subchapter '{persian_subchapter_name}' to file: {e}", exc_info=True)
+            
+            # Handle different JSON structures
+            if isinstance(filepic_data, list):
+                subchapter_filepic_records = filepic_data
+            elif isinstance(filepic_data, dict):
+                # Try common keys: data, rows, payload
+                subchapter_filepic_records = filepic_data.get("data", filepic_data.get("rows", filepic_data.get("payload", [])))
+                if not subchapter_filepic_records:
+                    # Try to extract from nested structure - get first list value
+                    for value in filepic_data.values():
+                        if isinstance(value, list):
+                            subchapter_filepic_records = value
+                            break
+                    if not subchapter_filepic_records:
+                        subchapter_filepic_records = []
             else:
-                self.logger.warning(f"JSON structure keys: {list(filepic_data.keys())}, but no records found")
-        else:
-            self.logger.error(f"Unexpected JSON structure from model: {type(filepic_data)}")
-            _progress("Error: Unexpected JSON structure from model.")
+                self.logger.warning(f"Unexpected JSON structure from model for subchapter '{persian_subchapter_name}': {type(filepic_data)}")
+                subchapter_filepic_records = []
+            
+            if subchapter_filepic_records:
+                all_filepic_records.extend(subchapter_filepic_records)
+                _progress(f"Extracted {len(subchapter_filepic_records)} image note records from subchapter '{persian_subchapter_name}'")
+            else:
+                self.logger.warning(f"No records found in filepic data for subchapter '{persian_subchapter_name}'")
+            
+            # Add delay between parts to avoid rate limiting (429 errors)
+            if part_num < num_parts:  # Don't delay after the last part
+                delay_seconds = 5  # 2 seconds delay between parts
+                _progress(f"Waiting {delay_seconds} seconds before processing next subchapter...")
+                time.sleep(delay_seconds)
+        
+        if not all_filepic_records:
+            self.logger.error("No filepic records found from any subchapter")
+            _progress("Error: No records found in model responses.")
             return None
         
-        if not filepic_records:
-            self.logger.error("No records found in filepic data")
-            _progress("Error: No records found in model response.")
-            return None
-        
-        _progress(f"Extracted {len(filepic_records)} image note records")
-        
-        _progress(f"Extracted {len(filepic_records)} image note records")
+        _progress(f"Total extracted {len(all_filepic_records)} image note records from all subchapters")
         
         # Process filepic records:
         # 1. Remove caption column
@@ -238,11 +319,7 @@ class StageEProcessor(BaseStageProcessor):
         processed_image_notes = []
         first_image_point_id = None
         
-        # Create a mapping from Stage 4 points by their order/index
-        # We'll match image notes to Stage 4 points by order
-        stage4_points_by_index = {idx: point for idx, point in enumerate(stage4_points)}
-        
-        for idx, record in enumerate(filepic_records):
+        for idx, record in enumerate(all_filepic_records):
             if not isinstance(record, dict):
                 continue
             
@@ -275,37 +352,31 @@ class StageEProcessor(BaseStageProcessor):
         _progress(f"Processed {len(processed_image_notes)} image notes")
         _progress(f"First image PointId: {first_image_point_id}")
         
-        # Prepare output directory (needed for filepic JSON)
-        if not output_dir:
-            output_dir = os.path.dirname(stage4_path) or os.getcwd()
-        
-        base_name, _ = os.path.splitext(os.path.basename(stage4_path))
-        
         # Save filepic JSON (with caption) for use in Stage F
-        # IMPORTANT: Save the ORIGINAL filepic_records (with caption) before processing
+        # IMPORTANT: Save the ORIGINAL all_filepic_records (with caption) before processing
         _progress("Saving filepic JSON for Stage F...")
-        filepic_json_path = os.path.join(output_dir, f"{base_name}_filepic.json")
+        filepic_json_path = os.path.join(base_dir, f"{base_name}_filepic.json")
         filepic_saved = False
         
-        # Verify that filepic_records contain caption before saving
+        # Verify that all_filepic_records contain caption before saving
         caption_count = 0
-        for record in filepic_records:
+        for record in all_filepic_records:
             if isinstance(record, dict) and record.get("caption"):
                 caption_count += 1
         
-        _progress(f"Found {caption_count} records with caption out of {len(filepic_records)}")
+        _progress(f"Found {caption_count} records with caption out of {len(all_filepic_records)}")
         
         try:
             filepic_metadata = {
                 "book_id": book_id,
                 "chapter_id": chapter_id,
-                "total_records": len(filepic_records),
+                "total_records": len(all_filepic_records),
                 "records_with_caption": caption_count,
-                "source_txt": all_txt_files if all_txt_files else [],
-                "division_method": "complete_file_no_division"
+                "division_method": "ocr_extraction_by_subchapter",
+                "ocr_subchapters": ocr_subchapters
             }
-            # Save original filepic_records with caption (before processing)
-            success = self.save_json_file(filepic_records, filepic_json_path, filepic_metadata, "filepic")
+            # Save original all_filepic_records with caption (before processing)
+            success = self.save_json_file(all_filepic_records, filepic_json_path, filepic_metadata, "filepic")
             if success:
                 _progress(f"Filepic saved to: {filepic_json_path}")
                 filepic_saved = True
@@ -321,57 +392,51 @@ class StageEProcessor(BaseStageProcessor):
                                 _progress(f"Verified: filepic contains caption field (first caption: {len(caption_value)} chars)")
                             else:
                                 self.logger.warning(f"filepic saved but caption not found. Keys: {list(first_record.keys())}")
-                                # Log first record for debugging
-                                self.logger.debug(f"First record: {json.dumps(first_record, ensure_ascii=False)[:200]}")
                 except Exception as e:
                     self.logger.warning(f"Could not verify filepic JSON: {e}")
             else:
                 self.logger.error("Failed to save filepic JSON")
         except Exception as e:
             self.logger.error(f"Error saving filepic JSON: {e}", exc_info=True)
-            # Continue anyway, Stage F can try to load from TXT
-        
-        # Note: Stage 4 points already have chapter/subchapter fields, no need to add them
-        # Note: topic for image notes is already extracted from model output (filepic_records)
-        _progress("Stage 4 points already contain chapter/subchapter fields")
+            # Continue anyway, Stage F can try to load from JSON
         
         # Merge Stage 4 points with image notes
         _progress("Merging Stage 4 points with image notes...")
         merged_points = stage4_points + processed_image_notes
         
-        # Generate output filename
-        output_filename = self.generate_filename("e", book_id, chapter_id)
-        output_path = os.path.join(output_dir, output_filename)
-        
-        # Prepare metadata
-        stage4_metadata = self.get_metadata_from_json(stage4_data)
-        metadata = {
-            "book_id": book_id,
-            "chapter_id": chapter_id,
-            "stage4_total_points": len(stage4_points),
-            "image_notes_count": len(processed_image_notes),
-            "first_image_point_id": first_image_point_id,
-            "last_point_id": f"{book_id:03d}{chapter_id:03d}{(current_index - 1):04d}",
-            "source_stage4": os.path.basename(stage4_path),
-            "source_ocr_extraction": os.path.basename(ocr_extraction_json_path),
-            "stage_e_txt_files": all_txt_files if all_txt_files else [],
-            "total_stage4_records": len(stage4_points),
-            "division_method": "complete_file_no_division",
-            "filepic_json_file": os.path.basename(filepic_json_path) if filepic_saved else None,
-            "filepic_json_path": filepic_json_path if filepic_saved else None,
-            "model_used": model_name,
-            **{k: v for k, v in stage4_metadata.items() if k not in ["stage", "processed_at", "total_records"]}
-        }
-        
-        # Save merged JSON
-        _progress(f"Saving merged JSON to: {output_path}")
-        success = self.save_json_file(merged_points, output_path, metadata, "E")
-        
-        if success:
+        # Final update: Add processed data and remove raw_responses
+        try:
+            with open(output_path, "r", encoding="utf-8") as f:
+                current_data = json.load(f)
+            
+            current_data["data"] = merged_points
+            current_data["metadata"]["processing_status"] = "completed"
+            current_data["metadata"]["stage4_total_points"] = len(stage4_points)
+            current_data["metadata"]["image_notes_count"] = len(processed_image_notes)
+            current_data["metadata"]["first_image_point_id"] = first_image_point_id
+            current_data["metadata"]["last_point_id"] = f"{book_id:03d}{chapter_id:03d}{(current_index - 1):04d}"
+            current_data["metadata"]["filepic_json_file"] = os.path.basename(filepic_json_path) if filepic_saved else None
+            current_data["metadata"]["filepic_json_path"] = filepic_json_path if filepic_saved else None
+            current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+            
+            # Get additional metadata from Stage 4
+            stage4_metadata = self.get_metadata_from_json(stage4_data)
+            for k, v in stage4_metadata.items():
+                if k not in ["stage", "processed_at", "total_records"]:
+                    current_data["metadata"][k] = v
+            
+            # Remove raw_responses from final output
+            if "raw_responses" in current_data:
+                del current_data["raw_responses"]
+                self.logger.info("Removed raw_responses from final output file")
+            
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(current_data, f, ensure_ascii=False, indent=2)
+            
             _progress(f"Stage E completed successfully: {output_path}")
             return output_path
-        else:
-            self.logger.error("Failed to save Stage E output")
+        except Exception as e:
+            self.logger.error(f"Failed to finalize Stage E output: {e}", exc_info=True)
             return None
     
     def _convert_chapters_to_rows(self, chapters: List[Dict]) -> List[Dict]:
@@ -406,6 +471,46 @@ class StageEProcessor(BaseStageProcessor):
                 rows.append(row)
         
         return rows
+    
+    def _extract_subchapters_from_ocr(self, ocr_extraction_data: Dict) -> List[str]:
+        """
+        Extract subchapter names (Persian) from OCR Extraction JSON.
+        
+        OCR Extraction JSON structure:
+        {
+          "chapters": [
+            {
+              "chapter": "...",
+              "subchapters": [
+                {
+                  "subchapter": "...",  # Persian name
+                  "topics": [...]
+                }
+              ]
+            }
+          ]
+        }
+        
+        Returns:
+            List of subchapter names (Persian) in order
+        """
+        subchapters = []
+        chapters = ocr_extraction_data.get("chapters", [])
+        
+        for chapter_obj in chapters:
+            if not isinstance(chapter_obj, dict):
+                continue
+            
+            subchapters_list = chapter_obj.get("subchapters", [])
+            for subchapter_obj in subchapters_list:
+                if not isinstance(subchapter_obj, dict):
+                    continue
+                
+                subchapter_name = subchapter_obj.get("subchapter", "").strip()
+                if subchapter_name and subchapter_name not in subchapters:
+                    subchapters.append(subchapter_name)
+        
+        return subchapters
     
     def _extract_chapter_subchapter_topic_mapping(self, ocr_extraction_data: Dict) -> List[Dict]:
         """

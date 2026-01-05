@@ -5,6 +5,7 @@ Generates flashcards from Stage J (without Imp column) and Stage F data.
 
 import json
 import logging
+import math
 import os
 from typing import Optional, Dict, List, Any, Callable
 from base_stage_processor import BaseStageProcessor
@@ -109,6 +110,22 @@ class StageHProcessor(BaseStageProcessor):
         
         _progress(f"Loaded {len(stage_f_records)} records from Stage F")
         
+        # Divide Stage J data into parts of 120 records each
+        PART_SIZE = 120
+        total_records = len(stage_j_records_for_prompt)
+        num_parts = math.ceil(total_records / PART_SIZE)
+        
+        _progress(f"Dividing Stage J data into {num_parts} parts (max {PART_SIZE} records per part)")
+        
+        # Split Stage J data into parts
+        stage_j_parts = []
+        for i in range(num_parts):
+            start_idx = i * PART_SIZE
+            end_idx = min((i + 1) * PART_SIZE, total_records)
+            part_data = stage_j_records_for_prompt[start_idx:end_idx]
+            stage_j_parts.append(part_data)
+            _progress(f"Part {i+1}: {len(part_data)} records (indices {start_idx} to {end_idx-1})")
+        
         # Prepare Stage F JSON string
         stage_f_json_str = json.dumps(stage_f_records, ensure_ascii=False, indent=2)
         
@@ -147,47 +164,22 @@ IMPORTANT:
 
 Return ONLY valid JSON, no additional text."""
         
-        # Split Stage J data dynamically into parts of 160 records each
-        total_records = len(stage_j_records_for_prompt)
-        part_size = 160  # Fixed size per part
-        num_parts = (total_records + part_size - 1) // part_size  # Ceiling division
+        # Process each part separately
+        all_part_responses = []
+        max_retries = 3
         
-        _progress(f"Splitting Stage J data into {num_parts} parts (160 records per part, total: {total_records} records)")
-        
-        # Prepare output files
-        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
-        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
-        txt_path = os.path.join(base_dir, f"{base_name}_stage_h.txt")
-        output_path = self.generate_filename("ac", book_id, chapter_id, output_dir or base_dir)
-        
-        # Initialize output files
-        # Delete existing TXT file if exists
-        if os.path.exists(txt_path):
-            os.remove(txt_path)
-        
-        # Initialize lists for collecting data
-        all_flashcard_records = []
-        matched_count = 0
-        pointid_to_flashcard_global = {}  # Global mapping
-        
-        # Process each part
-        for part_num in range(1, num_parts + 1):
-            start_idx = (part_num - 1) * part_size
-            end_idx = min(start_idx + part_size, total_records)
-            part_data = stage_j_records_for_prompt[start_idx:end_idx]
+        for part_num, part_data in enumerate(stage_j_parts, 1):
+            _progress("=" * 60)
+            _progress(f"Processing Part {part_num}/{num_parts} ({len(part_data)} records)...")
+            _progress("=" * 60)
             
-            _progress(f"Processing Part {part_num}/{num_parts} ({len(part_data)} records, indices {start_idx} to {end_idx-1})...")
-            
-            # Prepare prompt for this part
             part_json_str = json.dumps(part_data, ensure_ascii=False, indent=2)
             part_prompt = f"""{base_prompt_template}
 
-Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns, {len(part_data)} records):
+Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
 {part_json_str}"""
             
-            # Call model with retry mechanism
             part_response = None
-            max_retries = 3
             for attempt in range(max_retries):
                 try:
                     part_response = self.api_client.process_text(
@@ -206,55 +198,107 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns, {len(p
                         _progress(f"Retrying Part {part_num}... (attempt {attempt + 2}/{max_retries})")
                     else:
                         self.logger.error(f"All Part {part_num} model call attempts failed")
-                        return None
+                        _progress(f"Error: Failed to get response for Part {part_num}. Skipping this part.")
+                        part_response = None
             
             if not part_response:
                 self.logger.error(f"No response from model for Part {part_num}")
-                return None
+                _progress(f"Error: No response for Part {part_num}. Skipping this part.")
+                continue
             
-            # 1. Save to TXT file immediately (append mode)
-            try:
-                with open(txt_path, 'a', encoding='utf-8') as f:
-                    if part_num > 1:
+            all_part_responses.append({
+                "part_num": part_num,
+                "response": part_response
+            })
+        
+        if not all_part_responses:
+            self.logger.error("No responses received from any part")
+            return None
+        
+        # Save raw responses to TXT file
+        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
+        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
+        txt_path = os.path.join(base_dir, f"{base_name}_stage_h.txt")
+        
+        try:
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                for i, part_info in enumerate(all_part_responses):
+                    if i > 0:
                         f.write("\n\n")
-                    f.write(f"=== PART {part_num}/{num_parts} RESPONSE ===\n")
-                    f.write(part_response)
-                _progress(f"Part {part_num} saved to TXT file")
-            except Exception as e:
-                self.logger.warning(f"Failed to save Part {part_num} to TXT: {e}")
+                    f.write(part_info['response'])
+            _progress(f"Saved raw model responses to: {txt_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to save TXT file: {e}")
+        
+        # Extract JSON from all responses
+        all_part_data_lists = []
+        for part_info in all_part_responses:
+            part_num = part_info['part_num']
+            part_response = part_info['response']
             
-            # 2. Extract JSON from response immediately
             _progress(f"Extracting JSON from Part {part_num} response...")
             part_output = self.extract_json_from_response(part_response)
             if not part_output:
+                # Try loading from text directly
                 _progress(f"Trying to extract Part {part_num} JSON from text...")
                 part_output = self.load_txt_as_json_from_text(part_response)
             
-            if not part_output:
-                self.logger.warning(f"Failed to extract JSON from Part {part_num}, continuing...")
-                continue
-            
-            # Extract data from JSON
-            part_data_list = self.get_data_from_json(part_output) if part_output else []
-            if not part_data_list:
-                self.logger.warning(f"No data extracted from Part {part_num}, continuing...")
-                continue
-            
-            _progress(f"Extracted {len(part_data_list)} records from Part {part_num}")
-            
-            # 3. Add to global mapping (collect flashcard data incrementally)
-            for record in part_data_list:
-                point_id = record.get("PointId", "") or record.get("point_id", "")
-                if point_id:
-                    point_id = str(point_id)
-                    pointid_to_flashcard_global[point_id] = record
-            
-            _progress(f"Part {part_num} processed: {len(part_data_list)} flashcards extracted and added to mapping")
+            if part_output:
+                part_data_list = self.get_data_from_json(part_output)
+                if part_data_list:
+                    all_part_data_lists.append({
+                        "part_num": part_num,
+                        "data": part_data_list,
+                        "count": len(part_data_list)
+                    })
+                    _progress(f"Part {part_num}: Extracted {len(part_data_list)} records")
+                else:
+                    self.logger.warning(f"Part {part_num}: No data extracted from JSON")
+            else:
+                self.logger.warning(f"Part {part_num}: Failed to extract JSON")
         
-        _progress(f"Total flashcard data collected: {len(pointid_to_flashcard_global)} PointIds")
+        # Combine all outputs
+        _progress("Combining JSON from all parts...")
+        combined_model_data = []
+        for part_info in all_part_data_lists:
+            combined_model_data.extend(part_info['data'])
         
-        # 4. Create flashcard records for ALL Stage J records (using collected flashcard data)
-        _progress("Merging Stage J data with collected flashcard data...")
+        part_counts = [f"Part {p['part_num']}: {p['count']}" for p in all_part_data_lists]
+        _progress(f"Extracted {len(combined_model_data)} records from combined model output ({', '.join(part_counts)})")
+        
+        if not combined_model_data:
+            self.logger.error("Failed to extract JSON from model responses")
+            # Try loading from TXT file as fallback
+            _progress("Trying to load JSON from TXT file as fallback...")
+            model_output = self.load_txt_as_json(txt_path)
+            if model_output:
+                combined_model_data = self.get_data_from_json(model_output)
+        
+        if not combined_model_data:
+            self.logger.error("Failed to extract JSON from model responses")
+            return None
+        
+        model_data = combined_model_data
+        
+        # Create a mapping from model output
+        pointid_to_flashcard = {}
+        for record in model_data:
+            point_id = record.get("PointId", "") or record.get("point_id", "")
+            if point_id:
+                point_id = str(point_id)
+                pointid_to_flashcard[point_id] = record
+        
+        _progress(f"Created mapping for {len(pointid_to_flashcard)} PointIds from model output")
+        
+        # Merge Stage J data with model output
+        # Final output should have 16 columns:
+        # From file a: PointId, chapter, subchapter, topic, subtopic, subsubtopic, Points, Type, Imp
+        # From model: PointId, Qtext, Choice1, Choice2, Choice3, Choice4, Correct
+        # New column: Mainanswer (default: "زیرعنوان")
+        _progress("Merging Stage J data with model output...")
+        matched_count = 0
+        flashcard_records = []
+        
         for record in stage_j_records:
             point_id = str(record.get("PointId", ""))
             flashcard_data = pointid_to_flashcard_global.get(point_id, {})

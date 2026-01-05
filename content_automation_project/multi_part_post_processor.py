@@ -884,6 +884,9 @@ class MultiPartPostProcessor:
         # subchapter_name -> list of full topic dicts {"topic": ..., "extractions": [...]}
         subchapter_full_topics: Dict[str, List[Dict[str, Any]]] = {}
         
+        # Track total removed records for logging
+        total_removed_figures = 0
+        
         for chapter in chapters:
             if not isinstance(chapter, dict):
                 continue
@@ -912,9 +915,21 @@ class MultiPartPostProcessor:
                     extractions = topic.get("extractions", [])
                     
                     if topic_name and extractions:
+                        # Filter out records with type "figure" or "e-figure"
+                        original_count = len(extractions)
+                        filtered_extractions = [
+                            ext for ext in extractions
+                            if isinstance(ext, dict) and ext.get("type") not in ["figure", "e-figure"]
+                        ]
+                        removed_count = original_count - len(filtered_extractions)
+                        total_removed_figures += removed_count
+                        
+                        if removed_count > 0:
+                            self.logger.info(f"Removed {removed_count} figure record(s) from topic '{topic_name}' in subchapter '{subchapter_name}'")
+                        
                         topic_data = {
                             "topic": topic_name,
-                            "extractions": extractions
+                            "extractions": filtered_extractions
                         }
                         # For per-topic processing
                         topics_list.append((subchapter_name, topic_data))
@@ -922,6 +937,12 @@ class MultiPartPostProcessor:
                         subchapters_dict[subchapter_name].append(topic_name)
                         # For model context (FULL subchapter for every topic)
                         subchapter_full_topics[subchapter_name].append(topic_data)
+        
+        # Log total removed records
+        if total_removed_figures > 0:
+            self.logger.info(f"Total removed {total_removed_figures} figure/e-figure record(s) from OCR JSON before processing")
+        else:
+            self.logger.info("No figure/e-figure records found in OCR JSON")
         
         if not topics_list:
             self.logger.error("No topics found in OCR JSON")

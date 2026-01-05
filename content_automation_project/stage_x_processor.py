@@ -8,6 +8,7 @@ Has two parts:
 
 import json
 import logging
+import math
 import os
 from typing import Optional, Dict, List, Any, Callable
 
@@ -124,189 +125,84 @@ class StageXProcessor(BaseStageProcessor):
         pdf_extracted_rows = pdf_extracted_data.get("rows", [])
         _progress(f"Loaded {len(pdf_extracted_rows)} rows from extracted PDF")
         
-        # Divide Stage A into 3 parts
+        # Divide Stage A into parts of 200 records each
+        PART_SIZE = 200
         total_records = len(stage_a_without_imp)
-        part_size = total_records // 3
-        part1_records = stage_a_without_imp[:part_size]
-        part2_records = stage_a_without_imp[part_size:2*part_size]
-        part3_records = stage_a_without_imp[2*part_size:]
+        num_parts = math.ceil(total_records / PART_SIZE)
         
-        _progress(f"Divided Stage A into 3 parts: Part 1 ({len(part1_records)} records), Part 2 ({len(part2_records)} records), Part 3 ({len(part3_records)} records)")
+        _progress(f"Dividing Stage A into {num_parts} parts (max {PART_SIZE} records per part)")
+        
+        # Split Stage A data into parts
+        stage_a_parts = []
+        for i in range(num_parts):
+            start_idx = i * PART_SIZE
+            end_idx = min((i + 1) * PART_SIZE, total_records)
+            part_data = stage_a_without_imp[start_idx:end_idx]
+            stage_a_parts.append(part_data)
+            _progress(f"Part {i+1}: {len(part_data)} records (indices {start_idx} to {end_idx-1})")
         
         all_changes = []
         all_txt_responses = []
         base_name = os.path.splitext(os.path.basename(stage_a_path))[0]
         
-        # ========== Process Part 1 of Stage A ==========
-        _progress("=" * 60)
-        _progress("Processing Part 1 of Stage A for change detection...")
-        _progress("=" * 60)
-        
-        part1_data = {
-            "current_data": part1_records,
-            "old_book_data": pdf_extracted_rows
-        }
-        part1_text = json.dumps(part1_data, ensure_ascii=False, indent=2)
-        
-        part1_response = self.api_client.process_text(
-            text=part1_text,
-            system_prompt=changes_prompt,
-            model_name=changes_model
-        )
-        
-        if part1_response:
-            # Save Part 1 TXT
-            txt_path_1 = os.path.join(output_dir, f"{base_name}_stage_x_part2_part1.txt")
-            try:
-                with open(txt_path_1, 'w', encoding='utf-8') as f:
-                    f.write("=== STAGE X PART 2 - PART 1 (Change Detection) RESPONSE ===\n\n")
-                    f.write(part1_response)
-                _progress(f"Saved Part 1 raw response to: {os.path.basename(txt_path_1)}")
-                self.logger.info(f"Saved Stage X Part 2 Part 1 raw response to: {txt_path_1}")
-            except Exception as e:
-                self.logger.warning(f"Failed to save Part 1 TXT: {e}")
+        # Process each part separately
+        for part_num, part_records in enumerate(stage_a_parts, 1):
+            _progress("=" * 60)
+            _progress(f"Processing Part {part_num}/{num_parts} of Stage A for change detection ({len(part_records)} records)...")
+            _progress("=" * 60)
             
-            all_txt_responses.append(part1_response)
+            part_data = {
+                "current_data": part_records,
+                "old_book_data": pdf_extracted_rows
+            }
+            part_text = json.dumps(part_data, ensure_ascii=False, indent=2)
             
-            # Extract JSON from Part 1 (like Stage V)
-            _progress("Extracting JSON from Part 1 response...")
-            part1_json = self.extract_json_from_response(part1_response)
-            if not part1_json:
-                _progress("Trying to extract Part 1 JSON from text using fallback...")
-                part1_json = self.load_txt_as_json_from_text(part1_response)
-            if not part1_json:
-                _progress("Trying to load Part 1 JSON from TXT file...")
-                part1_json = self.load_txt_as_json(txt_path_1)
+            part_response = self.api_client.process_text(
+                text=part_text,
+                system_prompt=changes_prompt,
+                model_name=changes_model
+            )
             
-            if part1_json:
-                # Handle both list and dict JSON structures (like Stage V)
-                if isinstance(part1_json, list):
-                    all_changes.extend(part1_json)
-                    _progress(f"Part 1: Extracted {len(part1_json)} changes")
-                elif isinstance(part1_json, dict):
-                    changes = part1_json.get("changes", part1_json.get("data", []))
-                    if isinstance(changes, list):
-                        all_changes.extend(changes)
-                        _progress(f"Part 1: Extracted {len(changes)} changes")
-                    else:
-                        all_changes.append(part1_json)
-                        _progress("Part 1: Extracted 1 change")
-        else:
-            self.logger.warning("Part 1 returned no response")
-        
-        # ========== Process Part 2 of Stage A ==========
-        _progress("=" * 60)
-        _progress("Processing Part 2 of Stage A for change detection...")
-        _progress("=" * 60)
-        
-        part2_data = {
-            "current_data": part2_records,
-            "old_book_data": pdf_extracted_rows
-        }
-        part2_text = json.dumps(part2_data, ensure_ascii=False, indent=2)
-        
-        part2_response = self.api_client.process_text(
-            text=part2_text,
-            system_prompt=changes_prompt,
-            model_name=changes_model
-        )
-        
-        if part2_response:
-            # Save Part 2 TXT
-            txt_path_2 = os.path.join(output_dir, f"{base_name}_stage_x_part2_part2.txt")
-            try:
-                with open(txt_path_2, 'w', encoding='utf-8') as f:
-                    f.write("=== STAGE X PART 2 - PART 2 (Change Detection) RESPONSE ===\n\n")
-                    f.write(part2_response)
-                _progress(f"Saved Part 2 raw response to: {os.path.basename(txt_path_2)}")
-                self.logger.info(f"Saved Stage X Part 2 Part 2 raw response to: {txt_path_2}")
-            except Exception as e:
-                self.logger.warning(f"Failed to save Part 2 TXT: {e}")
-            
-            all_txt_responses.append(part2_response)
-            
-            # Extract JSON from Part 2 (like Stage V)
-            _progress("Extracting JSON from Part 2 response...")
-            part2_json = self.extract_json_from_response(part2_response)
-            if not part2_json:
-                _progress("Trying to extract Part 2 JSON from text using fallback...")
-                part2_json = self.load_txt_as_json_from_text(part2_response)
-            if not part2_json:
-                _progress("Trying to load Part 2 JSON from TXT file...")
-                part2_json = self.load_txt_as_json(txt_path_2)
-            
-            if part2_json:
-                # Handle both list and dict JSON structures (like Stage V)
-                if isinstance(part2_json, list):
-                    all_changes.extend(part2_json)
-                    _progress(f"Part 2: Extracted {len(part2_json)} changes")
-                elif isinstance(part2_json, dict):
-                    changes = part2_json.get("changes", part2_json.get("data", []))
-                    if isinstance(changes, list):
-                        all_changes.extend(changes)
-                        _progress(f"Part 2: Extracted {len(changes)} changes")
-                    else:
-                        all_changes.append(part2_json)
-                        _progress("Part 2: Extracted 1 change")
-        else:
-            self.logger.warning("Part 2 returned no response")
-        
-        # ========== Process Part 3 of Stage A ==========
-        _progress("=" * 60)
-        _progress("Processing Part 3 of Stage A for change detection...")
-        _progress("=" * 60)
-        
-        part3_data = {
-            "current_data": part3_records,
-            "old_book_data": pdf_extracted_rows
-        }
-        part3_text = json.dumps(part3_data, ensure_ascii=False, indent=2)
-        
-        part3_response = self.api_client.process_text(
-            text=part3_text,
-            system_prompt=changes_prompt,
-            model_name=changes_model
-        )
-        
-        if part3_response:
-            # Save Part 3 TXT
-            txt_path_3 = os.path.join(output_dir, f"{base_name}_stage_x_part2_part3.txt")
-            try:
-                with open(txt_path_3, 'w', encoding='utf-8') as f:
-                    f.write("=== STAGE X PART 2 - PART 3 (Change Detection) RESPONSE ===\n\n")
-                    f.write(part3_response)
-                _progress(f"Saved Part 3 raw response to: {os.path.basename(txt_path_3)}")
-                self.logger.info(f"Saved Stage X Part 2 Part 3 raw response to: {txt_path_3}")
-            except Exception as e:
-                self.logger.warning(f"Failed to save Part 3 TXT: {e}")
-            
-            all_txt_responses.append(part3_response)
-            
-            # Extract JSON from Part 3 (like Stage V)
-            _progress("Extracting JSON from Part 3 response...")
-            part3_json = self.extract_json_from_response(part3_response)
-            if not part3_json:
-                _progress("Trying to extract Part 3 JSON from text using fallback...")
-                part3_json = self.load_txt_as_json_from_text(part3_response)
-            if not part3_json:
-                _progress("Trying to load Part 3 JSON from TXT file...")
-                part3_json = self.load_txt_as_json(txt_path_3)
-            
-            if part3_json:
-                # Handle both list and dict JSON structures (like Stage V)
-                if isinstance(part3_json, list):
-                    all_changes.extend(part3_json)
-                    _progress(f"Part 3: Extracted {len(part3_json)} changes")
-                elif isinstance(part3_json, dict):
-                    changes = part3_json.get("changes", part3_json.get("data", []))
-                    if isinstance(changes, list):
-                        all_changes.extend(changes)
-                        _progress(f"Part 3: Extracted {len(changes)} changes")
-                    else:
-                        all_changes.append(part3_json)
-                        _progress("Part 3: Extracted 1 change")
-        else:
-            self.logger.warning("Part 3 returned no response")
+            if part_response:
+                # Save Part TXT
+                txt_path = os.path.join(output_dir, f"{base_name}_stage_x_part2_part{part_num}.txt")
+                try:
+                    with open(txt_path, 'w', encoding='utf-8') as f:
+                        f.write(f"=== STAGE X PART 2 - PART {part_num} (Change Detection) RESPONSE ===\n\n")
+                        f.write(part_response)
+                    _progress(f"Saved Part {part_num} raw response to: {os.path.basename(txt_path)}")
+                    self.logger.info(f"Saved Stage X Part 2 Part {part_num} raw response to: {txt_path}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to save Part {part_num} TXT: {e}")
+                
+                all_txt_responses.append(part_response)
+                
+                # Extract JSON from Part
+                _progress(f"Extracting JSON from Part {part_num} response...")
+                part_json = self.extract_json_from_response(part_response)
+                if not part_json:
+                    _progress(f"Trying to extract Part {part_num} JSON from text using fallback...")
+                    part_json = self.load_txt_as_json_from_text(part_response)
+                if not part_json:
+                    _progress(f"Trying to load Part {part_num} JSON from TXT file...")
+                    part_json = self.load_txt_as_json(txt_path)
+                
+                if part_json:
+                    # Handle both list and dict JSON structures
+                    if isinstance(part_json, list):
+                        all_changes.extend(part_json)
+                        _progress(f"Part {part_num}: Extracted {len(part_json)} changes")
+                    elif isinstance(part_json, dict):
+                        changes = part_json.get("changes", part_json.get("data", []))
+                        if isinstance(changes, list):
+                            all_changes.extend(changes)
+                            _progress(f"Part {part_num}: Extracted {len(changes)} changes")
+                        else:
+                            all_changes.append(part_json)
+                            _progress(f"Part {part_num}: Extracted 1 change")
+            else:
+                self.logger.warning(f"Part {part_num} returned no response")
+                _progress(f"Warning: Part {part_num} returned no response. Continuing...")
         
         # Save combined TXT file
         combined_txt_path = os.path.join(output_dir, f"{base_name}_stage_x_part2_all_parts.txt")
