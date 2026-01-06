@@ -24,6 +24,52 @@ class MultiPartPostProcessor:
         """
         self.api_client = api_client
         self.logger = logging.getLogger(__name__)
+    
+    def load_chapter_pointid_mapping(self, txt_path: str) -> List[str]:
+        """
+        Load PointId mapping from TXT file.
+        Each line = start PointId for one chapter (in order)
+        
+        Format:
+        1251330001
+        1151031001
+        1451432001
+        
+        Args:
+            txt_path: Path to TXT file containing PointId mappings
+            
+        Returns:
+            List of PointId strings (10 digits each)
+        """
+        pointids = []
+        try:
+            self.logger.info(f"Reading PointId mapping file: {txt_path}")
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    original_line = line
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        self.logger.debug(f"Line {line_num}: Skipped (empty or comment): '{original_line.rstrip()}'")
+                        continue
+                    
+                    # Validate format: must be 10 digits
+                    if len(line) == 10 and line.isdigit():
+                        pointids.append(line)
+                        self.logger.info(f"Line {line_num}: Loaded PointId = {line} (Book: {line[0:3]}, Chapter: {line[3:6]}, Index: {line[6:10]})")
+                    else:
+                        self.logger.warning(f"Line {line_num}: Invalid PointId format: '{line}' (length: {len(line)}, isdigit: {line.isdigit()}, expected 10 digits)")
+            
+            self.logger.info(f"Loaded {len(pointids)} PointId mappings from {txt_path}")
+            if pointids:
+                self.logger.info(f"PointId list: {pointids}")
+            return pointids
+        except FileNotFoundError:
+            self.logger.error(f"PointId mapping file not found: {txt_path}")
+            return []
+        except Exception as e:
+            self.logger.error(f"Failed to load PointId mapping file {txt_path}: {e}", exc_info=True)
+            return []
 
 
     def process_final_json_by_parts(
@@ -823,6 +869,7 @@ class MultiPartPostProcessor:
         book_id: Optional[int] = None,
         chapter_id: Optional[int] = None,
         start_point_index: int = 1,
+        pointid_mapping_txt: Optional[str] = None,
         progress_callback: Optional[Any] = None,
     ) -> Optional[str]:
         """
@@ -836,13 +883,19 @@ class MultiPartPostProcessor:
         5. Combines all outputs
         6. Flattens to points and assigns PointId
         
+        If pointid_mapping_txt is provided:
+        - Each line = start PointId for one chapter (in order)
+        - Example: 1251330001, 1151031001, 1451432001
+        - Chapters will use PointIds from this mapping
+        
         Args:
             ocr_json_path: Path to OCR Extraction JSON file
             user_prompt: Prompt template with {Topic_NAME} and {Subchapter_Name} placeholders
             model_name: Gemini model name to use
-            book_id: Book ID for PointId generation
-            chapter_id: Chapter ID for PointId generation
-            start_point_index: Starting index for PointId (default: 1)
+            book_id: Book ID for PointId generation (used if pointid_mapping_txt not provided)
+            chapter_id: Chapter ID for PointId generation (used if pointid_mapping_txt not provided)
+            start_point_index: Starting index for PointId (default: 1, used if pointid_mapping_txt not provided)
+            pointid_mapping_txt: Optional path to TXT file with PointId mappings (one per line, one per chapter)
             progress_callback: Optional callback for progress updates
             
         Returns:
@@ -851,6 +904,15 @@ class MultiPartPostProcessor:
         if not os.path.exists(ocr_json_path):
             self.logger.error(f"OCR JSON file not found: {ocr_json_path}")
             return None
+        
+        # Load PointId mapping if provided
+        chapter_pointids = []
+        if pointid_mapping_txt and os.path.exists(pointid_mapping_txt):
+            chapter_pointids = self.load_chapter_pointid_mapping(pointid_mapping_txt)
+            if chapter_pointids:
+                self.logger.info(f"Using PointId mapping from {pointid_mapping_txt}: {len(chapter_pointids)} chapters")
+            else:
+                self.logger.warning(f"PointId mapping file is empty or invalid, falling back to start_point_index")
         
         # Load OCR Extraction JSON
         self.logger.info(f"Loading OCR Extraction JSON: {ocr_json_path}")
@@ -867,6 +929,56 @@ class MultiPartPostProcessor:
             self.logger.error("OCR JSON has no 'chapters' structure")
             return None
         
+        # Validate PointId mapping count
+        if chapter_pointids and len(chapter_pointids) < len(chapters):
+            self.logger.warning(
+                f"PointId mapping has {len(chapter_pointids)} entries but JSON has {len(chapters)} chapters. "
+                f"Missing chapters will use fallback PointId."
+            )
+        
+        # Build chapter info with PointId mappings
+        chapters_info = []  # List of dicts: {chapter_name, chapter_index, start_pointid}
+        
+        for chapter_idx, chapter in enumerate(chapters):
+            if not isinstance(chapter, dict):
+                continue
+            
+            chapter_name = chapter.get("chapter", "")
+            if not chapter_name:
+                chapter_name = f"Chapter_{chapter_idx + 1}"
+            
+            # Get PointId for this chapter directly from TXT file
+            if chapter_idx < len(chapter_pointids):
+                start_pointid_str = chapter_pointids[chapter_idx]
+                self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Using PointId from mapping = {start_pointid_str}")
+                
+                # Validate PointId format (must be 10 digits)
+                if not (len(start_pointid_str) == 10 and start_pointid_str.isdigit()):
+                    self.logger.error(f"Invalid PointId format for chapter {chapter_idx + 1}: {start_pointid_str}")
+                    # Fallback: construct from book_id/chapter_id/start_point_index
+                    if book_id and chapter_id:
+                        start_pointid_str = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
+                    else:
+                        start_pointid_str = f"001001{start_point_index:04d}"
+                    self.logger.warning(f"  Using fallback PointId: {start_pointid_str}")
+            else:
+                # Fallback: use provided book_id/chapter_id/start_point_index
+                self.logger.warning(
+                    f"Chapter {chapter_idx + 1} ('{chapter_name}'): No PointId in mapping (index {chapter_idx} >= {len(chapter_pointids)}), "
+                    f"using fallback"
+                )
+                if book_id and chapter_id:
+                    start_pointid_str = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
+                else:
+                    start_pointid_str = f"001001{start_point_index:04d}"
+                self.logger.info(f"Chapter {chapter_idx + 1} '{chapter_name}': Using fallback PointId: {start_pointid_str}")
+            
+            chapters_info.append({
+                "chapter_name": chapter_name,
+                "chapter_index": chapter_idx,
+                "start_pointid": start_pointid_str,  # Store full PointId instead of separate parts
+            })
+        
         # Extract chapter name from JSON input (from metadata or first chapter)
         chapter_name_from_input = ocr_data.get("metadata", {}).get("chapter", "")
         if not chapter_name_from_input and chapters:
@@ -877,9 +989,9 @@ class MultiPartPostProcessor:
         
         self.logger.info(f"Chapter name from input JSON: {chapter_name_from_input}")
         
-        # Collect all topics with their subchapter info
+        # Collect all topics with their subchapter and chapter info
         # Process topic by topic, but for EACH topic send the FULL subchapter (all its topics) as context to the model.
-        topics_list = []  # List of (subchapter_name, topic_data) tuples
+        topics_list = []  # List of (chapter_name, subchapter_name, topic_data) tuples
         subchapters_dict = {}  # subchapter_name -> list of topic names (for logging / txt saving)
         # subchapter_name -> list of full topic dicts {"topic": ..., "extractions": [...]}
         subchapter_full_topics: Dict[str, List[Dict[str, Any]]] = {}
@@ -887,9 +999,14 @@ class MultiPartPostProcessor:
         # Track total removed records for logging
         total_removed_figures = 0
         
-        for chapter in chapters:
+        for chapter_idx, chapter in enumerate(chapters):
             if not isinstance(chapter, dict):
                 continue
+            
+            chapter_name = chapter.get("chapter", "")
+            if not chapter_name:
+                chapter_name = f"Chapter_{chapter_idx + 1}"
+            
             subchapters = chapter.get("subchapters", [])
             
             for subchapter in subchapters:
@@ -931,8 +1048,8 @@ class MultiPartPostProcessor:
                             "topic": topic_name,
                             "extractions": filtered_extractions
                         }
-                        # For per-topic processing
-                        topics_list.append((subchapter_name, topic_data))
+                        # For per-topic processing - now includes chapter_name
+                        topics_list.append((chapter_name, subchapter_name, topic_data))
                         # For logging
                         subchapters_dict[subchapter_name].append(topic_name)
                         # For model context (FULL subchapter for every topic)
@@ -949,7 +1066,7 @@ class MultiPartPostProcessor:
             return None
         
         # Count unique subchapters
-        unique_subchapters = set(subchapter_name for subchapter_name, _ in topics_list)
+        unique_subchapters = set(subchapter_name for _, subchapter_name, _ in topics_list)
         
         self.logger.info("=" * 80)
         self.logger.info("DOCUMENT PROCESSING - PROCESSING BY TOPIC")
@@ -971,7 +1088,7 @@ class MultiPartPostProcessor:
         if progress_callback:
             progress_callback(f"Found {len(topics_list)} topics in {len(unique_subchapters)} subchapters to process")
         
-        # Prepare base directory and filename for txt files and JSON files
+        # Prepare base directory and filename for JSON files
         base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
         input_name = os.path.basename(ocr_json_path)
         base_name, _ = os.path.splitext(input_name)
@@ -985,7 +1102,8 @@ class MultiPartPostProcessor:
         if not chapter_id:
             chapter_id = 1
         
-        output_filename = f"Lesson_file_{book_id}_{chapter_id}.json"
+        # Use input file name for unique output filename
+        output_filename = f"Lesson_file_{base_name}.json"
         output_path = os.path.join(base_dir, output_filename)
         
         # Create initial structure with empty points
@@ -1022,10 +1140,8 @@ class MultiPartPostProcessor:
         all_responses = []
         # Store topic/subchapter info for each response to maintain correct mapping
         response_topic_info = []  # List of topic_info dicts, one per response
-        # Group responses by subchapter for txt file saving
-        subchapter_responses_dict: Dict[str, List[Dict[str, str]]] = {}  # subchapter_name -> list of {topic, response}
         
-        for topic_idx, (subchapter_name, topic_data) in enumerate(topics_list, 1):
+        for topic_idx, (chapter_name_for_topic, subchapter_name, topic_data) in enumerate(topics_list, 1):
             topic_name = topic_data["topic"]
             extractions = topic_data["extractions"]
             
@@ -1033,12 +1149,13 @@ class MultiPartPostProcessor:
             self.logger.info("=" * 80)
             self.logger.info(f"PROCESSING TOPIC {topic_idx}/{len(topics_list)}")
             self.logger.info("=" * 80)
+            self.logger.info(f"  Chapter: '{chapter_name_for_topic}'")
             self.logger.info(f"  Subchapter: '{subchapter_name}'")
             self.logger.info(f"  Topic: '{topic_name}'")
             self.logger.info(f"  Number of extractions: {len(extractions)}")
             
             if progress_callback:
-                progress_callback(f"Processing topic {topic_idx}/{len(topics_list)}: {subchapter_name} > {topic_name}")
+                progress_callback(f"Processing topic {topic_idx}/{len(topics_list)}: {chapter_name_for_topic} > {subchapter_name} > {topic_name}")
             
             # Replace placeholders in prompt with current topic and subchapter
             topic_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name)
@@ -1059,7 +1176,7 @@ class MultiPartPostProcessor:
             
             topic_json = {
                 "subchapter": subchapter_name,
-                "chapter": chapter_name_from_input,
+                "chapter": chapter_name_for_topic,
                 # FULL subchapter context (all topics), not just the current topic
                 "topics": full_subchapter_topics
             }
@@ -1079,7 +1196,7 @@ class MultiPartPostProcessor:
             )
             
             if not response_text:
-                self.logger.error(f"  ✗ No response received for topic: {subchapter_name} > {topic_name}")
+                self.logger.error(f"  ✗ No response received for topic: {chapter_name_for_topic} > {subchapter_name} > {topic_name}")
                 # Store empty response to track that this topic was processed
                 response_text = ""
             
@@ -1091,9 +1208,9 @@ class MultiPartPostProcessor:
             # Store response and its corresponding topic info
             all_responses.append(response_text)
             topic_info = {
+                "chapter": chapter_name_for_topic,
                 "subchapter": subchapter_name,
                 "topic": topic_name,
-                "chapter": chapter_name_from_input
             }
             response_topic_info.append(topic_info)
             
@@ -1127,36 +1244,8 @@ class MultiPartPostProcessor:
                 self.logger.error(f"Failed to write raw response for topic '{topic_name}' to file: {e}", exc_info=True)
                 # Continue processing other topics
             
-            # Group response by subchapter for txt file saving
-            if subchapter_name not in subchapter_responses_dict:
-                subchapter_responses_dict[subchapter_name] = []
-            subchapter_responses_dict[subchapter_name].append({
-                "topic": topic_name,
-                "response": response_text
-            })
-            
             self.logger.info(f"  ✓ Topic '{topic_name}' completed")
             self.logger.info("=" * 80)
-        
-        # Save txt files for each subchapter after all its topics are processed
-        self.logger.info("")
-        self.logger.info("=" * 80)
-        self.logger.info("SAVING TXT FILES FOR EACH SUBCHAPTER")
-        self.logger.info("=" * 80)
-        
-        for subchapter_name, topic_responses_list in subchapter_responses_dict.items():
-            subchapter_idx = subchapter_idx_map.get(subchapter_name, 0)
-            self._save_subchapter_txt_file(
-                subchapter_name,
-                topic_responses_list,
-                base_dir,
-                base_name,
-                subchapter_idx,
-                len(unique_subchapters),
-                progress_callback
-            )
-        
-        self.logger.info("=" * 80)
         
         if not all_responses:
             self.logger.error("No responses produced by Document Processing")
@@ -1222,6 +1311,14 @@ class MultiPartPostProcessor:
             blocks_by_subchapter[subchapter_name]["topics"].append(topic_info_stored)
             blocks_by_subchapter[subchapter_name]["blocks"].extend(topic_blocks)
         
+        # Helper function to normalize chapter names for comparison
+        def normalize_name(name: str) -> str:
+            """Normalize chapter name for comparison (strip whitespace, lowercase)"""
+            return name.strip().lower() if name else ""
+        
+        # Create chapter mapping: chapter_name -> chapter_info (normalized for comparison)
+        chapter_mapping = {normalize_name(ch_info["chapter_name"]): ch_info for ch_info in chapters_info}
+        
         # Track points count for each subchapter
         points_per_subchapter_list = []  # List of (subchapter_info, num_points) tuples
         
@@ -1229,54 +1326,69 @@ class MultiPartPostProcessor:
             subchapter_blocks = subchapter_data["blocks"]
             topics_info = subchapter_data["topics"]
             
+            # Get chapter name from first topic info (all topics in same subchapter have same chapter)
+            first_topic_info = topics_info[0] if topics_info else {}
+            chapter_name_for_subchapter = first_topic_info.get("chapter", "")
+            
+            # If chapter name is empty or doesn't match any chapter in chapters_info, try to find it
+            if not chapter_name_for_subchapter or normalize_name(chapter_name_for_subchapter) not in chapter_mapping:
+                # Try to find chapter by matching subchapter order with chapter order
+                # This is a fallback if chapter name is missing or doesn't match
+                if chapters_info:
+                    # Use the chapter that contains this subchapter based on order
+                    # This is not perfect but better than using chapter_name_from_input
+                    chapter_name_for_subchapter = chapters_info[0]["chapter_name"]
+                    self.logger.warning(
+                        f"Subchapter '{subchapter_name}': Chapter name '{first_topic_info.get('chapter', '')}' not found, "
+                        f"using '{chapter_name_for_subchapter}' as fallback"
+                    )
+                else:
+                    chapter_name_for_subchapter = chapter_name_from_input
+            
             if not subchapter_blocks:
                 # Create subchapter_info from first topic (all topics in same subchapter have same chapter/subchapter)
-                first_topic_info = topics_info[0] if topics_info else {}
                 subchapter_info = {
                     "subchapter": subchapter_name,
-                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "chapter": chapter_name_for_subchapter,
                     "num_topics": len(topics_info),
                     "topic_names": [t.get("topic", "") for t in topics_info]
                 }
                 points_per_subchapter_list.append((subchapter_info, 0))
-                self.logger.info(f"  Subchapter '{subchapter_name}': 0 points (no blocks)")
+                self.logger.info(f"  Subchapter '{subchapter_name}': 0 points (no blocks), Chapter: '{chapter_name_for_subchapter}'")
                 continue
             
             # Combine blocks for this subchapter
             subchapter_json_data = self._combine_json_blocks(subchapter_blocks)
             if not subchapter_json_data:
-                first_topic_info = topics_info[0] if topics_info else {}
                 subchapter_info = {
                     "subchapter": subchapter_name,
-                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "chapter": chapter_name_for_subchapter,
                     "num_topics": len(topics_info),
                     "topic_names": [t.get("topic", "") for t in topics_info]
                 }
                 points_per_subchapter_list.append((subchapter_info, 0))
-                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to combine blocks")
+                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to combine blocks, Chapter: '{chapter_name_for_subchapter}'")
                 continue
             
             # Flatten to get point count for this subchapter
             try:
                 subchapter_flat_rows = converter._flatten_to_points(subchapter_json_data)
-                first_topic_info = topics_info[0] if topics_info else {}
                 subchapter_info = {
                     "subchapter": subchapter_name,
-                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "chapter": chapter_name_for_subchapter,
                     "num_topics": len(topics_info),
                     "topic_names": [t.get("topic", "") for t in topics_info]
                 }
                 points_per_subchapter_list.append((subchapter_info, len(subchapter_flat_rows)))
-                self.logger.info(f"  Subchapter '{subchapter_name}': {len(subchapter_flat_rows)} points ({len(topics_info)} topics)")
+                self.logger.info(f"  Subchapter '{subchapter_name}': {len(subchapter_flat_rows)} points ({len(topics_info)} topics), Chapter: '{chapter_name_for_subchapter}'")
             except Exception as e:
-                first_topic_info = topics_info[0] if topics_info else {}
                 subchapter_info = {
                     "subchapter": subchapter_name,
-                    "chapter": first_topic_info.get("chapter", chapter_name_from_input),
+                    "chapter": chapter_name_for_subchapter,
                     "num_topics": len(topics_info),
                     "topic_names": [t.get("topic", "") for t in topics_info]
                 }
-                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to count points - {e}")
+                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to count points - {e}, Chapter: '{chapter_name_for_subchapter}'")
                 points_per_subchapter_list.append((subchapter_info, 0))
         
         self.logger.info("=" * 80)
@@ -1320,12 +1432,8 @@ class MultiPartPostProcessor:
             return None
         
         # Assign PointId and add chapter/subchapter/topic
-        if not book_id:
-            book_id = 1
-        if not chapter_id:
-            chapter_id = 1
-        
-        self.logger.info(f"Assigning PointId and chapter/subchapter/topic to {len(flat_rows)} points (starting from {start_point_index})...")
+        # Use chapter-based PointId mapping if available
+        self.logger.info(f"Assigning PointId and chapter/subchapter/topic to {len(flat_rows)} points...")
         if progress_callback:
             progress_callback(f"Assigning PointId to {len(flat_rows)} points...")
         
@@ -1336,40 +1444,115 @@ class MultiPartPostProcessor:
         self.logger.info("=" * 80)
         self.logger.info(f"Using tracked points per subchapter for correct mapping:")
         for info, count in points_per_subchapter_list:
-            self.logger.info(f"  Subchapter '{info['subchapter']}': {count} points")
+            self.logger.info(f"  Chapter '{info['chapter']}' > Subchapter '{info['subchapter']}': {count} points")
         self.logger.info(f"Total tracked points: {total_tracked_points}, Actual flattened points: {len(flat_rows)}")
         
         if total_tracked_points != len(flat_rows):
             self.logger.warning(f"Point count mismatch: tracked {total_tracked_points} but got {len(flat_rows)}. This may affect subchapter mapping accuracy.")
         
-        current_index = start_point_index
+        # Create chapter mapping: chapter_name -> chapter_info (normalized for comparison)
+        # Note: normalize_name is already defined above
+        chapter_mapping = {normalize_name(ch_info["chapter_name"]): ch_info for ch_info in chapters_info}
+        
+        # Also create index-based mapping as fallback
+        chapter_index_mapping = {ch_info["chapter_index"]: ch_info for ch_info in chapters_info}
+        
+        # Track current chapter and its PointId settings
+        current_chapter_name = None
+        current_chapter_info = None
+        current_pointid_value = None  # Store as integer for easy increment
+        current_chapter_idx = None
         point_idx = 0
         
         # Assign subchapter info based on tracked points per subchapter (maintains order)
         for subchapter_info_stored, num_points in points_per_subchapter_list:
             subchapter_name = subchapter_info_stored["subchapter"]
-            self.logger.info(f"  Assigning PointIds for subchapter '{subchapter_name}' ({num_points} points)...")
+            chapter_name_from_stored = subchapter_info_stored["chapter"]
+            
+            # Check if we moved to a new chapter
+            normalized_stored = normalize_name(chapter_name_from_stored)
+            if current_chapter_name != chapter_name_from_stored:
+                # Try to find matching chapter info by normalized name
+                matching_chapter_info = None
+                if normalized_stored in chapter_mapping:
+                    matching_chapter_info = chapter_mapping[normalized_stored]
+                    self.logger.info(
+                        f"Switched to chapter '{chapter_name_from_stored}' (normalized: '{normalized_stored}'): "
+                        f"Using PointId starting from {matching_chapter_info['start_pointid']}"
+                    )
+                else:
+                    # Try to find by matching any chapter name (case-insensitive, whitespace-insensitive)
+                    for ch_info in chapters_info:
+                        if normalize_name(ch_info["chapter_name"]) == normalized_stored:
+                            matching_chapter_info = ch_info
+                            self.logger.info(
+                                f"Switched to chapter '{chapter_name_from_stored}' (found by fuzzy match): "
+                                f"Using PointId starting from {matching_chapter_info['start_pointid']}"
+                            )
+                            break
+                
+                if matching_chapter_info:
+                    current_chapter_info = matching_chapter_info
+                    current_chapter_name = chapter_name_from_stored
+                    current_chapter_idx = current_chapter_info["chapter_index"]
+                    # IMPORTANT: Convert PointId string to integer for incrementing
+                    current_pointid_value = int(current_chapter_info["start_pointid"])
+                    self.logger.info(
+                        f"  ✓ Reset PointId to {current_chapter_info['start_pointid']} for chapter '{chapter_name_from_stored}'"
+                    )
+                else:
+                    # Fallback: use first chapter info or default
+                    if chapters_info:
+                        current_chapter_info = chapters_info[0]
+                        current_chapter_name = current_chapter_info["chapter_name"]
+                        current_chapter_idx = current_chapter_info["chapter_index"]
+                        current_pointid_value = int(current_chapter_info["start_pointid"])
+                        self.logger.warning(
+                            f"Chapter '{chapter_name_from_stored}' not found in mapping, using first chapter settings. "
+                            f"Reset PointId to {current_chapter_info['start_pointid']}"
+                        )
+                    else:
+                        # Ultimate fallback
+                        if book_id and chapter_id:
+                            fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
+                        else:
+                            fallback_pointid = f"001001{start_point_index:04d}"
+                        current_pointid_value = int(fallback_pointid)
+                        self.logger.warning(
+                            f"No chapter mapping available, using fallback: {fallback_pointid}"
+                        )
+            
+            self.logger.info(f"  Assigning PointIds for chapter '{chapter_name_from_stored}' > subchapter '{subchapter_name}' ({num_points} points)...")
+            self.logger.info(f"    Starting from PointId {current_pointid_value:010d}")
+            
             # Assign topic info to points in this range
+            first_point_id_in_subchapter = None
             for i in range(num_points):
                 if point_idx >= len(flat_rows):
                     self.logger.warning(f"More points tracked than available in flat_rows. Stopping assignment.")
                     break
                 
                 row = flat_rows[point_idx]
-                point_id = f"{book_id:03d}{chapter_id:03d}{current_index:04d}"
+                # Use current PointId value directly (as 10-digit string)
+                point_id = f"{current_pointid_value:010d}"
                 row["PointId"] = point_id
                 
+                if first_point_id_in_subchapter is None:
+                    first_point_id_in_subchapter = point_id
+                
                 # Chapter always comes from input JSON (not from model output)
-                row["chapter"] = subchapter_info_stored["chapter"]
+                row["chapter"] = chapter_name_from_stored
                 
                 # Use subchapter from model output, fallback to stored info only if missing
                 if "subchapter" not in row or not row.get("subchapter"):
                     row["subchapter"] = subchapter_info_stored.get("subchapter", "")
                 
                 point_idx += 1
-                current_index += 1
+                current_pointid_value += 1  # Simply increment the integer
             
-            self.logger.info(f"    ✓ Assigned {num_points} PointIds for subchapter '{subchapter_name}'")
+            last_point_id_in_subchapter = f"{current_pointid_value - 1:010d}"
+            self.logger.info(f"    ✓ Assigned {num_points} PointIds for subchapter '{subchapter_name}': {first_point_id_in_subchapter} to {last_point_id_in_subchapter}")
+            self.logger.info(f"    Next PointId will be: {current_pointid_value:010d}")
             
             if point_idx >= len(flat_rows):
                 break
@@ -1377,18 +1560,28 @@ class MultiPartPostProcessor:
         # Handle any remaining points (shouldn't happen, but safety check)
         if point_idx < len(flat_rows):
             self.logger.warning(f"Some points ({len(flat_rows) - point_idx}) were not assigned subchapter info. Using fallback.")
+            # Use last chapter info or fallback
+            if current_chapter_info:
+                current_pointid_value = int(current_chapter_info["start_pointid"]) if current_pointid_value is None else current_pointid_value
+            else:
+                if book_id and chapter_id:
+                    fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
+                else:
+                    fallback_pointid = f"001001{start_point_index:04d}"
+                current_pointid_value = int(fallback_pointid)
+            
             for i in range(point_idx, len(flat_rows)):
                 row = flat_rows[i]
-                point_id = f"{book_id:03d}{chapter_id:03d}{current_index:04d}"
+                point_id = f"{current_pointid_value:010d}"
                 row["PointId"] = point_id
                 # Chapter always comes from input JSON
-                row["chapter"] = chapter_name_from_input
+                row["chapter"] = chapter_name_from_input if chapter_name_from_input else (current_chapter_name if current_chapter_name else "")
                 # Use subchapter from model output, fallback to stored info only if missing
                 if "subchapter" not in row or not row.get("subchapter"):
                     if points_per_subchapter_list:
                         last_subchapter_info = points_per_subchapter_list[-1][0]
                         row["subchapter"] = last_subchapter_info.get("subchapter", "")
-                current_index += 1
+                current_pointid_value += 1
         
         self.logger.info("=" * 80)
         
@@ -1425,60 +1618,4 @@ class MultiPartPostProcessor:
             if os.path.exists(output_path):
                 return output_path
             return None
-
-    def _save_subchapter_txt_file(
-        self,
-        subchapter_name: str,
-        topic_responses_list: List[Dict[str, str]],
-        base_dir: str,
-        base_name: str,
-        subchapter_idx: int,
-        total_subchapters: int,
-        progress_callback: Optional[Any] = None
-    ):
-        """
-        Save a subchapter's responses to a txt file.
-        
-        Args:
-            subchapter_name: Name of the subchapter
-            topic_responses_list: List of dicts with 'topic' and 'response' keys
-            base_dir: Base directory for saving files
-            base_name: Base name for the file (without extension)
-            subchapter_idx: Index of this subchapter (1-based)
-            total_subchapters: Total number of subchapters
-            progress_callback: Optional callback for progress updates
-        """
-        # Create safe filename from subchapter name
-        safe_subchapter_name = subchapter_name.replace('/', '_').replace(' ', '_').replace('\\', '_')
-        safe_subchapter_name = ''.join(c for c in safe_subchapter_name if c.isalnum() or c in ('_', '-', '.'))
-        
-        # Create txt filename
-        txt_filename = f"{base_name}_subchapter_{subchapter_idx}_{safe_subchapter_name}.txt"
-        txt_path = os.path.join(base_dir, txt_filename)
-        
-        try:
-            # Combine all topic responses for this subchapter
-            combined_text = f"=== Subchapter: {subchapter_name} ===\n\n"
-            combined_text += f"Total topics in this subchapter: {len(topic_responses_list)}\n\n"
-            combined_text += "=" * 80 + "\n\n"
-            
-            for topic_idx, topic_response_item in enumerate(topic_responses_list, 1):
-                topic_name = topic_response_item["topic"]
-                response_text = topic_response_item["response"]
-                
-                combined_text += f"--- Topic {topic_idx}: {topic_name} ---\n\n"
-                combined_text += response_text
-                combined_text += "\n\n" + "=" * 80 + "\n\n"
-            
-            # Save to file
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(combined_text)
-            
-            self.logger.info(f"Saved subchapter '{subchapter_name}' response to: {txt_path} ({len(topic_responses_list)} topics)")
-            if progress_callback:
-                progress_callback(f"Saved subchapter {subchapter_idx}/{total_subchapters}: {subchapter_name}")
-        except Exception as e:
-            self.logger.error(f"Failed to save txt file for subchapter '{subchapter_name}': {e}")
-
-
 

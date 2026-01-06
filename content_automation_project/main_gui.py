@@ -311,7 +311,7 @@ class ContentAutomationGUI:
         # Description
         desc = ctk.CTkLabel(
             main_frame, 
-            text="Extract topics from PDF before OCR extraction. Output: t{book}{chapter}.json",
+            text="Extract topics from PDF before OCR extraction. Output: t{book}{chapter}_{pdf_name}.json",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
@@ -422,7 +422,7 @@ class ContentAutomationGUI:
         output_frame = ctk.CTkFrame(main_frame)
         output_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(output_frame, text="Output File (t{book}{chapter}.json):", 
+        ctk.CTkLabel(output_frame, text="Output File (t{book}{chapter}_{pdf_name}.json):", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
         if not hasattr(self, 'pre_ocr_output_var'):
@@ -2597,56 +2597,131 @@ class ContentAutomationGUI:
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 10))
         
-        # JSON selection section
+        # JSON selection section - Batch Processing
         json_frame = ctk.CTkFrame(main_frame)
         json_frame.pack(fill="x", pady=(0, 20))
         
         ctk.CTkLabel(
             json_frame,
-            text="Input JSON (OCR Extraction JSON)",
+            text="Input JSON Files (OCR Extraction JSON) - Batch Processing",
             font=ctk.CTkFont(size=18, weight="bold"),
         ).pack(pady=(15, 10))
         
-        file_frame = ctk.CTkFrame(json_frame)
-        file_frame.pack(fill="x", padx=15, pady=5)
+        # File selection buttons
+        buttons_frame = ctk.CTkFrame(json_frame)
+        buttons_frame.pack(fill="x", padx=15, pady=5)
         
-        ctk.CTkLabel(
-            file_frame,
-            text="OCR Extraction JSON File:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", padx=10, pady=(10, 5))
+        def browse_multiple_document_processing_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select OCR Extraction JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'document_processing_selected_files'):
+                    self.document_processing_selected_files = []
+                for filename in filenames:
+                    if filename not in self.document_processing_selected_files:
+                        self.document_processing_selected_files.append(filename)
+                        self._add_document_processing_file_to_ui(filename)
         
-        # Only create if doesn't exist
-        if not hasattr(self, 'document_processing_ocr_json_var'):
-            self.document_processing_ocr_json_var = ctk.StringVar()
-            # Try to auto-fill from last OCR extraction path if available
-            if hasattr(self, 'last_ocr_extraction_path') and self.last_ocr_extraction_path:
-                self.document_processing_ocr_json_var.set(self.last_ocr_extraction_path)
+        def select_folder_and_match_document_processing_files():
+            folder_path = filedialog.askdirectory(title="Select folder containing OCR Extraction JSON files")
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'document_processing_selected_files'):
+                self.document_processing_selected_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.document_processing_selected_files:
+                    self.document_processing_selected_files.append(json_file)
+                    self._add_document_processing_file_to_ui(json_file)
+                    added_count += 1
+            
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
         
-        json_entry = ctk.CTkEntry(file_frame, textvariable=self.document_processing_ocr_json_var, width=400)
-        json_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
-        
-        def browse_ocr_json_file():
+        def add_document_processing_file_manual():
             filename = filedialog.askopenfilename(
                 title="Select OCR Extraction JSON file",
                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
             )
             if filename:
-                self.document_processing_ocr_json_var.set(filename)
+                if not hasattr(self, 'document_processing_selected_files'):
+                    self.document_processing_selected_files = []
+                if filename not in self.document_processing_selected_files:
+                    self.document_processing_selected_files.append(filename)
+                    self._add_document_processing_file_to_ui(filename)
         
         ctk.CTkButton(
-            file_frame,
-            text="Browse",
-            command=browse_ocr_json_file,
-            width=80,
-        ).pack(side="right", padx=(5, 10), pady=(0, 5))
+            buttons_frame,
+            text="Browse Multiple Files",
+            command=browse_multiple_document_processing_files,
+            width=180,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame,
+            text="Select Folder (Auto-Match)",
+            command=select_folder_and_match_document_processing_files,
+            width=180,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame,
+            text="Add File Manually",
+            command=add_document_processing_file_manual,
+            width=150,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Delay setting
+        delay_frame = ctk.CTkFrame(json_frame)
+        delay_frame.pack(fill="x", padx=15, pady=5)
         
         ctk.CTkLabel(
-            file_frame,
-            text="This JSON file should have the structure: chapters -> subchapters -> topics -> extractions",
+            delay_frame,
+            text="Delay between files (seconds):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        if not hasattr(self, 'document_processing_delay_var'):
+            self.document_processing_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry = ctk.CTkEntry(delay_frame, textvariable=self.document_processing_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5, pady=5)
+        
+        # Files list (scrollable)
+        list_frame = ctk.CTkFrame(json_frame)
+        list_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame,
+            text="Selected Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'document_processing_files_list_scroll'):
+            self.document_processing_files_list_scroll = ctk.CTkScrollableFrame(list_frame, height=150)
+        self.document_processing_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list if not exists
+        if not hasattr(self, 'document_processing_selected_files'):
+            self.document_processing_selected_files = []
+        
+        ctk.CTkLabel(
+            json_frame,
+            text="Each JSON file should have the structure: chapters -> subchapters -> topics -> extractions",
             font=ctk.CTkFont(size=10),
             text_color="gray",
-        ).pack(anchor="w", padx=10, pady=(0, 10))
+        ).pack(anchor="w", padx=15, pady=(0, 10))
         
         # Model selection for second stage
         model_frame = ctk.CTkFrame(main_frame)
@@ -2701,16 +2776,128 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             pointid_frame,
-            text="PointId Settings",
+            text="PointId Configuration",
             font=ctk.CTkFont(size=18, weight="bold"),
         ).pack(pady=(15, 10))
         
-        # Start PointId
-        pointid_row = ctk.CTkFrame(pointid_frame)
-        pointid_row.pack(fill="x", padx=15, pady=(5, 10))
+        # Option 1: Use PointId mapping file (TXT)
+        pointid_option_frame = ctk.CTkFrame(pointid_frame)
+        pointid_option_frame.pack(fill="x", padx=15, pady=5)
+        
+        if not hasattr(self, 'use_pointid_mapping_var'):
+            self.use_pointid_mapping_var = ctk.BooleanVar(value=False)
+            self.document_processing_pointid_txt_var = ctk.StringVar()
+        
+        pointid_mapping_checkbox = ctk.CTkCheckBox(
+            pointid_option_frame,
+            text="Use PointId mapping file (TXT)",
+            variable=self.use_pointid_mapping_var,
+        )
+        pointid_mapping_checkbox.pack(anchor="w", padx=10, pady=5)
+        
+        pointid_file_frame = ctk.CTkFrame(pointid_option_frame)
+        pointid_file_frame.pack(fill="x", padx=20, pady=5)
+        
+        pointid_entry = ctk.CTkEntry(
+            pointid_file_frame,
+            textvariable=self.document_processing_pointid_txt_var,
+            width=400,
+            state="disabled"
+        )
+        pointid_entry.pack(side="left", fill="x", expand=True, padx=(10, 5))
+        
+        def load_pointids_from_file(txt_path: str) -> List[str]:
+            """Extract PointIds from TXT file"""
+            pointids = []
+            try:
+                with open(txt_path, 'r', encoding='utf-8') as f:
+                    for line_num, line in enumerate(f, 1):
+                        line = line.strip()
+                        # Skip empty lines and comments
+                        if not line or line.startswith('#'):
+                            continue
+                        
+                        # Validate format: must be 10 digits
+                        if len(line) == 10 and line.isdigit():
+                            pointids.append(line)
+            except Exception as e:
+                self.logger.error(f"Error loading PointIds from {txt_path}: {e}")
+            return pointids
+        
+        def browse_pointid_txt():
+            filename = filedialog.askopenfilename(
+                title="Select PointId Mapping TXT file",
+                filetypes=[("TXT files", "*.txt"), ("All files", "*.*")]
+            )
+            if filename:
+                self.document_processing_pointid_txt_var.set(filename)
+                # Extract and display pointids immediately
+                pointids = load_pointids_from_file(filename)
+                if pointids:
+                    # Update the display textbox
+                    pointids_text = "\n".join(pointids)
+                    pointids_display.delete("1.0", tk.END)
+                    pointids_display.insert("1.0", f"Extracted {len(pointids)} PointIds:\n\n{pointids_text}")
+                    pointids_display_frame.pack(fill="both", expand=True, padx=30, pady=(5, 10))
+                else:
+                    pointids_display.delete("1.0", tk.END)
+                    pointids_display.insert("1.0", "No valid PointIds found in the file.")
+                    pointids_display_frame.pack(fill="both", expand=True, padx=30, pady=(5, 10))
+        
+        def toggle_pointid_entry():
+            if self.use_pointid_mapping_var.get():
+                pointid_entry.configure(state="normal")
+                start_pointid_entry.configure(state="disabled")
+            else:
+                pointid_entry.configure(state="disabled")
+                start_pointid_entry.configure(state="normal")
+        
+        pointid_mapping_checkbox.configure(command=toggle_pointid_entry)
+        
+        ctk.CTkButton(
+            pointid_file_frame,
+            text="Browse",
+            command=browse_pointid_txt,
+            width=80,
+        ).pack(side="right", padx=(5, 10))
         
         ctk.CTkLabel(
-            pointid_row,
+            pointid_option_frame,
+            text="Format: Each line = start PointId for one chapter (10 digits, e.g., 1251330001)",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=30, pady=(0, 5))
+        
+        # Create PointIds display area (will be shown when file is selected)
+        pointids_display_frame = ctk.CTkFrame(pointid_option_frame)
+        pointids_display_frame.pack_forget()  # Initially hidden
+        
+        ctk.CTkLabel(
+            pointids_display_frame,
+            text="Extracted PointIds:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+        
+        pointids_display = ctk.CTkTextbox(
+            pointids_display_frame,
+            height=150,
+            font=ctk.CTkFont(size=11),
+            wrap="word"
+        )
+        pointids_display.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Option 2: Manual Start PointId (fallback)
+        ctk.CTkLabel(
+            pointid_option_frame,
+            text="OR use manual Start PointId (if mapping file not used):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        start_pointid_row = ctk.CTkFrame(pointid_option_frame)
+        start_pointid_row.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            start_pointid_row,
             text="Start PointId (e.g. 1050030001):",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", padx=10, pady=(5, 5))
@@ -2718,14 +2905,16 @@ class ContentAutomationGUI:
         # Only create if doesn't exist
         if not hasattr(self, 'auto_start_pointid_var'):
             self.auto_start_pointid_var = ctk.StringVar(value="")
-        ctk.CTkEntry(
-            pointid_row,
+        
+        start_pointid_entry = ctk.CTkEntry(
+            start_pointid_row,
             textvariable=self.auto_start_pointid_var,
             width=300,
-        ).pack(anchor="w", padx=10, pady=(0, 5))
+        )
+        start_pointid_entry.pack(anchor="w", padx=10, pady=(0, 5))
         
         ctk.CTkLabel(
-            pointid_row,
+            start_pointid_row,
             text="If empty, a default starting PointId will be used.",
             font=ctk.CTkFont(size=10),
             text_color="gray",
@@ -2737,27 +2926,6 @@ class ContentAutomationGUI:
         progress_frame = ctk.CTkFrame(main_frame)
         progress_frame.pack(fill="x", pady=(10, 10))
         
-        ctk.CTkLabel(
-            progress_frame,
-            text="Document Processing Progress",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        ).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Only create if doesn't exist
-        if not hasattr(self, 'pipeline_progress_bar'):
-            self.pipeline_progress_bar = ctk.CTkProgressBar(progress_frame)
-        self.pipeline_progress_bar.pack(fill="x", padx=10, pady=(0, 5))
-        self.pipeline_progress_bar.set(0.0)
-        
-        if not hasattr(self, 'pipeline_progress_label'):
-            self.pipeline_progress_label = ctk.CTkLabel(
-                progress_frame,
-                text="Waiting to start...",
-                font=ctk.CTkFont(size=10),
-                text_color="gray",
-            )
-        self.pipeline_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
-        
         # Control buttons
         controls_frame = ctk.CTkFrame(main_frame)
         controls_frame.pack(fill="x", pady=(10, 10))
@@ -2767,17 +2935,32 @@ class ContentAutomationGUI:
             self.full_pipeline_cancel = False
         
         def start_full_pipeline():
-            full_btn.configure(state="disabled", text="Running Document Processing...")
+            full_btn.configure(state="disabled", text="Processing...")
             self.full_pipeline_cancel = False
             threading.Thread(
-                target=self.process_full_pipeline_worker,
+                target=self.process_multiple_document_processing_files,
                 args=(self.root, full_btn),
                 daemon=True,
             ).start()
         
+        # Progress bar for batch processing
+        if not hasattr(self, 'document_processing_progress_bar'):
+            self.document_processing_progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.document_processing_progress_bar.pack(fill="x", padx=10, pady=(0, 5))
+        self.document_processing_progress_bar.set(0.0)
+        
+        if not hasattr(self, 'document_processing_progress_label'):
+            self.document_processing_progress_label = ctk.CTkLabel(
+                progress_frame,
+                text="Waiting to start...",
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+            )
+        self.document_processing_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
+        
         full_btn = ctk.CTkButton(
             controls_frame,
-            text="Run Document Processing",
+            text="Process All Files",
             command=start_full_pipeline,
             width=320,
             height=40,
@@ -2892,110 +3075,178 @@ class ContentAutomationGUI:
             except Exception:
                 pass
 
-    def process_full_pipeline_worker(self, parent_window, start_button):
-        """
-        Background worker: run Document Processing using OCR Extraction JSON.
-        Uses:
-          - OCR Extraction JSON (with chapters->subchapters->topics structure)
-          - Document Processing prompt (with {Topic_NAME} and {Subchapter_Name} placeholders)
-          - Model from main settings
-          - Start PointId for the whole chapter
-        """
+    def process_multiple_document_processing_files(self, parent_window, start_button):
+        """Process multiple OCR Extraction JSON files for Document Processing"""
         try:
-            # --- Validate and load basic inputs ---
-            ocr_json_path = self.document_processing_ocr_json_var.get().strip()
-            if not ocr_json_path:
-                messagebox.showerror("Error", "Please select the OCR Extraction JSON file.")
+            if not hasattr(self, 'document_processing_selected_files') or not self.document_processing_selected_files:
+                self.root.after(0, lambda: messagebox.showwarning("Warning", "Please add at least one OCR Extraction JSON file"))
                 return
-
-            if not os.path.exists(ocr_json_path):
-                messagebox.showerror("Error", f"OCR Extraction JSON file not found:\n{ocr_json_path}")
-                return
-
-            # Document Processing prompt (should contain {Topic_NAME} and {Subchapter_Name})
+            
+            # Get prompt
             document_prompt = self.second_stage_prompt_text.get("1.0", tk.END).strip()
             if not document_prompt:
-                messagebox.showerror("Error", "Please enter a prompt for Document Processing (should contain {Topic_NAME} and {Subchapter_Name} placeholders).")
-                return
-
+                default_prompt = self.prompt_manager.get_prompt("Document Processing Prompt")
+                if default_prompt:
+                    document_prompt = default_prompt
+                    self.logger.info("Using default Document Processing prompt from prompts.json")
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                    return
+            
             # Check if prompt contains placeholders
             if "{Topic_NAME}" not in document_prompt or "{Subchapter_Name}" not in document_prompt:
                 self.logger.warning("Document Processing prompt may not contain {Topic_NAME} and {Subchapter_Name} placeholders")
-
-            # Always use default model from main view settings
-            model_name = self.get_default_model()
-
-            # PointId handling
-            start_pointid_str = self.auto_start_pointid_var.get().strip()
-            if not start_pointid_str:
-                # Default for single-chapter mode (user can change later)
-                start_pointid_str = "1050030000"
-
-            if not (start_pointid_str.isdigit() and len(start_pointid_str) == 10):
-                messagebox.showerror("Error", "Start PointId must be a 10-digit number, e.g. 1050030000.")
-                return
-
+            
+            # Get delay
             try:
-                book_id = int(start_pointid_str[0:3])
-                chapter_id_num = int(start_pointid_str[3:6])
-                current_index = int(start_pointid_str[6:10])
+                delay_seconds = int(self.document_processing_delay_var.get())
             except ValueError:
-                messagebox.showerror("Error", "Start PointId format is invalid.")
-                return
-
-            # Use new Document Processing method
-            self.update_status("Starting Document Processing with OCR Extraction JSON...")
+                delay_seconds = 5
+                self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
             
-            def progress_callback(message: str):
-                self.update_status(message)
-            
-            final_output_path = self.multi_part_post_processor.process_document_processing_from_ocr_json(
-                ocr_json_path=ocr_json_path,
-                user_prompt=document_prompt,
-                model_name=model_name,
-                book_id=book_id,
-                chapter_id=chapter_id_num,
-                start_point_index=current_index,
-                progress_callback=progress_callback,
-            )
-            
-            if not final_output_path or not os.path.exists(final_output_path):
-                self.update_status("Document Processing failed.")
-                messagebox.showerror("Error", "Document Processing failed. Check logs for details.")
+            # Validate API keys
+            if not self.api_key_manager.api_keys:
+                self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys first"))
                 return
             
-            self.update_status(f"✓ Document Processing completed successfully: {os.path.basename(final_output_path)}")
+            # PointId handling
+            pointid_mapping_txt = None
+            if self.use_pointid_mapping_var.get():
+                pointid_mapping_txt = self.document_processing_pointid_txt_var.get().strip()
+                if pointid_mapping_txt and not os.path.exists(pointid_mapping_txt):
+                    self.root.after(0, lambda: messagebox.showerror("Error", f"PointId mapping file not found:\n{pointid_mapping_txt}"))
+                    return
             
-            # Load and display final output
-            try:
-                with open(final_output_path, "r", encoding="utf-8") as f:
-                    final_data = json.load(f)
+            # If not using mapping, get manual start PointId
+            book_id = None
+            chapter_id_num = None
+            start_point_index = 1
+            if not pointid_mapping_txt:
+                start_pointid_str = self.auto_start_pointid_var.get().strip()
+                if start_pointid_str:
+                    if not (start_pointid_str.isdigit() and len(start_pointid_str) == 10):
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Start PointId must be a 10-digit number, e.g. 1050030000."))
+                        return
+                    try:
+                        book_id = int(start_pointid_str[0:3])
+                        chapter_id_num = int(start_pointid_str[3:6])
+                        start_point_index = int(start_pointid_str[6:10])
+                    except ValueError:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Start PointId format is invalid."))
+                        return
+            
+            model_name = self.get_default_model()
+            total_files = len(self.document_processing_selected_files)
+            completed = 0
+            failed = 0
+            
+            # Reset progress bar
+            self.root.after(0, lambda: self.document_processing_progress_bar.set(0))
+            
+            # Process each file
+            for idx, json_file_path in enumerate(self.document_processing_selected_files):
+                if self.full_pipeline_cancel:
+                    self.root.after(0, lambda: self.document_processing_progress_label.configure(
+                        text="Cancelled by user", text_color="orange"))
+                    break
                 
-                total_points = final_data.get("metadata", {}).get("total_points", 0)
-                messagebox.showinfo(
-                    "Success",
-                    f"Document Processing completed successfully!\n\n"
-                    f"Output file: {os.path.basename(final_output_path)}\n"
-                    f"Total points: {total_points}\n"
-                    f"Next free index: {final_data.get('metadata', {}).get('next_free_index', current_index)}"
-                )
+                file_name = os.path.basename(json_file_path)
                 
-                # Store path for future use
-                self.last_document_processing_path = final_output_path
+                # Update status to processing
+                if hasattr(self, 'document_processing_file_info_list'):
+                    for file_info in self.document_processing_file_info_list:
+                        if file_info['file_path'] == json_file_path:
+                            self.root.after(0, lambda sl=file_info['status_label']: 
+                                           sl.configure(text="Processing...", text_color="blue"))
+                            break
                 
-            except Exception as e:
-                self.logger.error(f"Error loading final output: {str(e)}")
-                messagebox.showerror("Error", f"Failed to load final output:\n{str(e)}")
-                return
-
+                self.root.after(0, lambda idx=idx, total=total_files, fn=file_name: 
+                               self.document_processing_progress_label.configure(
+                                   text=f"Processing file {idx+1}/{total}: {fn}"))
+                
+                # Progress bar
+                progress = idx / total_files
+                self.root.after(0, lambda p=progress: self.document_processing_progress_bar.set(p))
+                
+                try:
+                    # Progress callback for this file
+                    def progress_callback(msg: str):
+                        self.root.after(0, lambda m=msg: 
+                                       self.document_processing_progress_label.configure(text=m))
+                    
+                    # Process the file
+                    final_output_path = self.multi_part_post_processor.process_document_processing_from_ocr_json(
+                        ocr_json_path=json_file_path,
+                        user_prompt=document_prompt,
+                        model_name=model_name,
+                        book_id=book_id,
+                        chapter_id=chapter_id_num,
+                        start_point_index=start_point_index,
+                        pointid_mapping_txt=pointid_mapping_txt,
+                        progress_callback=progress_callback,
+                    )
+                    
+                    if final_output_path and os.path.exists(final_output_path):
+                        completed += 1
+                        # Update status to completed
+                        if hasattr(self, 'document_processing_file_info_list'):
+                            for file_info in self.document_processing_file_info_list:
+                                if file_info['file_path'] == json_file_path:
+                                    file_info['output_path'] = final_output_path
+                                    self.root.after(0, lambda sl=file_info['status_label']: 
+                                                   sl.configure(text="Completed", text_color="green"))
+                                    break
+                        
+                        self.logger.info(f"Successfully processed: {file_name} -> {os.path.basename(final_output_path)}")
+                    else:
+                        failed += 1
+                        # Update status to failed
+                        if hasattr(self, 'document_processing_file_info_list'):
+                            for file_info in self.document_processing_file_info_list:
+                                if file_info['file_path'] == json_file_path:
+                                    self.root.after(0, lambda sl=file_info['status_label']: 
+                                                   sl.configure(text="Failed", text_color="red"))
+                                    break
+                        self.logger.error(f"Failed to process: {file_name}")
+                    
+                    # Delay between files (except for last file)
+                    if idx < total_files - 1 and delay_seconds > 0:
+                        import time
+                        time.sleep(delay_seconds)
+                        
+                except Exception as e:
+                    failed += 1
+                    self.logger.error(f"Error processing {file_name}: {str(e)}", exc_info=True)
+                    # Update status to failed
+                    if hasattr(self, 'document_processing_file_info_list'):
+                        for file_info in self.document_processing_file_info_list:
+                            if file_info['file_path'] == json_file_path:
+                                self.root.after(0, lambda sl=file_info['status_label']: 
+                                               sl.configure(text="Failed", text_color="red"))
+                                break
+            
+            # Final progress update
+            self.root.after(0, lambda: self.document_processing_progress_bar.set(1.0))
+            self.root.after(0, lambda: self.document_processing_progress_label.configure(
+                text=f"Completed: {completed} succeeded, {failed} failed"))
+            
+            # Show summary
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Batch Processing Complete",
+                f"Document Processing batch completed!\n\n"
+                f"Total files: {total_files}\n"
+                f"Successful: {completed}\n"
+                f"Failed: {failed}"
+            ))
+            
         except Exception as e:
-            self.logger.error(f"Error in Document Processing: {str(e)}", exc_info=True)
-            messagebox.showerror("Error", f"Document Processing error:\n{str(e)}")
+            self.logger.error(f"Error in batch Document Processing: {str(e)}", exc_info=True)
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Batch processing error:\n{str(e)}"))
         finally:
             try:
                 self.root.after(
                     0,
-                    lambda: start_button.configure(state="normal", text="Run Document Processing")
+                    lambda: start_button.configure(state="normal", text="Process All Files")
                 )
             except Exception:
                 pass
@@ -3521,59 +3772,230 @@ class ContentAutomationGUI:
         )
         desc.pack(pady=(0, 20))
         
-        # Content Processing File Selection
-        stage4_frame = ctk.CTkFrame(main_frame)
-        stage4_frame.pack(fill="x", pady=10)
+        # File Pair Selection - Batch Processing
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(stage4_frame, text="Content Processing JSON (with PointId):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            pairs_frame,
+            text="Input File Pairs (Stage 4 JSON + OCR Extraction JSON) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
         
-        self.stage_e_stage4_var = ctk.StringVar()
-        # Auto-fill if available
-        if self.last_corrected_path and os.path.exists(self.last_corrected_path):
-            self.stage_e_stage4_var.set(self.last_corrected_path)
+        # File selection buttons
+        buttons_frame = ctk.CTkFrame(pairs_frame)
+        buttons_frame.pack(fill="x", padx=15, pady=5)
         
-        entry_frame = ctk.CTkFrame(stage4_frame)
-        entry_frame.pack(fill="x", padx=10, pady=5)
+        def select_folder_and_match_stage_e_pairs():
+            folder_path = filedialog.askdirectory(title="Select folder containing Stage 4 and OCR Extraction JSON files")
+            if not folder_path:
+                return
+            
+            import glob
+            # Support both old format (Lesson_file_{book}_{chapter}.json) and new format (Lesson_file_{input_name}.json)
+            stage4_files = glob.glob(os.path.join(folder_path, "Lesson_file_*.json"))
+            stage4_files = [f for f in stage4_files if os.path.isfile(f)]
+            
+            ocr_files = glob.glob(os.path.join(folder_path, "*.json"))
+            ocr_files = [f for f in ocr_files if os.path.isfile(f)]
+            
+            if not stage4_files:
+                messagebox.showinfo("Info", "No Stage 4 JSON files (Lesson_file_*.json) found in selected folder")
+                return
+            
+            if not ocr_files:
+                messagebox.showinfo("Info", "No OCR Extraction JSON files found in selected folder")
+                return
+            
+            # Match pairs based on book_id and chapter_id
+            matched_pairs = []
+            unmatched_stage4 = []
+            
+            for stage4_file in stage4_files:
+                stage4_name = os.path.basename(stage4_file)
+                matched_ocr = None
+                
+                # Strategy 1: Try to match by book_id and chapter_id from filename (old format: Lesson_file_{book}_{chapter}.json)
+                import re
+                match = re.search(r'Lesson_file_(\d+)_(\d+)\.json', stage4_name)
+                if match:
+                    book_id = int(match.group(1))
+                    chapter_id = int(match.group(2))
+                    
+                    # Try to find matching OCR file by metadata
+                    for ocr_file in ocr_files:
+                        try:
+                            with open(ocr_file, 'r', encoding='utf-8') as f:
+                                ocr_data = json.load(f)
+                            metadata = ocr_data.get('metadata', {})
+                            ocr_book_id = metadata.get('book_id')
+                            ocr_chapter_id = metadata.get('chapter_id')
+                            
+                            if ocr_book_id == book_id and ocr_chapter_id == chapter_id:
+                                matched_ocr = ocr_file
+                                break
+                        except Exception:
+                            continue
+                
+                # Strategy 2: Try to match by metadata from Stage 4 file (new format: Lesson_file_{input_name}.json)
+                if not matched_ocr:
+                    try:
+                        with open(stage4_file, 'r', encoding='utf-8') as f:
+                            stage4_data = json.load(f)
+                        stage4_metadata = stage4_data.get('metadata', {})
+                        stage4_book_id = stage4_metadata.get('book_id')
+                        stage4_chapter_id = stage4_metadata.get('chapter_id')
+                        
+                        if stage4_book_id and stage4_chapter_id:
+                            # Try to find matching OCR file by metadata
+                            for ocr_file in ocr_files:
+                                try:
+                                    with open(ocr_file, 'r', encoding='utf-8') as f:
+                                        ocr_data = json.load(f)
+                                    ocr_metadata = ocr_data.get('metadata', {})
+                                    ocr_book_id = ocr_metadata.get('book_id')
+                                    ocr_chapter_id = ocr_metadata.get('chapter_id')
+                                    
+                                    if (ocr_book_id == stage4_book_id and 
+                                        ocr_chapter_id == stage4_chapter_id):
+                                        matched_ocr = ocr_file
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception:
+                        pass
+                
+                if matched_ocr:
+                    matched_pairs.append((stage4_file, matched_ocr))
+                else:
+                    unmatched_stage4.append(stage4_file)
+            
+            if not matched_pairs:
+                messagebox.showinfo("Info", "No matching pairs found. Please check file names or metadata.")
+                return
+            
+            # Add pairs to UI
+            if not hasattr(self, 'stage_e_selected_pairs'):
+                self.stage_e_selected_pairs = []
+            
+            added_count = 0
+            for stage4_path, ocr_path in matched_pairs:
+                # Check if pair already exists
+                exists = any(
+                    p['stage4_path'] == stage4_path and p['ocr_path'] == ocr_path
+                    for p in self.stage_e_selected_pairs
+                )
+                if not exists:
+                    self.stage_e_selected_pairs.append({
+                        'stage4_path': stage4_path,
+                        'ocr_path': ocr_path,
+                        'status': 'pending',
+                        'output_path': None
+                    })
+                    self._add_stage_e_pair_to_ui(stage4_path, ocr_path)
+                    added_count += 1
+            
+            summary = f"Auto-matched {added_count} pair(s):\n"
+            for stage4_path, ocr_path in matched_pairs[:5]:
+                summary += f"\nStage4: {os.path.basename(stage4_path)}\nOCR: {os.path.basename(ocr_path)}"
+            if len(matched_pairs) > 5:
+                summary += f"\n... and {len(matched_pairs) - 5} more"
+            
+            if unmatched_stage4:
+                summary += f"\n\nUnmatched Stage 4 files: {len(unmatched_stage4)}"
+            
+            messagebox.showinfo("Auto-Matching Results", summary)
+            self.logger.info(f"Auto-matched {added_count} pairs from folder: {folder_path}")
         
-        stage4_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_e_stage4_var)
-        stage4_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def add_stage_e_pair_manual():
+            # Browse Stage 4 JSON
+            stage4_path = filedialog.askopenfilename(
+                title="Select Stage 4 JSON File (Content Processing)",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if not stage4_path:
+                return
+            
+            # Browse OCR Extraction JSON
+            ocr_path = filedialog.askopenfilename(
+                title="Select OCR Extraction JSON File",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if not ocr_path:
+                return
+            
+            if not hasattr(self, 'stage_e_selected_pairs'):
+                self.stage_e_selected_pairs = []
+            
+            # Check if pair already exists
+            exists = any(
+                p['stage4_path'] == stage4_path and p['ocr_path'] == ocr_path
+                for p in self.stage_e_selected_pairs
+            )
+            if not exists:
+                self.stage_e_selected_pairs.append({
+                    'stage4_path': stage4_path,
+                    'ocr_path': ocr_path,
+                    'status': 'pending',
+                    'output_path': None
+                })
+                self._add_stage_e_pair_to_ui(stage4_path, ocr_path)
+                self.logger.info(f"Added manual pair: Stage4={os.path.basename(stage4_path)}, OCR={os.path.basename(ocr_path)}")
         
-        ctk.CTkButton(entry_frame, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_e_stage4_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame,
+            text="Select Folder (Auto-Match)",
+            command=select_folder_and_match_stage_e_pairs,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator
-        self.stage_e_stage4_valid = ctk.CTkLabel(entry_frame, text="", width=30)
-        self.stage_e_stage4_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame,
+            text="Add Pair Manually",
+            command=add_stage_e_pair_manual,
+            width=180,
+        ).pack(side="left", padx=5, pady=5)
         
-        # OCR Extraction JSON File Selection
-        ocr_extraction_frame = ctk.CTkFrame(main_frame)
-        ocr_extraction_frame.pack(fill="x", pady=10)
+        # Delay setting
+        delay_frame = ctk.CTkFrame(pairs_frame)
+        delay_frame.pack(fill="x", padx=15, pady=5)
         
-        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON File:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            delay_frame,
+            text="Delay between pairs (seconds):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_e_ocr_extraction_json_var'):
-            self.stage_e_ocr_extraction_json_var = ctk.StringVar()
-            # Auto-fill if available
-            if hasattr(self, 'last_ocr_extraction_path') and self.last_ocr_extraction_path and os.path.exists(self.last_ocr_extraction_path):
-                self.stage_e_ocr_extraction_json_var.set(self.last_ocr_extraction_path)
+        if not hasattr(self, 'stage_e_delay_var'):
+            self.stage_e_delay_var = ctk.StringVar(value="5")
         
-        entry_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
-        entry_frame_ocr.pack(fill="x", padx=10, pady=5)
+        delay_entry = ctk.CTkEntry(delay_frame, textvariable=self.stage_e_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5, pady=5)
         
-        ocr_extraction_entry = ctk.CTkEntry(entry_frame_ocr, textvariable=self.stage_e_ocr_extraction_json_var, width=400)
-        ocr_extraction_entry.pack(side="left", fill="x", expand=True, padx=5)
+        # Pairs list (scrollable)
+        list_frame = ctk.CTkFrame(pairs_frame)
+        list_frame.pack(fill="both", expand=True, padx=15, pady=5)
         
-        ctk.CTkButton(entry_frame_ocr, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_e_ocr_extraction_json_var, 
-                                                                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")])).pack(side="right")
+        ctk.CTkLabel(
+            list_frame,
+            text="Selected Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
         
-        # Validation indicator
-        if not hasattr(self, 'stage_e_ocr_extraction_valid'):
-            self.stage_e_ocr_extraction_valid = ctk.CTkLabel(entry_frame_ocr, text="", width=30)
-        self.stage_e_ocr_extraction_valid.pack(side="right", padx=5)
+        if not hasattr(self, 'stage_e_pairs_list_scroll'):
+            self.stage_e_pairs_list_scroll = ctk.CTkScrollableFrame(list_frame, height=150)
+        self.stage_e_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected pairs list if not exists
+        if not hasattr(self, 'stage_e_selected_pairs'):
+            self.stage_e_selected_pairs = []
+        
+        ctk.CTkLabel(
+            pairs_frame,
+            text="Each pair should have: Stage 4 JSON (with PointId) + OCR Extraction JSON",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=15, pady=(0, 10))
         
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -3665,20 +4087,47 @@ class ContentAutomationGUI:
         )
         self.stage_e_model_combo.pack(anchor="w", padx=10, pady=5)
         
-        # Process Button
+        # Process Buttons
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
         
+        # Single file processing button (for backward compatibility)
         self.stage_e_process_btn = ctk.CTkButton(
             process_btn_frame,
-            text="Process Image Notes Generation",
+            text="Process Single Pair",
             command=self.process_stage_e,
             width=200,
             height=40,
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(size=14, weight="bold"),
             fg_color="blue"
         )
-        self.stage_e_process_btn.pack(pady=10)
+        self.stage_e_process_btn.pack(side="left", padx=10, pady=10)
+        
+        # Batch processing button
+        def start_batch_processing():
+            if not hasattr(self, 'stage_e_selected_pairs') or not self.stage_e_selected_pairs:
+                messagebox.showwarning("Warning", "Please add at least one file pair")
+                return
+            batch_btn.configure(state="disabled", text="Processing...")
+            self.full_pipeline_cancel = False
+            threading.Thread(
+                target=self.process_multiple_stage_e_pairs,
+                args=(self.root, batch_btn),
+                daemon=True,
+            ).start()
+        
+        batch_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process All Pairs",
+            command=start_batch_processing,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        batch_btn.pack(side="left", padx=10, pady=10)
+        self.stage_e_process_all_btn = batch_btn
         
         # View CSV button
         self.stage_e_view_csv_btn = ctk.CTkButton(
@@ -3688,21 +4137,43 @@ class ContentAutomationGUI:
             width=150,
             height=40,
             font=ctk.CTkFont(size=14),
-            fg_color="green",
-            hover_color="darkgreen",
+            fg_color="purple",
+            hover_color="darkpurple",
             state="disabled"
         )
-        self.stage_e_view_csv_btn.pack(pady=10)
+        self.stage_e_view_csv_btn.pack(side="left", padx=10, pady=10)
+        
+        # Progress bar for batch processing
+        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame.pack(fill="x", padx=20, pady=10)
+        
+        if not hasattr(self, 'stage_e_progress_bar'):
+            self.stage_e_progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.stage_e_progress_bar.pack(fill="x", padx=10, pady=(0, 5))
+        self.stage_e_progress_bar.set(0.0)
+        
+        if not hasattr(self, 'stage_e_progress_label'):
+            self.stage_e_progress_label = ctk.CTkLabel(
+                progress_frame,
+                text="Waiting to start...",
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+            )
+        self.stage_e_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
         
         # Status for Stage E
         self.stage_e_status_label = ctk.CTkLabel(main_frame, text="Ready", 
                                                  font=ctk.CTkFont(size=12), text_color="gray")
         self.stage_e_status_label.pack(pady=10)
         
-        # Auto-validate files on change
-        self.stage_e_stage4_var.trace('w', lambda *args: self.validate_stage_e_files())
-        if hasattr(self, 'stage_e_ocr_extraction_json_var'):
-            self.stage_e_ocr_extraction_json_var.trace('w', lambda *args: self.validate_stage_e_files())
+        # Note: Auto-validation removed since we're using batch processing with pairs list
+        # Single file selection variables (stage_e_stage4_var, stage_e_ocr_extraction_json_var) 
+        # are no longer used in batch processing mode, but kept for backward compatibility
+        # Initialize them as empty if they don't exist (for backward compatibility)
+        if not hasattr(self, 'stage_e_stage4_var'):
+            self.stage_e_stage4_var = ctk.StringVar(value="")
+        if not hasattr(self, 'stage_e_ocr_extraction_json_var'):
+            self.stage_e_ocr_extraction_json_var = ctk.StringVar(value="")
     
     def browse_file_for_stage(self, var: ctk.StringVar, filetypes: list = None):
         """Browse for file and set variable"""
@@ -3717,35 +4188,41 @@ class ContentAutomationGUI:
             var.set(filename)
     
     def validate_stage_e_files(self):
-        """Validate Stage E input files"""
+        """Validate Stage E input files (for backward compatibility with single file mode)"""
+        # Check if single file mode variables exist (for backward compatibility)
+        if not hasattr(self, 'stage_e_stage4_var'):
+            return  # Batch processing mode - no single file validation needed
+        
         stage4_path = self.stage_e_stage4_var.get()
         ocr_extraction_path = self.stage_e_ocr_extraction_json_var.get() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
         
-        # Validate Stage 4
-        if stage4_path and os.path.exists(stage4_path):
-            try:
-                data = json.load(open(stage4_path, 'r', encoding='utf-8'))
-                points = data.get("data") or data.get("points") or data.get("rows", [])
-                if points and points[0].get("PointId"):
-                    self.stage_e_stage4_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_e_stage4_valid.configure(text="W", text_color="orange")
-            except:
-                self.stage_e_stage4_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_e_stage4_valid.configure(text="", text_color="gray")
-        
-        # Validate OCR Extraction JSON
-        if ocr_extraction_path:
-            if os.path.exists(ocr_extraction_path):
-                if ocr_extraction_path.lower().endswith('.json'):
-                    self.stage_e_ocr_extraction_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_e_ocr_extraction_valid.configure(text="W", text_color="orange")
+        # Validate Stage 4 (only if validation labels exist)
+        if hasattr(self, 'stage_e_stage4_valid'):
+            if stage4_path and os.path.exists(stage4_path):
+                try:
+                    data = json.load(open(stage4_path, 'r', encoding='utf-8'))
+                    points = data.get("data") or data.get("points") or data.get("rows", [])
+                    if points and points[0].get("PointId"):
+                        self.stage_e_stage4_valid.configure(text="OK", text_color="green")
+                    else:
+                        self.stage_e_stage4_valid.configure(text="W", text_color="orange")
+                except:
+                    self.stage_e_stage4_valid.configure(text="X", text_color="red")
             else:
-                self.stage_e_ocr_extraction_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_e_ocr_extraction_valid.configure(text="", text_color="gray")
+                self.stage_e_stage4_valid.configure(text="", text_color="gray")
+        
+        # Validate OCR Extraction JSON (only if validation labels exist)
+        if hasattr(self, 'stage_e_ocr_extraction_valid'):
+            if ocr_extraction_path:
+                if os.path.exists(ocr_extraction_path):
+                    if ocr_extraction_path.lower().endswith('.json'):
+                        self.stage_e_ocr_extraction_valid.configure(text="OK", text_color="green")
+                    else:
+                        self.stage_e_ocr_extraction_valid.configure(text="W", text_color="orange")
+                else:
+                    self.stage_e_ocr_extraction_valid.configure(text="X", text_color="red")
+            else:
+                self.stage_e_ocr_extraction_valid.configure(text="", text_color="gray")
     
     def process_stage_e(self):
         """Process Stage E in background thread"""
@@ -3755,7 +4232,11 @@ class ContentAutomationGUI:
                 self.update_stage_status("E", "processing")
                 self.stage_e_status_label.configure(text="Processing Image Notes Generation...", text_color="blue")
                 
-                # Validate inputs
+                # Validate inputs (for single file mode - backward compatibility)
+                if not hasattr(self, 'stage_e_stage4_var'):
+                    messagebox.showerror("Error", "Single file mode not available. Please use batch processing mode (Process All Pairs).")
+                    return
+                
                 stage4_path = self.stage_e_stage4_var.get().strip()
                 ocr_extraction_json_path = self.stage_e_ocr_extraction_json_var.get().strip() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
                 prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
@@ -3812,11 +4293,294 @@ class ContentAutomationGUI:
                 self.stage_e_status_label.configure(text=f"Error: {str(e)}", text_color="red")
                 messagebox.showerror("Error", f"Image Notes Generation processing error:\n{str(e)}")
             finally:
-                self.root.after(0, lambda: self.stage_e_process_btn.configure(state="normal", text="Process Image Notes Generation"))
+                self.root.after(0, lambda: self.stage_e_process_btn.configure(state="normal", text="Process Single Pair"))
         
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+    
+    def _add_stage_e_pair_to_ui(self, stage4_path: str, ocr_path: str):
+        """Add a file pair to the Stage E UI list"""
+        pair_frame = ctk.CTkFrame(self.stage_e_pairs_list_scroll)
+        pair_frame.pack(fill="x", padx=5, pady=2)
+        
+        # Stage 4 file name
+        stage4_name = os.path.basename(stage4_path)
+        stage4_label = ctk.CTkLabel(pair_frame, text=f"Stage4: {stage4_name}", 
+                                   font=ctk.CTkFont(size=10))
+        stage4_label.pack(side="left", padx=5)
+        
+        # OCR file name
+        ocr_name = os.path.basename(ocr_path)
+        ocr_label = ctk.CTkLabel(pair_frame, text=f"OCR: {ocr_name}", 
+                                font=ctk.CTkFont(size=10))
+        ocr_label.pack(side="left", padx=5)
+        
+        # Status label
+        status_label = ctk.CTkLabel(pair_frame, text="Pending", 
+                                   text_color="gray", font=ctk.CTkFont(size=11))
+        status_label.pack(side="right", padx=5)
+        
+        # Remove button
+        remove_btn = ctk.CTkButton(pair_frame, text="X", width=30, height=20,
+                                  command=lambda s4=stage4_path, ocr=ocr_path, w=pair_frame: 
+                                  self.remove_stage_e_pair(s4, ocr, w))
+        remove_btn.pack(side="right", padx=2)
+        
+        # Store pair info (if list doesn't exist, create it)
+        if not hasattr(self, 'stage_e_pair_info_list'):
+            self.stage_e_pair_info_list = []
+        
+        self.stage_e_pair_info_list.append({
+            'stage4_path': stage4_path,
+            'ocr_path': ocr_path,
+            'status_label': status_label,
+            'frame': pair_frame,
+            'output_path': None
+        })
+    
+    def remove_stage_e_pair(self, stage4_path: str, ocr_path: str, frame_widget):
+        """Remove a pair from the Stage E selection list"""
+        if hasattr(self, 'stage_e_selected_pairs'):
+            self.stage_e_selected_pairs = [
+                p for p in self.stage_e_selected_pairs 
+                if not (p['stage4_path'] == stage4_path and p['ocr_path'] == ocr_path)
+            ]
+        if hasattr(self, 'stage_e_pair_info_list'):
+            self.stage_e_pair_info_list = [
+                p for p in self.stage_e_pair_info_list
+                if not (p['stage4_path'] == stage4_path and p['ocr_path'] == ocr_path)
+            ]
+        frame_widget.destroy()
+    
+    def process_multiple_stage_e_pairs(self, parent_window, start_button):
+        """Process multiple Stage E file pairs sequentially"""
+        try:
+            if not hasattr(self, 'stage_e_selected_pairs') or not self.stage_e_selected_pairs:
+                self.root.after(0, lambda: messagebox.showwarning("Warning", "Please add at least one file pair"))
+                return
+            
+            # Get prompt
+            stage_e_prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
+            if not stage_e_prompt:
+                default_prompt = self.prompt_manager.get_prompt("Image Notes Prompt")
+                if default_prompt:
+                    stage_e_prompt = default_prompt
+                    self.logger.info("Using default Image Notes prompt from prompts.json")
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                    return
+            
+            # Get delay
+            try:
+                delay_seconds = int(self.stage_e_delay_var.get())
+            except ValueError:
+                delay_seconds = 5
+                self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
+            
+            # Validate API keys
+            if not self.api_key_manager.api_keys:
+                self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys first"))
+                return
+            
+            # Get model
+            model_name = self.get_default_model()
+            total_pairs = len(self.stage_e_selected_pairs)
+            completed = 0
+            failed = 0
+            skipped = 0
+            
+            # Reset progress bar
+            self.root.after(0, lambda: self.stage_e_progress_bar.set(0))
+            
+            # Process each pair
+            for idx, pair in enumerate(self.stage_e_selected_pairs):
+                if self.full_pipeline_cancel:
+                    self.root.after(0, lambda: self.stage_e_progress_label.configure(
+                        text="Cancelled by user", text_color="orange"))
+                    break
+                
+                stage4_path = pair['stage4_path']
+                ocr_path = pair['ocr_path']
+                stage4_name = os.path.basename(stage4_path)
+                ocr_name = os.path.basename(ocr_path)
+                
+                # Check if output file already exists (check for incomplete/remaining files)
+                output_dir = self.get_default_output_dir(stage4_path)
+                expected_output_path = None
+                
+                # Try to determine expected output filename by reading Stage 4 file
+                # Format: e{book}{chapter}_{base_name}.json (e.g., e105003_Lesson_file_1_1.json)
+                stage4_data = None
+                base_name_stage4, _ = os.path.splitext(stage4_name)
+                try:
+                    with open(stage4_path, 'r', encoding='utf-8') as f:
+                        stage4_data = json.load(f)
+                    stage4_points = stage4_data.get("data") or stage4_data.get("points") or stage4_data.get("rows", [])
+                    if stage4_points and stage4_points[0].get("PointId"):
+                        first_point_id = stage4_points[0].get("PointId")
+                        book_id, chapter_id = self.stage_e_processor.extract_book_chapter_from_pointid(first_point_id)
+                        # Use unique filename format: e{book}{chapter}_{base_name}.json
+                        output_filename = f"e{book_id:03d}{chapter_id:03d}_{base_name_stage4}.json"
+                        expected_output_path = os.path.join(output_dir, output_filename)
+                except Exception as e:
+                    self.logger.warning(f"Could not determine expected output path for {stage4_name}: {e}")
+                    # Fallback: try common output directory (same directory as Stage 4 file)
+                    base_dir = os.path.dirname(stage4_path) or os.getcwd()
+                    try:
+                        # Read Stage 4 file again if not already loaded
+                        if stage4_data is None:
+                            with open(stage4_path, 'r', encoding='utf-8') as f:
+                                stage4_data = json.load(f)
+                            stage4_points = stage4_data.get("data") or stage4_data.get("points") or stage4_data.get("rows", [])
+                        else:
+                            stage4_points = stage4_data.get("data") or stage4_data.get("points") or stage4_data.get("rows", [])
+                        if stage4_points and stage4_points[0].get("PointId"):
+                            first_point_id = stage4_points[0].get("PointId")
+                            book_id, chapter_id = self.stage_e_processor.extract_book_chapter_from_pointid(first_point_id)
+                            # Use unique filename format: e{book}{chapter}_{base_name}.json
+                            output_filename = f"e{book_id:03d}{chapter_id:03d}_{base_name_stage4}.json"
+                            expected_output_path = os.path.join(base_dir, output_filename)
+                    except:
+                        pass
+                
+                # Check if output already exists and is valid
+                if expected_output_path and os.path.exists(expected_output_path):
+                    try:
+                        # Validate that the file is a complete Stage E output
+                        with open(expected_output_path, 'r', encoding='utf-8') as f:
+                            existing_data = json.load(f)
+                        # Check if it has the expected structure (data field with points)
+                        existing_points = existing_data.get("data") or existing_data.get("points") or existing_data.get("rows", [])
+                        if existing_points and len(existing_points) > 0:
+                            # File exists and appears complete, skip it
+                            skipped += 1
+                            self.logger.info(f"Skipping already processed pair: {stage4_name} + {ocr_name} -> {os.path.basename(expected_output_path)}")
+                            
+                            # Update status to skipped/already completed
+                            if hasattr(self, 'stage_e_pair_info_list'):
+                                for pair_info in self.stage_e_pair_info_list:
+                                    if pair_info['stage4_path'] == stage4_path and pair_info['ocr_path'] == ocr_path:
+                                        pair_info['output_path'] = expected_output_path
+                                        self.root.after(0, lambda sl=pair_info['status_label']: 
+                                                       sl.configure(text="Already Completed", text_color="gray"))
+                                        break
+                            
+                            # Update progress
+                            self.root.after(0, lambda idx=idx, total=total_pairs, s4=stage4_name: 
+                                           self.stage_e_progress_label.configure(
+                                               text=f"Skipping pair {idx+1}/{total}: {s4} (already completed)"))
+                            
+                            # Progress bar
+                            progress = (idx + 1) / total_pairs
+                            self.root.after(0, lambda p=progress: self.stage_e_progress_bar.set(p))
+                            
+                            # Continue to next pair
+                            continue
+                    except Exception as e:
+                        self.logger.warning(f"Existing output file {expected_output_path} appears invalid, will reprocess: {e}")
+                        # File exists but is invalid, continue to process it
+                
+                # Update status to processing
+                if hasattr(self, 'stage_e_pair_info_list'):
+                    for pair_info in self.stage_e_pair_info_list:
+                        if pair_info['stage4_path'] == stage4_path and pair_info['ocr_path'] == ocr_path:
+                            self.root.after(0, lambda sl=pair_info['status_label']: 
+                                           sl.configure(text="Processing...", text_color="blue"))
+                            break
+                
+                self.root.after(0, lambda idx=idx, total=total_pairs, s4=stage4_name: 
+                               self.stage_e_progress_label.configure(
+                                   text=f"Processing pair {idx+1}/{total}: {s4}"))
+                
+                # Progress bar
+                progress = idx / total_pairs
+                self.root.after(0, lambda p=progress: self.stage_e_progress_bar.set(p))
+                
+                try:
+                    # Progress callback for this pair
+                    def progress_callback(msg: str):
+                        self.root.after(0, lambda m=msg: 
+                                       self.stage_e_progress_label.configure(text=m))
+                    
+                    # Process the pair
+                    output_path = self.stage_e_processor.process_stage_e(
+                        stage4_path=stage4_path,
+                        ocr_extraction_json_path=ocr_path,
+                        prompt=stage_e_prompt,
+                        model_name=model_name,
+                        output_dir=output_dir,
+                        progress_callback=progress_callback
+                    )
+                    
+                    if output_path and os.path.exists(output_path):
+                        completed += 1
+                        # Update status to completed
+                        if hasattr(self, 'stage_e_pair_info_list'):
+                            for pair_info in self.stage_e_pair_info_list:
+                                if pair_info['stage4_path'] == stage4_path and pair_info['ocr_path'] == ocr_path:
+                                    pair_info['output_path'] = output_path
+                                    self.root.after(0, lambda sl=pair_info['status_label']: 
+                                                   sl.configure(text="Completed", text_color="green"))
+                                    break
+                        
+                        self.logger.info(f"Successfully processed: {stage4_name} + {ocr_name} -> {os.path.basename(output_path)}")
+                    else:
+                        failed += 1
+                        # Update status to failed
+                        if hasattr(self, 'stage_e_pair_info_list'):
+                            for pair_info in self.stage_e_pair_info_list:
+                                if pair_info['stage4_path'] == stage4_path and pair_info['ocr_path'] == ocr_path:
+                                    self.root.after(0, lambda sl=pair_info['status_label']: 
+                                                   sl.configure(text="Failed", text_color="red"))
+                                    break
+                        self.logger.error(f"Failed to process: {stage4_name} + {ocr_name}")
+                    
+                    # Delay between pairs (except for last pair)
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        import time
+                        time.sleep(delay_seconds)
+                        
+                except Exception as e:
+                    failed += 1
+                    self.logger.error(f"Error processing {stage4_name} + {ocr_name}: {str(e)}", exc_info=True)
+                    # Update status to failed
+                    if hasattr(self, 'stage_e_pair_info_list'):
+                        for pair_info in self.stage_e_pair_info_list:
+                            if pair_info['stage4_path'] == stage4_path and pair_info['ocr_path'] == ocr_path:
+                                self.root.after(0, lambda sl=pair_info['status_label']: 
+                                               sl.configure(text="Failed", text_color="red"))
+                                break
+            
+            # Final progress update
+            self.root.after(0, lambda: self.stage_e_progress_bar.set(1.0))
+            self.root.after(0, lambda: self.stage_e_progress_label.configure(
+                text=f"Completed: {completed} succeeded, {failed} failed, {skipped} skipped"))
+            
+            # Show summary
+            summary_msg = f"Image Notes Generation batch completed!\n\n"
+            summary_msg += f"Total pairs: {total_pairs}\n"
+            summary_msg += f"Successful: {completed}\n"
+            if skipped > 0:
+                summary_msg += f"Skipped (already completed): {skipped}\n"
+            summary_msg += f"Failed: {failed}"
+            
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Batch Processing Complete",
+                summary_msg
+            ))
+            
+        except Exception as e:
+            self.logger.error(f"Error in batch Image Notes Generation: {str(e)}", exc_info=True)
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Batch processing error:\n{str(e)}"))
+        finally:
+            try:
+                self.root.after(
+                    0,
+                    lambda: start_button.configure(state="normal", text="Process All Pairs")
+                )
+            except Exception:
+                pass
     
     def process_ocr_extraction(self):
         """Process OCR Extraction in background thread"""
@@ -3838,8 +4602,8 @@ class ContentAutomationGUI:
                     return
                 
                 if not topic_file_path or not os.path.exists(topic_file_path):
-                    self.ocr_extraction_status_label.configure(text="Error: Please select a valid Pre-OCR Topic file (t{book}{chapter}.json)", text_color="red")
-                    messagebox.showerror("Error", "Please select a valid Pre-OCR Topic file (t{book}{chapter}.json)")
+                    self.ocr_extraction_status_label.configure(text="Error: Please select a valid Pre-OCR Topic file (t*.json)", text_color="red")
+                    messagebox.showerror("Error", "Please select a valid Pre-OCR Topic file (t*.json)")
                     return
                 
                 if not prompt:
@@ -3922,7 +4686,7 @@ class ContentAutomationGUI:
                 if file.lower().endswith('.pdf'):
                     pdf_files.append(file_path)
                 elif file.lower().endswith('.json') and file.startswith('t') and len(file) >= 10:
-                    # Topic file: t{book}{chapter}.json
+                    # Topic file: t{book}{chapter}*.json (supports both old and new formats)
                     topic_files.append(file_path)
         
         if not pdf_files:
@@ -3944,30 +4708,47 @@ class ContentAutomationGUI:
         
         for pdf_path in pdf_files:
             pdf_name = os.path.basename(pdf_path)
+            pdf_name_without_ext = os.path.splitext(pdf_name)[0]
+            matched_topic = None
             
-            # Try to extract book_id and chapter_id from PDF filename
-            book_id, chapter_id = self._extract_book_chapter_from_pdf_name(pdf_name)
+            # Strategy 1: Match by PDF name suffix (most reliable for new format)
+            # Look for topic file ending with: _{pdf_name_without_ext}.json
+            expected_suffix = f"_{pdf_name_without_ext}.json"
+            for topic_path in topic_files:
+                topic_basename = os.path.basename(topic_path)
+                if topic_basename.endswith(expected_suffix) and topic_basename.startswith('t'):
+                    matched_topic = topic_path
+                    break
             
-            if book_id is None or chapter_id is None:
-                # Try to find matching topic file by checking metadata
+            # Strategy 2: Try to extract book_id and chapter_id from PDF filename
+            # Then match with pattern t{book:03d}{chapter:03d}_{pdf_name}.json
+            if not matched_topic:
+                book_id, chapter_id = self._extract_book_chapter_from_pdf_name(pdf_name)
+                if book_id is not None and chapter_id is not None:
+                    expected_prefix = f"t{book_id:03d}{chapter_id:03d}"
+                    expected_format = f"{expected_prefix}_{pdf_name_without_ext}.json"
+                    for topic_path in topic_files:
+                        topic_basename = os.path.basename(topic_path)
+                        if topic_basename == expected_format:
+                            matched_topic = topic_path
+                            break
+                    
+                    # If exact match not found, try prefix match (old format)
+                    if not matched_topic:
+                        for topic_path in topic_files:
+                            topic_basename = os.path.basename(topic_path)
+                            if topic_basename.startswith(expected_prefix) and topic_basename.endswith('.json'):
+                                matched_topic = topic_path
+                                break
+            
+            # Strategy 3: Try matching by metadata as fallback
+            if not matched_topic:
                 matched_topic = self._find_matching_topic_file_by_metadata(pdf_path, topic_files)
-                if matched_topic:
-                    matched_pairs.append((pdf_path, matched_topic))
-                else:
-                    unmatched_pdfs.append(pdf_path)
+            
+            if matched_topic:
+                matched_pairs.append((pdf_path, matched_topic))
             else:
-                # Look for topic file with pattern t{book:03d}{chapter:03d}.json
-                expected_topic_name = f"t{book_id:03d}{chapter_id:03d}.json"
-                matched_topic = None
-                for topic_path in topic_files:
-                    if os.path.basename(topic_path) == expected_topic_name:
-                        matched_topic = topic_path
-                        break
-                
-                if matched_topic:
-                    matched_pairs.append((pdf_path, matched_topic))
-                else:
-                    unmatched_pdfs.append(pdf_path)
+                unmatched_pdfs.append(pdf_path)
         
         # Add matched pairs to UI
         for pdf_path, topic_path in matched_pairs:
@@ -4084,7 +4865,7 @@ class ContentAutomationGUI:
         
         # Browse Topic file
         topic_path = filedialog.askopenfilename(
-            title="Select Pre-OCR Topic File (t{book}{chapter}.json)",
+            title="Select Pre-OCR Topic File (t*.json)",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
         )
         if not topic_path:
@@ -4099,6 +4880,51 @@ class ContentAutomationGUI:
             p for p in self.ocr_extraction_selected_pairs 
             if not (p['pdf_path'] == pdf_path and p['topic_file_path'] == topic_path)
         ]
+        frame_widget.destroy()
+    
+    def _add_document_processing_file_to_ui(self, file_path: str):
+        """Add a JSON file to the Document Processing UI list"""
+        file_frame = ctk.CTkFrame(self.document_processing_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        # File name
+        file_name = os.path.basename(file_path)
+        file_label = ctk.CTkLabel(file_frame, text=f"{file_name}", 
+                                font=ctk.CTkFont(size=10))
+        file_label.pack(side="left", padx=5)
+        
+        # Status label
+        status_label = ctk.CTkLabel(file_frame, text="Pending", 
+                                   text_color="gray", font=ctk.CTkFont(size=11))
+        status_label.pack(side="right", padx=5)
+        
+        # Remove button
+        remove_btn = ctk.CTkButton(file_frame, text="X", width=30, height=20,
+                                  command=lambda fp=file_path, w=file_frame: 
+                                  self.remove_document_processing_file(fp, w))
+        remove_btn.pack(side="right", padx=2)
+        
+        # Store file info (if list doesn't exist, create it)
+        if not hasattr(self, 'document_processing_file_info_list'):
+            self.document_processing_file_info_list = []
+        
+        self.document_processing_file_info_list.append({
+            'file_path': file_path,
+            'status_label': status_label,
+            'frame': file_frame,
+            'output_path': None
+        })
+    
+    def remove_document_processing_file(self, file_path: str, frame_widget):
+        """Remove a file from the Document Processing selection list"""
+        if hasattr(self, 'document_processing_selected_files'):
+            self.document_processing_selected_files = [
+                f for f in self.document_processing_selected_files if f != file_path
+            ]
+        if hasattr(self, 'document_processing_file_info_list'):
+            self.document_processing_file_info_list = [
+                f for f in self.document_processing_file_info_list if f['file_path'] != file_path
+            ]
         frame_widget.destroy()
     
     def process_multiple_ocr_extractions(self):
@@ -4265,31 +5091,107 @@ class ContentAutomationGUI:
         )
         desc.pack(pady=(0, 20))
         
-        # Image Notes File Selection
+        # Stage E File Selection - Batch Processing
         stage_e_frame = ctk.CTkFrame(main_frame)
         stage_e_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(stage_e_frame, text="Image Notes JSON:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_e_frame,
+            text="Stage E JSON Files - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        self.stage_f_stage_e_var = ctk.StringVar()
-        # Auto-fill if available
-        if hasattr(self, 'last_stage_e_path') and self.last_stage_e_path and os.path.exists(self.last_stage_e_path):
-            self.stage_f_stage_e_var.set(self.last_stage_e_path)
+        # File selection buttons
+        buttons_frame = ctk.CTkFrame(stage_e_frame)
+        buttons_frame.pack(fill="x", padx=10, pady=5)
         
-        entry_frame = ctk.CTkFrame(stage_e_frame)
-        entry_frame.pack(fill="x", padx=10, pady=5)
+        def browse_multiple_stage_e_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage E JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_f_selected_files'):
+                    self.stage_f_selected_files = []
+                for filename in filenames:
+                    if filename not in self.stage_f_selected_files:
+                        self.stage_f_selected_files.append(filename)
+                        self._add_stage_f_file_to_ui(filename)
         
-        stage_e_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_f_stage_e_var)
-        stage_e_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def select_folder_stage_e_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage E JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_f_selected_files'):
+                self.stage_f_selected_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_f_selected_files:
+                    self.stage_f_selected_files.append(json_file)
+                    self._add_stage_f_file_to_ui(json_file)
+                    added_count += 1
+            
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
         
-        ctk.CTkButton(entry_frame, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_f_stage_e_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame,
+            text="Browse Multiple Files",
+            command=browse_multiple_stage_e_files,
+            width=180,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator
-        self.stage_f_stage_e_valid = ctk.CTkLabel(entry_frame, text="", width=30)
-        self.stage_f_stage_e_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame,
+            text="Select Folder",
+            command=select_folder_stage_e_files,
+            width=180,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Files list (scrollable)
+        list_frame = ctk.CTkFrame(stage_e_frame)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame,
+            text="Selected Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_f_files_list_scroll'):
+            self.stage_f_files_list_scroll = ctk.CTkScrollableFrame(list_frame, height=150)
+        self.stage_f_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_f_selected_files'):
+            self.stage_f_selected_files = []
+        
+        if not hasattr(self, 'stage_f_file_info_list'):
+            self.stage_f_file_info_list = []
+        
+        ctk.CTkLabel(
+            stage_e_frame,
+            text="Each JSON file should be a Stage E JSON file with first_image_point_id in metadata.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=15, pady=(0, 10))
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_f_progress_bar'):
+            self.stage_f_progress_bar = ctk.CTkProgressBar(main_frame, width=400)
+        self.stage_f_progress_bar.pack(pady=10)
+        self.stage_f_progress_bar.set(0)
         
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
@@ -4298,7 +5200,7 @@ class ContentAutomationGUI:
         self.stage_f_process_btn = ctk.CTkButton(
             process_btn_frame,
             text="Process Image File Catalog",
-            command=self.process_stage_f,
+            command=self.process_stage_f_batch,
             width=200,
             height=40,
             font=ctk.CTkFont(size=16, weight="bold"),
@@ -4324,65 +5226,250 @@ class ContentAutomationGUI:
         self.stage_f_status_label = ctk.CTkLabel(main_frame, text="Ready", 
                                                  font=ctk.CTkFont(size=12), text_color="gray")
         self.stage_f_status_label.pack(pady=10)
-        
-        # Auto-validate file on change
-        self.stage_f_stage_e_var.trace('w', lambda *args: self.validate_stage_f_file())
     
-    def validate_stage_f_file(self):
-        """Validate Stage F input file"""
-        stage_e_path = self.stage_f_stage_e_var.get()
+    def _add_stage_f_file_to_ui(self, file_path: str):
+        """Add a Stage E file to the UI list"""
+        if not hasattr(self, 'stage_f_file_info_list'):
+            self.stage_f_file_info_list = []
         
-        if stage_e_path and os.path.exists(stage_e_path):
+        file_frame = ctk.CTkFrame(self.stage_f_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        # File name label
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        # Status label
+        status_label = ctk.CTkLabel(
+            file_frame,
+            text="Pending",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+            width=80
+        )
+        status_label.pack(side="right", padx=5, pady=5)
+        
+        # Remove button
+        def remove_file():
+            if file_path in self.stage_f_selected_files:
+                self.stage_f_selected_files.remove(file_path)
+            file_frame.destroy()
+            # Remove from file_info_list
+            self.stage_f_file_info_list = [
+                info for info in self.stage_f_file_info_list 
+                if info['file_path'] != file_path
+            ]
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+        
+        # Store file info
+        file_info = {
+            'file_path': file_path,
+            'status_label': status_label,
+            'output_path': None
+        }
+        self.stage_f_file_info_list.append(file_info)
+    
+    def remove_stage_f_file(self, file_path: str, frame_widget):
+        """Remove a file from the Stage F selection list"""
+        if hasattr(self, 'stage_f_selected_files'):
+            self.stage_f_selected_files = [
+                f for f in self.stage_f_selected_files if f != file_path
+            ]
+        if hasattr(self, 'stage_f_file_info_list'):
+            self.stage_f_file_info_list = [
+                f for f in self.stage_f_file_info_list if f['file_path'] != file_path
+            ]
+        frame_widget.destroy()
+    
+    def process_stage_f_batch(self):
+        """Process multiple Stage E files for Image File Catalog"""
+        def worker():
             try:
-                data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
-                metadata = data.get("metadata", {})
-                if metadata.get("first_image_point_id"):
-                    self.stage_f_stage_e_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_f_stage_e_valid.configure(text="W", text_color="orange")
-            except:
-                self.stage_f_stage_e_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_f_stage_e_valid.configure(text="", text_color="gray")
+                if not hasattr(self, 'stage_f_selected_files') or not self.stage_f_selected_files:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning", 
+                        "Please add at least one Stage E JSON file"
+                    ))
+                    return
+                
+                self.stage_f_process_btn.configure(
+                    state="disabled", 
+                    text="Processing Batch..."
+                )
+                
+                total_files = len(self.stage_f_selected_files)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_f_progress_bar.set(0))
+                
+                # Process each file
+                for idx, stage_e_path in enumerate(self.stage_f_selected_files):
+                    file_name = os.path.basename(stage_e_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_f_file_info_list'):
+                        for file_info in self.stage_f_file_info_list:
+                            if file_info['file_path'] == stage_e_path:
+                                self.root.after(0, lambda sl=file_info['status_label']: 
+                                               sl.configure(text="Processing...", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_files, fn=file_name: 
+                                   self.stage_f_status_label.configure(
+                                       text=f"Processing file {idx+1}/{total}: {fn}"))
+                    
+                    # Progress bar
+                    progress = idx / total_files
+                    self.root.after(0, lambda p=progress: self.stage_f_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg: 
+                                           self.stage_f_status_label.configure(text=m))
+                        
+                        # Process Stage F
+                        output_path = self.stage_f_processor.process_stage_f(
+                            stage_e_path=stage_e_path,
+                            output_dir=self.get_default_output_dir(stage_e_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            # Update status to completed
+                            if hasattr(self, 'stage_f_file_info_list'):
+                                for file_info in self.stage_f_file_info_list:
+                                    if file_info['file_path'] == stage_e_path:
+                                        file_info['output_path'] = output_path
+                                        self.root.after(0, lambda sl=file_info['status_label']: 
+                                                       sl.configure(text="Completed", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {file_name} -> {os.path.basename(output_path)}"
+                            )
+                        else:
+                            failed += 1
+                            # Update status to failed
+                            if hasattr(self, 'stage_f_file_info_list'):
+                                for file_info in self.stage_f_file_info_list:
+                                    if file_info['file_path'] == stage_e_path:
+                                        self.root.after(0, lambda sl=file_info['status_label']: 
+                                                       sl.configure(text="Failed", text_color="red"))
+                                        break
+                            self.logger.error(f"Failed to process: {file_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        self.logger.error(f"Error processing {file_name}: {str(e)}", exc_info=True)
+                        # Update status to failed
+                        if hasattr(self, 'stage_f_file_info_list'):
+                            for file_info in self.stage_f_file_info_list:
+                                if file_info['file_path'] == stage_e_path:
+                                    self.root.after(0, lambda sl=file_info['status_label']: 
+                                                   sl.configure(text="Failed", text_color="red"))
+                                    break
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_f_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_f_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Image File Catalog batch completed!\n\n"
+                    f"Total files: {total_files}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+                
+            except Exception as e:
+                self.logger.error(f"Error in batch Stage F processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error", 
+                    f"Batch processing error:\n{str(e)}"
+                ))
+            finally:
+                self.root.after(0, lambda: self.stage_f_process_btn.configure(
+                    state="normal", 
+                    text="Process Image File Catalog"
+                ))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
     
     def process_stage_f(self):
-        """Process Stage F in background thread"""
+        """Process Stage F in background thread (single file - kept for backward compatibility)"""
         def worker():
             try:
                 self.stage_f_process_btn.configure(state="disabled", text="Processing...")
                 self.update_stage_status("F", "processing")
                 self.stage_f_status_label.configure(text="Processing Image File Catalog...", text_color="blue")
                 
-                # Validate inputs
-                stage_e_path = self.stage_f_stage_e_var.get().strip()
-                
-                if not stage_e_path or not os.path.exists(stage_e_path):
-                    messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                # Validate inputs - check if batch mode files exist, otherwise use old single file mode
+                if hasattr(self, 'stage_f_selected_files') and self.stage_f_selected_files:
+                    # Use batch processing
+                    self.process_stage_f_batch()
                     return
                 
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_f_status_label.configure(text=msg))
-                
-                # Process Stage F (use default output dir from main view)
-                output_path = self.stage_f_processor.process_stage_f(
-                    stage_e_path=stage_e_path,
-                    output_dir=self.get_default_output_dir(stage_e_path),
-                    progress_callback=progress_callback
-                )
-                
-                if output_path:
-                    self.last_stage_f_path = output_path
-                    self.update_stage_status("F", "completed", output_path)
-                    self.root.after(0, lambda: self.stage_f_view_csv_btn.configure(state="normal"))
-                    self.stage_f_status_label.configure(
-                        text=f"Stage F completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
+                # Old single file mode (backward compatibility)
+                if hasattr(self, 'stage_f_stage_e_var'):
+                    stage_e_path = self.stage_f_stage_e_var.get().strip()
+                    
+                    if not stage_e_path or not os.path.exists(stage_e_path):
+                        messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                        return
+                    
+                    def progress_callback(msg: str):
+                        self.root.after(0, lambda: self.stage_f_status_label.configure(text=msg))
+                    
+                    # Process Stage F (use default output dir from main view)
+                    output_path = self.stage_f_processor.process_stage_f(
+                        stage_e_path=stage_e_path,
+                        output_dir=self.get_default_output_dir(stage_e_path),
+                        progress_callback=progress_callback
                     )
-                    messagebox.showinfo("Success", f"Image File Catalog completed!\n\nOutput saved to:\n{output_path}")
+                    
+                    if output_path:
+                        self.last_stage_f_path = output_path
+                        self.update_stage_status("F", "completed", output_path)
+                        self.root.after(0, lambda: self.stage_f_view_csv_btn.configure(state="normal"))
+                        self.stage_f_status_label.configure(
+                            text=f"Stage F completed successfully!\nOutput: {os.path.basename(output_path)}",
+                            text_color="green"
+                        )
+                        messagebox.showinfo("Success", f"Image File Catalog completed!\n\nOutput saved to:\n{output_path}")
+                    else:
+                        self.update_stage_status("F", "error")
+                        self.stage_f_status_label.configure(text="Image File Catalog failed. Check logs for details.", text_color="red")
+                        messagebox.showerror("Error", "Image File Catalog processing failed. Check logs for details.")
                 else:
-                    self.update_stage_status("F", "error")
-                    self.stage_f_status_label.configure(text="Image File Catalog failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Image File Catalog processing failed. Check logs for details.")
+                    messagebox.showwarning("Warning", "Please add at least one Stage E JSON file")
             
             except Exception as e:
                 self.logger.error(f"Error in Image File Catalog processing: {e}", exc_info=True)
@@ -4429,58 +5516,221 @@ class ContentAutomationGUI:
         )
         desc.pack(pady=(0, 20))
         
-        # Stage E File Selection
+        # Stage E Files Selection - Batch Processing
         stage_e_frame = ctk.CTkFrame(main_frame)
         stage_e_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(stage_e_frame, text="Stage E JSON:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_e_frame,
+            text="Stage E JSON Files - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_j_stage_e_var'):
-            self.stage_j_stage_e_var = ctk.StringVar()
-        # Auto-fill if available
-        if hasattr(self, 'last_stage_e_path') and self.last_stage_e_path and os.path.exists(self.last_stage_e_path):
-            self.stage_j_stage_e_var.set(self.last_stage_e_path)
+        # File selection buttons for Stage E
+        buttons_frame_e = ctk.CTkFrame(stage_e_frame)
+        buttons_frame_e.pack(fill="x", padx=10, pady=5)
         
-        entry_frame = ctk.CTkFrame(stage_e_frame)
-        entry_frame.pack(fill="x", padx=10, pady=5)
+        def browse_multiple_stage_e_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage E JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_j_selected_stage_e_files'):
+                    self.stage_j_selected_stage_e_files = []
+                for filename in filenames:
+                    if filename not in self.stage_j_selected_stage_e_files:
+                        self.stage_j_selected_stage_e_files.append(filename)
+                        self._add_stage_j_stage_e_file_to_ui(filename)
+                self._update_stage_j_pairs()
         
-        stage_e_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_j_stage_e_var)
-        stage_e_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def select_folder_stage_e_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage E JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_j_selected_stage_e_files'):
+                self.stage_j_selected_stage_e_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_j_selected_stage_e_files:
+                    self.stage_j_selected_stage_e_files.append(json_file)
+                    self._add_stage_j_stage_e_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_j_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
         
-        ctk.CTkButton(entry_frame, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_j_stage_e_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame_e,
+            text="Browse Multiple Stage E Files",
+            command=browse_multiple_stage_e_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator
-        if not hasattr(self, 'stage_j_stage_e_valid'):
-            self.stage_j_stage_e_valid = ctk.CTkLabel(entry_frame, text="", width=30)
-        self.stage_j_stage_e_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame_e,
+            text="Select Folder (Stage E)",
+            command=select_folder_stage_e_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Word File Selection
+        # Stage E files list (scrollable)
+        list_frame_e = ctk.CTkFrame(stage_e_frame)
+        list_frame_e.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_e,
+            text="Selected Stage E Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_j_stage_e_files_list_scroll'):
+            self.stage_j_stage_e_files_list_scroll = ctk.CTkScrollableFrame(list_frame_e, height=100)
+        self.stage_j_stage_e_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_j_selected_stage_e_files'):
+            self.stage_j_selected_stage_e_files = []
+        
+        # Word Files Selection - Batch Processing
         word_frame = ctk.CTkFrame(main_frame)
         word_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(word_frame, text="Word File (Test Questions):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            word_frame,
+            text="Word Files (Test Questions) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_j_word_var'):
-            self.stage_j_word_var = ctk.StringVar()
+        # File selection buttons for Word files
+        buttons_frame_word = ctk.CTkFrame(word_frame)
+        buttons_frame_word.pack(fill="x", padx=10, pady=5)
         
-        entry_frame_word = ctk.CTkFrame(word_frame)
-        entry_frame_word.pack(fill="x", padx=10, pady=5)
+        def browse_multiple_word_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Word files",
+                filetypes=[("Word Documents", "*.docx *.doc"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_j_selected_word_files'):
+                    self.stage_j_selected_word_files = []
+                for filename in filenames:
+                    if filename not in self.stage_j_selected_word_files:
+                        self.stage_j_selected_word_files.append(filename)
+                        self._add_stage_j_word_file_to_ui(filename)
+                self._update_stage_j_pairs()
         
-        word_entry = ctk.CTkEntry(entry_frame_word, textvariable=self.stage_j_word_var)
-        word_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def select_folder_word_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Word files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            word_files = glob.glob(os.path.join(folder_path, "*.docx")) + glob.glob(os.path.join(folder_path, "*.doc"))
+            word_files = [f for f in word_files if os.path.isfile(f)]
+            
+            if not word_files:
+                messagebox.showinfo("Info", "No Word files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_j_selected_word_files'):
+                self.stage_j_selected_word_files = []
+            
+            added_count = 0
+            for word_file in word_files:
+                if word_file not in self.stage_j_selected_word_files:
+                    self.stage_j_selected_word_files.append(word_file)
+                    self._add_stage_j_word_file_to_ui(word_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_j_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} Word file(s) from folder")
         
-        ctk.CTkButton(entry_frame_word, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_j_word_var, 
-                                                                 filetypes=[("Word Documents", "*.docx *.doc"), ("All files", "*.*")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame_word,
+            text="Browse Multiple Word Files",
+            command=browse_multiple_word_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator for Word file
-        if not hasattr(self, 'stage_j_word_valid'):
-            self.stage_j_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
-        self.stage_j_word_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame_word,
+            text="Select Folder (Word)",
+            command=select_folder_word_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Word files list (scrollable)
+        list_frame_word = ctk.CTkFrame(word_frame)
+        list_frame_word.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_word,
+            text="Selected Word Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_j_word_files_list_scroll'):
+            self.stage_j_word_files_list_scroll = ctk.CTkScrollableFrame(list_frame_word, height=100)
+        self.stage_j_word_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_j_selected_word_files'):
+            self.stage_j_selected_word_files = []
+        
+        # Pairs Section
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        pairs_header_frame = ctk.CTkFrame(pairs_frame)
+        pairs_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_header_frame,
+            text="Pairs (Stage E ↔ Word File):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkButton(
+            pairs_header_frame,
+            text="Auto-Pair",
+            command=self._auto_pair_stage_j_files,
+            width=120,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Pairs list (scrollable)
+        pairs_list_frame = ctk.CTkFrame(pairs_frame)
+        pairs_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_j_pairs_list_scroll'):
+            self.stage_j_pairs_list_scroll = ctk.CTkScrollableFrame(pairs_list_frame, height=200)
+        self.stage_j_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize pairs list
+        if not hasattr(self, 'stage_j_pairs'):
+            self.stage_j_pairs = []
+        
+        if not hasattr(self, 'stage_j_pairs_info_list'):
+            self.stage_j_pairs_info_list = []
         
         # Image File Catalog Selection (Optional)
         stage_f_frame = ctk.CTkFrame(main_frame)
@@ -4489,32 +5739,8 @@ class ContentAutomationGUI:
         ctk.CTkLabel(stage_f_frame, text="Image File Catalog JSON (Optional - f.json):", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_j_stage_f_var'):
-            self.stage_j_stage_f_var = ctk.StringVar()
-        # Auto-fill if available (try to find f.json in same directory as Stage E)
-        if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
-            self.stage_j_stage_f_var.set(self.last_stage_f_path)
-        elif self.stage_j_stage_e_var.get():
-            # Try to find f.json in same directory
-            stage_e_dir = os.path.dirname(self.stage_j_stage_e_var.get())
-            f_json_path = os.path.join(stage_e_dir, "f.json")
-            if os.path.exists(f_json_path):
-                self.stage_j_stage_f_var.set(f_json_path)
-        
-        entry_frame_f = ctk.CTkFrame(stage_f_frame)
-        entry_frame_f.pack(fill="x", padx=10, pady=5)
-        
-        stage_f_entry = ctk.CTkEntry(entry_frame_f, textvariable=self.stage_j_stage_f_var)
-        stage_f_entry.pack(side="left", fill="x", expand=True, padx=5)
-        
-        ctk.CTkButton(entry_frame_f, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_j_stage_f_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
-        
-        # Validation indicator for Stage F file
-        if not hasattr(self, 'stage_j_stage_f_valid'):
-            self.stage_j_stage_f_valid = ctk.CTkLabel(entry_frame_f, text="", width=30)
-        self.stage_j_stage_f_valid.pack(side="right", padx=5)
+        # Stage F is now auto-detected per pair, so we don't need a single file selection anymore
+        # This section is kept for backward compatibility but not used in batch mode
         
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -4618,7 +5844,7 @@ class ContentAutomationGUI:
             self.stage_j_process_btn = ctk.CTkButton(
                 process_btn_frame,
                 text="Process Importance & Type Tagging",
-                command=self.process_stage_j,
+                command=self.process_stage_j_batch,
                 width=200,
                 height=40,
                 font=ctk.CTkFont(size=16, weight="bold"),
@@ -4647,134 +5873,494 @@ class ContentAutomationGUI:
                                                      font=ctk.CTkFont(size=12), text_color="gray")
         self.stage_j_status_label.pack(pady=10)
         
-        # Auto-validate files on change
-        self.stage_j_stage_e_var.trace('w', lambda *args: self.validate_stage_j_files())
-        self.stage_j_word_var.trace('w', lambda *args: self.validate_stage_j_files())
-        self.stage_j_stage_f_var.trace('w', lambda *args: self.validate_stage_j_files())
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_j_progress_bar'):
+            self.stage_j_progress_bar = ctk.CTkProgressBar(main_frame, width=400)
+        self.stage_j_progress_bar.pack(pady=10)
+        self.stage_j_progress_bar.set(0)
+    
+    def _add_stage_j_stage_e_file_to_ui(self, file_path: str):
+        """Add a Stage E file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_j_stage_e_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_j_selected_stage_e_files:
+                self.stage_j_selected_stage_e_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_j_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_j_word_file_to_ui(self, file_path: str):
+        """Add a Word file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_j_word_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_j_selected_word_files:
+                self.stage_j_selected_word_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_j_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_stage_e(self, stage_e_path: str):
+        """Extract book and chapter from Stage E file (from PointId or filename)"""
+        try:
+            # Try to load Stage E and extract from PointId
+            data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename (e{book}{chapter}.json)
+        try:
+            basename = os.path.basename(stage_e_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            if name_without_ext.startswith('e') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _extract_book_chapter_from_word_filename(self, word_path: str):
+        """Extract book and chapter from Word filename (various patterns)"""
+        import re
+        basename = os.path.basename(word_path)
+        name_without_ext = os.path.splitext(basename)[0]
+        
+        # Try various patterns
+        patterns = [
+            r'ch(\d{3})_(\d{3})',  # ch105_003.docx
+            r'chapter_(\d{3})_(\d{3})',  # chapter_105_003.docx
+            r'(\d{3})_(\d{3})',  # 105_003.docx
+            r'book(\d{3})_chapter(\d{3})',  # book105_chapter003.docx
+            r'e(\d{3})(\d{3})',  # e105003.docx
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, name_without_ext, re.IGNORECASE)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+        
+        return None, None
+    
+    def _auto_pair_stage_j_files(self):
+        """Auto-pair Stage E files with Word files based on Book/Chapter"""
+        if not hasattr(self, 'stage_j_selected_stage_e_files') or not self.stage_j_selected_stage_e_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage E file")
+            return
+        
+        if not hasattr(self, 'stage_j_selected_word_files') or not self.stage_j_selected_word_files:
+            messagebox.showwarning("Warning", "Please add at least one Word file")
+            return
+        
+        pairs = []
+        paired_word_files = set()
+        
+        for stage_e_path in self.stage_j_selected_stage_e_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_e(stage_e_path)
+            
+            if book_id is None or chapter_id is None:
+                # Can't extract book/chapter, skip
+                continue
+            
+            # Find matching Word file
+            matched_word = None
+            for word_path in self.stage_j_selected_word_files:
+                if word_path in paired_word_files:
+                    continue
+                
+                word_book, word_chapter = self._extract_book_chapter_from_word_filename(word_path)
+                
+                if word_book == book_id and word_chapter == chapter_id:
+                    matched_word = word_path
+                    paired_word_files.add(word_path)
+                    break
+            
+            # Find Stage F file (auto-detect)
+            stage_e_dir = os.path.dirname(stage_e_path)
+            stage_e_basename = os.path.basename(stage_e_path)
+            stage_e_name_without_ext = os.path.splitext(stage_e_basename)[0]
+            stage_f_path = os.path.join(stage_e_dir, f"f_{stage_e_name_without_ext}.json")
+            if not os.path.exists(stage_f_path):
+                stage_f_path = os.path.join(stage_e_dir, "f.json")
+            if not os.path.exists(stage_f_path):
+                stage_f_path = None
+            
+            pair = {
+                'stage_e_path': stage_e_path,
+                'word_path': matched_word,
+                'stage_f_path': stage_f_path,
+                'status': 'pending',
+                'output_path': None,
+                'error': None
+            }
+            pairs.append(pair)
+        
+        self.stage_j_pairs = pairs
+        self._update_stage_j_pairs_ui()
+        
+        paired_count = sum(1 for p in pairs if p['word_path'] is not None)
+        unpaired_count = len(pairs) - paired_count
+        
+        messagebox.showinfo(
+            "Auto-Pairing Complete",
+            f"Paired: {paired_count}\nUnpaired: {unpaired_count}"
+        )
+    
+    def _update_stage_j_pairs(self):
+        """Update pairs when files are added/removed"""
+        # Clear existing pairs UI
+        for widget in self.stage_j_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_j_pairs_info_list = []
+        
+        # Re-pair if we have pairs
+        if hasattr(self, 'stage_j_pairs') and self.stage_j_pairs:
+            self._update_stage_j_pairs_ui()
+    
+    def _update_stage_j_pairs_ui(self):
+        """Update the pairs UI display"""
+        # Clear existing pairs UI
+        for widget in self.stage_j_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_j_pairs_info_list = []
+        
+        if not hasattr(self, 'stage_j_pairs') or not self.stage_j_pairs:
+            return
+        
+        for idx, pair in enumerate(self.stage_j_pairs):
+            pair_frame = ctk.CTkFrame(self.stage_j_pairs_list_scroll)
+            pair_frame.pack(fill="x", padx=5, pady=2)
+            
+            # Stage E file name
+            stage_e_name = os.path.basename(pair['stage_e_path'])
+            stage_e_label = ctk.CTkLabel(
+                pair_frame,
+                text=stage_e_name,
+                font=ctk.CTkFont(size=10),
+                width=150
+            )
+            stage_e_label.pack(side="left", padx=5, pady=5)
+            
+            # Arrow
+            ctk.CTkLabel(pair_frame, text="↔", font=ctk.CTkFont(size=14)).pack(side="left", padx=5)
+            
+            # Word file name or dropdown
+            word_frame = ctk.CTkFrame(pair_frame)
+            word_frame.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+            
+            if pair['word_path']:
+                word_name = os.path.basename(pair['word_path'])
+                word_label = ctk.CTkLabel(
+                    word_frame,
+                    text=word_name,
+                    font=ctk.CTkFont(size=10),
+                    text_color="green"
+                )
+                word_label.pack(side="left", padx=5)
+            else:
+                word_label = ctk.CTkLabel(
+                    word_frame,
+                    text="(Not Paired)",
+                    font=ctk.CTkFont(size=10),
+                    text_color="orange"
+                )
+                word_label.pack(side="left", padx=5)
+                
+                # Dropdown for manual pairing
+                if hasattr(self, 'stage_j_selected_word_files') and self.stage_j_selected_word_files:
+                    word_var = ctk.StringVar(value="Select Word file...")
+                    word_combo = ctk.CTkComboBox(
+                        word_frame,
+                        values=["Select Word file..."] + [os.path.basename(f) for f in self.stage_j_selected_word_files],
+                        variable=word_var,
+                        width=200,
+                        command=lambda val, p=pair, idx=idx: self._manual_pair_word(p, idx, val)
+                    )
+                    word_combo.pack(side="left", padx=5)
+            
+            # Status label
+            status_label = ctk.CTkLabel(
+                pair_frame,
+                text="Pending",
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+                width=80
+            )
+            status_label.pack(side="right", padx=5, pady=5)
+            
+            # Remove button
+            def remove_pair(p=pair):
+                if p in self.stage_j_pairs:
+                    self.stage_j_pairs.remove(p)
+                self._update_stage_j_pairs_ui()
+            
+            remove_btn = ctk.CTkButton(
+                pair_frame,
+                text="✕",
+                command=remove_pair,
+                width=30,
+                height=25,
+                fg_color="red",
+                hover_color="darkred"
+            )
+            remove_btn.pack(side="right", padx=5, pady=5)
+            
+            # Store pair info
+            pair_info = {
+                'pair': pair,
+                'status_label': status_label,
+                'frame': pair_frame
+            }
+            self.stage_j_pairs_info_list.append(pair_info)
+    
+    def _manual_pair_word(self, pair, pair_idx, selected_value):
+        """Manually pair a Word file with a Stage E file"""
+        if selected_value == "Select Word file..." or not selected_value:
+            return
+        
+        # Find the Word file path
+        word_path = None
+        for word_file in self.stage_j_selected_word_files:
+            if os.path.basename(word_file) == selected_value:
+                word_path = word_file
+                break
+        
+        if word_path:
+            pair['word_path'] = word_path
+            self._update_stage_j_pairs_ui()
     
     def validate_stage_j_files(self):
-        """Validate Stage J input files"""
-        stage_e_path = self.stage_j_stage_e_var.get()
-        word_path = self.stage_j_word_var.get()
-        stage_f_path = self.stage_j_stage_f_var.get() if hasattr(self, 'stage_j_stage_f_var') else ""
-        
-        # Validate Stage E
-        if stage_e_path and os.path.exists(stage_e_path):
-            try:
-                data = json.load(open(stage_e_path, 'r', encoding='utf-8'))
-                records = data.get("data") or data.get("rows", [])
-                if records and records[0].get("PointId"):
-                    self.stage_j_stage_e_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_j_stage_e_valid.configure(text="W", text_color="orange")
-            except:
-                self.stage_j_stage_e_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_j_stage_e_valid.configure(text="", text_color="gray")
-        
-        # Validate Word file
-        if word_path and os.path.exists(word_path):
-            # Check if it's a Word file
-            ext = os.path.splitext(word_path)[1].lower()
-            if ext in ['.docx', '.doc']:
-                self.stage_j_word_valid.configure(text="OK", text_color="green")
-            else:
-                self.stage_j_word_valid.configure(text="W", text_color="orange")
-        else:
-            self.stage_j_word_valid.configure(text="", text_color="gray")
-        
-        # Validate Stage F (optional)
-        if hasattr(self, 'stage_j_stage_f_valid'):
-            if stage_f_path and os.path.exists(stage_f_path):
-                try:
-                    data = json.load(open(stage_f_path, 'r', encoding='utf-8'))
-                    records = data.get("data") or data.get("rows", [])
-                    if records:
-                        self.stage_j_stage_f_valid.configure(text="OK", text_color="green")
-                    else:
-                        self.stage_j_stage_f_valid.configure(text="W", text_color="orange")
-                except:
-                    self.stage_j_stage_f_valid.configure(text="X", text_color="red")
-            else:
-                self.stage_j_stage_f_valid.configure(text="", text_color="gray")
+        """Validate Stage J input files (kept for backward compatibility, not used in batch mode)"""
+        # Validation is now done per pair in batch mode
+        pass
     
-    def process_stage_j(self):
-        """Process Stage J in background thread"""
+    def process_stage_j_batch(self):
+        """Process multiple Stage E + Word file pairs for Stage J"""
         def worker():
             try:
-                self.stage_j_process_btn.configure(state="disabled", text="Processing...")
-                self.update_stage_status("J", "processing")
-                self.stage_j_status_label.configure(text="Processing Importance & Type Tagging...", text_color="blue")
-                
-                # Validate inputs
-                stage_e_path = self.stage_j_stage_e_var.get().strip()
-                word_path = self.stage_j_word_var.get().strip()
-                stage_f_path = self.stage_j_stage_f_var.get().strip() if hasattr(self, 'stage_j_stage_f_var') else ""
-                prompt = self.stage_j_prompt_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                model_name = self.get_default_model()
-                
-                if not stage_e_path or not os.path.exists(stage_e_path):
-                    messagebox.showerror("Error", "Please select a valid Stage E JSON file")
+                if not hasattr(self, 'stage_j_pairs') or not self.stage_j_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create pairs first. Click 'Auto-Pair' button."
+                    ))
                     return
                 
-                if not word_path or not os.path.exists(word_path):
-                    messagebox.showerror("Error", "Please select a valid Word file")
+                # Filter pairs that have both Stage E and Word file
+                valid_pairs = [p for p in self.stage_j_pairs if p['stage_e_path'] and p['word_path']]
+                
+                if not valid_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid pairs found. Each pair must have both Stage E and Word file."
+                    ))
                     return
                 
-                if not prompt:
-                    messagebox.showerror("Error", "Please enter a prompt for Imp & Type generation")
-                    return
-                
-                # Stage F is optional, but validate if provided
-                if stage_f_path and not os.path.exists(stage_f_path):
-                    messagebox.showerror("Error", "Image File Catalog JSON file path is invalid")
-                    return
-                
-                # Validate API keys
-                if not self.api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load API keys first")
-                    return
-                
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_j_status_label.configure(text=msg))
-                
-                # Process Stage J (use default output dir from main view)
-                output_path = self.stage_j_processor.process_stage_j(
-                    stage_e_path=stage_e_path,
-                    word_file_path=word_path,
-                    stage_f_path=stage_f_path if stage_f_path else None,
-                    prompt=prompt,
-                    model_name=model_name,
-                    output_dir=self.get_default_output_dir(stage_e_path),
-                    progress_callback=progress_callback
+                self.stage_j_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
                 )
                 
-                if output_path:
-                    self.last_stage_j_path = output_path
-                    self.update_stage_status("J", "completed", output_path)
-                    self.root.after(0, lambda: self.stage_j_view_csv_btn.configure(state="normal"))
-                    self.stage_j_status_label.configure(
-                        text=f"Stage J completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Importance & Type Tagging completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.update_stage_status("J", "error")
-                    self.stage_j_status_label.configure(text="Importance & Type Tagging failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Importance & Type Tagging processing failed. Check logs for details.")
-            
+                # Get prompt
+                prompt = self.stage_j_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    default_prompt = self.prompt_manager.get_prompt("Importance & Type Prompt")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default Importance & Type prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                        return
+                
+                # Get model
+                model_name = self.stage_j_model_var.get() if hasattr(self, 'stage_j_model_var') else "gemini-2.5-pro"
+                
+                total_pairs = len(valid_pairs)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_j_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair in enumerate(valid_pairs):
+                    stage_e_path = pair['stage_e_path']
+                    word_path = pair['word_path']
+                    stage_f_path = pair.get('stage_f_path')
+                    
+                    stage_e_name = os.path.basename(stage_e_path)
+                    word_name = os.path.basename(word_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_j_pairs_info_list'):
+                        for pair_info in self.stage_j_pairs_info_list:
+                            if pair_info['pair'] == pair:
+                                self.root.after(0, lambda sl=pair_info['status_label']:
+                                               sl.configure(text="Processing...", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_pairs, se=stage_e_name, w=word_name:
+                                   self.stage_j_status_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {se} ↔ {w}"))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.stage_j_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_j_status_label.configure(text=m))
+                        
+                        # Process Stage J
+                        output_path = self.stage_j_processor.process_stage_j(
+                            stage_e_path=stage_e_path,
+                            word_file_path=word_path,
+                            stage_f_path=stage_f_path,
+                            prompt=prompt,
+                            model_name=model_name,
+                            output_dir=self.get_default_output_dir(stage_e_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            pair['output_path'] = output_path
+                            pair['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_j_pairs_info_list'):
+                                for pair_info in self.stage_j_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="Completed", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {stage_e_name} ↔ {word_name} -> {os.path.basename(output_path)}"
+                            )
+                        else:
+                            failed += 1
+                            pair['status'] = 'failed'
+                            pair['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_j_pairs_info_list'):
+                                for pair_info in self.stage_j_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="Failed", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {stage_e_name} ↔ {word_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        pair['status'] = 'failed'
+                        pair['error'] = str(e)
+                        self.logger.error(f"Error processing {stage_e_name} ↔ {word_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_j_pairs_info_list'):
+                            for pair_info in self.stage_j_pairs_info_list:
+                                if pair_info['pair'] == pair:
+                                    self.root.after(0, lambda sl=pair_info['status_label']:
+                                                   sl.configure(text="Failed", text_color="red"))
+                                    break
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_j_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_j_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage J batch completed!\n\n"
+                    f"Total pairs: {total_pairs}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+                
             except Exception as e:
-                self.logger.error(f"Error in Importance & Type Tagging processing: {e}", exc_info=True)
-                self.update_stage_status("J", "error")
-                self.stage_j_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Importance & Type Tagging processing error:\n{str(e)}")
+                self.logger.error(f"Error in batch Stage J processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_j_process_btn.configure(state="normal", text="Process Importance & Type Tagging"))
+                self.root.after(0, lambda: self.stage_j_process_btn.configure(
+                    state="normal",
+                    text="Process Importance & Type Tagging"
+                ))
         
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+    
+    def process_stage_j(self):
+        """Process Stage J (redirects to batch processing)"""
+        # Redirect to batch processing
+        self.process_stage_j_batch()
     
     def validate_stage_h_files(self):
         """Validate Stage H input files"""
@@ -4948,9 +6534,30 @@ class ContentAutomationGUI:
         if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
             self.stage_h_stage_f_var.set(self.last_stage_f_path)
         elif self.stage_h_stage_j_var.get():
-            # Try to find f.json in same directory
-            stage_j_dir = os.path.dirname(self.stage_h_stage_j_var.get())
-            f_json_path = os.path.join(stage_j_dir, "f.json")
+            # Try to find Stage F file based on Stage J filename
+            # Stage J filename format: a{book}{chapter}.json
+            # Stage E filename format: e{book}{chapter}.json
+            # Stage F filename format: f_e{book}{chapter}.json
+            stage_j_path = self.stage_h_stage_j_var.get()
+            stage_j_dir = os.path.dirname(stage_j_path)
+            stage_j_basename = os.path.basename(stage_j_path)
+            stage_j_name_without_ext = os.path.splitext(stage_j_basename)[0]
+            
+            # Extract book and chapter from Stage J filename (a{book}{chapter})
+            # and construct Stage E filename (e{book}{chapter})
+            if stage_j_name_without_ext.startswith('a') and len(stage_j_name_without_ext) >= 7:
+                # Remove 'a' prefix to get book+chapter
+                book_chapter = stage_j_name_without_ext[1:]
+                stage_e_name = f"e{book_chapter}"
+                # Try new unique filename: f_e{book}{chapter}.json
+                f_json_path = os.path.join(stage_j_dir, f"f_{stage_e_name}.json")
+                if not os.path.exists(f_json_path):
+                    # Fallback to old format: f.json (for backward compatibility)
+                    f_json_path = os.path.join(stage_j_dir, "f.json")
+            else:
+                # Fallback to old format: f.json
+                f_json_path = os.path.join(stage_j_dir, "f.json")
+            
             if os.path.exists(f_json_path):
                 self.stage_h_stage_f_var.set(f_json_path)
         
