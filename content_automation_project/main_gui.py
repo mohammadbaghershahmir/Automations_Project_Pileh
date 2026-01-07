@@ -189,6 +189,10 @@ class ContentAutomationGUI:
         self.tab_stage_z = self.main_tabview.add("RichText Generation")
         self.setup_stage_z_ui(self.tab_stage_z)
         
+        # Tab 12: JSON to CSV Converter
+        self.tab_json_to_csv = self.main_tabview.add("JSON to CSV Converter")
+        self.setup_json_to_csv_ui(self.tab_json_to_csv)
+        
         # Ensure Pre-OCR Topic Extraction is the default/selected tab
         self.main_tabview.set("Pre-OCR Topic Extraction")
         
@@ -1882,7 +1886,7 @@ class ContentAutomationGUI:
                         messagebox.showerror("Error", f"Failed to load final output: {str(e)}")
                         return
                 else:
-                    self.update_status("❌ Multi-part processing failed or was incomplete")
+                    self.update_status("Multi-part processing failed or was incomplete")
                     self.logger.error("Multi-part processing returned no final output file")
                     messagebox.showerror("Error", "Multi-part processing failed. Check the logs for details.")
                     return
@@ -6362,109 +6366,457 @@ class ContentAutomationGUI:
         # Redirect to batch processing
         self.process_stage_j_batch()
     
-    def validate_stage_h_files(self):
-        """Validate Stage H input files"""
-        stage_j_path = self.stage_h_stage_j_var.get()
-        stage_f_path = self.stage_h_stage_f_var.get()
+    def _add_stage_h_stage_j_file_to_ui(self, file_path: str):
+        """Add a Stage J file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_h_stage_j_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
         
-        # Validate Stage J
-        if stage_j_path and os.path.exists(stage_j_path):
-            try:
-                data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
-                records = data.get("data") or data.get("rows", [])
-                if records and records[0].get("PointId"):
-                    self.stage_h_stage_j_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_h_stage_j_valid.configure(text="W", text_color="orange")
-            except:
-                self.stage_h_stage_j_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_h_stage_j_valid.configure(text="", text_color="gray")
+        file_name = os.path.basename(file_path)
         
-        # Validate Stage F
-        if stage_f_path and os.path.exists(stage_f_path):
-            try:
-                data = json.load(open(stage_f_path, 'r', encoding='utf-8'))
-                records = data.get("data") or data.get("rows", [])
-                if records:
-                    self.stage_h_stage_f_valid.configure(text="OK", text_color="green")
-                else:
-                    self.stage_h_stage_f_valid.configure(text="W", text_color="orange")
-            except:
-                self.stage_h_stage_f_valid.configure(text="X", text_color="red")
-        else:
-            self.stage_h_stage_f_valid.configure(text="", text_color="gray")
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_h_selected_stage_j_files:
+                self.stage_h_selected_stage_j_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_h_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
     
-    def process_stage_h(self):
-        """Process Stage H in background thread"""
+    def _add_stage_h_stage_f_file_to_ui(self, file_path: str):
+        """Add a Stage F file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_h_stage_f_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_h_selected_stage_f_files:
+                self.stage_h_selected_stage_f_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_h_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_stage_j(self, stage_j_path: str):
+        """Extract book and chapter from Stage J file (from PointId or filename)"""
+        try:
+            # Try to load Stage J and extract from PointId
+            data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename (a{book}{chapter}.json)
+        try:
+            basename = os.path.basename(stage_j_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            if name_without_ext.startswith('a') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _extract_book_chapter_from_stage_f_filename(self, stage_f_path: str):
+        """Extract book and chapter from Stage F filename"""
+        try:
+            basename = os.path.basename(stage_f_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            
+            # Try pattern: f_e{book}{chapter}.json
+            if name_without_ext.startswith('f_e') and len(name_without_ext) >= 9:
+                book_chapter = name_without_ext[3:]  # Remove 'f_e' prefix
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+            
+            # Try pattern: f_{book}{chapter}.json
+            if name_without_ext.startswith('f_') and len(name_without_ext) >= 8:
+                book_chapter = name_without_ext[2:]  # Remove 'f_' prefix
+                if len(book_chapter) >= 6:
+                    book_id = int(book_chapter[0:3])
+                    chapter_id = int(book_chapter[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _auto_pair_stage_h_files(self):
+        """Auto-pair Stage J files with Stage F files based on Book/Chapter"""
+        if not hasattr(self, 'stage_h_selected_stage_j_files') or not self.stage_h_selected_stage_j_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage J file")
+            return
+        
+        if not hasattr(self, 'stage_h_selected_stage_f_files') or not self.stage_h_selected_stage_f_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage F file")
+            return
+        
+        pairs = []
+        paired_stage_f_files = set()
+        
+        for stage_j_path in self.stage_h_selected_stage_j_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_j(stage_j_path)
+            
+            if book_id is None or chapter_id is None:
+                # Can't extract book/chapter, try to find Stage F in same directory
+                stage_j_dir = os.path.dirname(stage_j_path)
+                stage_j_basename = os.path.basename(stage_j_path)
+                stage_j_name_without_ext = os.path.splitext(stage_j_basename)[0]
+                
+                # Try to construct Stage F filename
+                if stage_j_name_without_ext.startswith('a') and len(stage_j_name_without_ext) >= 7:
+                    book_chapter = stage_j_name_without_ext[1:]
+                    stage_e_name = f"e{book_chapter}"
+                    stage_f_path = os.path.join(stage_j_dir, f"f_{stage_e_name}.json")
+                    if not os.path.exists(stage_f_path):
+                        stage_f_path = os.path.join(stage_j_dir, "f.json")
+                else:
+                    stage_f_path = os.path.join(stage_j_dir, "f.json")
+                
+                if os.path.exists(stage_f_path) and stage_f_path in self.stage_h_selected_stage_f_files:
+                    matched_stage_f = stage_f_path
+                    paired_stage_f_files.add(stage_f_path)
+                else:
+                    matched_stage_f = None
+            else:
+                # Find matching Stage F file
+                matched_stage_f = None
+                for stage_f_path in self.stage_h_selected_stage_f_files:
+                    if stage_f_path in paired_stage_f_files:
+                        continue
+                    
+                    stage_f_book, stage_f_chapter = self._extract_book_chapter_from_stage_f_filename(stage_f_path)
+                    
+                    if stage_f_book == book_id and stage_f_chapter == chapter_id:
+                        matched_stage_f = stage_f_path
+                        paired_stage_f_files.add(stage_f_path)
+                        break
+                
+                # If no match found, try to find Stage F in same directory
+                if matched_stage_f is None:
+                    stage_j_dir = os.path.dirname(stage_j_path)
+                    stage_e_name = f"e{book_id:03d}{chapter_id:03d}"
+                    stage_f_path = os.path.join(stage_j_dir, f"f_{stage_e_name}.json")
+                    if not os.path.exists(stage_f_path):
+                        stage_f_path = os.path.join(stage_j_dir, "f.json")
+                    if os.path.exists(stage_f_path) and stage_f_path in self.stage_h_selected_stage_f_files:
+                        matched_stage_f = stage_f_path
+                        paired_stage_f_files.add(stage_f_path)
+            
+            pair = {
+                'stage_j_path': stage_j_path,
+                'stage_f_path': matched_stage_f,
+                'status': 'pending',
+                'output_path': None,
+                'error': None
+            }
+            pairs.append(pair)
+        
+        self.stage_h_pairs = pairs
+        self._update_stage_h_pairs_ui()
+        
+        paired_count = sum(1 for p in pairs if p['stage_f_path'] is not None)
+        unpaired_count = len(pairs) - paired_count
+        
+        messagebox.showinfo(
+            "Auto-Pairing Complete",
+            f"Paired: {paired_count}\nUnpaired: {unpaired_count}"
+        )
+    
+    def _update_stage_h_pairs(self):
+        """Update pairs when files are added/removed"""
+        # Clear existing pairs UI
+        for widget in self.stage_h_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_h_pairs_info_list = []
+        
+        # Re-pair if we have pairs
+        if hasattr(self, 'stage_h_pairs') and self.stage_h_pairs:
+            self._update_stage_h_pairs_ui()
+    
+    def _update_stage_h_pairs_ui(self):
+        """Update the pairs UI display"""
+        # Clear existing pairs UI
+        for widget in self.stage_h_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_h_pairs_info_list = []
+        
+        if not hasattr(self, 'stage_h_pairs') or not self.stage_h_pairs:
+            return
+        
+        for pair in self.stage_h_pairs:
+            pair_frame = ctk.CTkFrame(self.stage_h_pairs_list_scroll)
+            pair_frame.pack(fill="x", padx=5, pady=2)
+            
+            stage_j_name = os.path.basename(pair['stage_j_path']) if pair['stage_j_path'] else "None"
+            stage_f_name = os.path.basename(pair['stage_f_path']) if pair['stage_f_path'] else "None"
+            
+            pair_text = f"{stage_j_name} ↔ {stage_f_name}"
+            
+            name_label = ctk.CTkLabel(
+                pair_frame,
+                text=pair_text,
+                font=ctk.CTkFont(size=11),
+                anchor="w"
+            )
+            name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            status_label = ctk.CTkLabel(
+                pair_frame,
+                text=pair.get('status', 'pending').upper(),
+                font=ctk.CTkFont(size=10),
+                text_color="gray" if pair.get('status') == 'pending' else 
+                          "green" if pair.get('status') == 'completed' else "red"
+            )
+            status_label.pack(side="right", padx=10, pady=5)
+            
+            self.stage_h_pairs_info_list.append({
+                'pair': pair,
+                'status_label': status_label,
+                'frame': pair_frame
+            })
+    
+    def validate_stage_h_files(self):
+        """Validate Stage H input files (kept for backward compatibility)"""
+        # Validation is now done per pair in batch mode
+        pass
+    
+    def process_stage_h_batch(self):
+        """Process multiple Stage J + Stage F pairs for Stage H"""
         def worker():
             try:
-                self.stage_h_process_btn.configure(state="disabled", text="Processing...")
-                self.update_stage_status("H", "processing")
-                self.stage_h_status_label.configure(text="Processing Flashcard Generation...", text_color="blue")
-                
-                # Validate inputs
-                stage_j_path = self.stage_h_stage_j_var.get().strip()
-                stage_f_path = self.stage_h_stage_f_var.get().strip()
-                prompt = self.stage_h_prompt_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                model_name = self.get_default_model()
-                
-                if not stage_j_path or not os.path.exists(stage_j_path):
-                    messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
+                if not hasattr(self, 'stage_h_pairs') or not self.stage_h_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create pairs first. Click 'Auto-Pair' button."
+                    ))
                     return
                 
-                if not stage_f_path or not os.path.exists(stage_f_path):
-                    messagebox.showerror("Error", "Please select a valid Image File Catalog JSON file")
+                # Filter pairs that have both Stage J and Stage F file
+                valid_pairs = [p for p in self.stage_h_pairs if p['stage_j_path'] and p['stage_f_path']]
+                
+                if not valid_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid pairs found. Each pair must have both Stage J and Stage F file."
+                    ))
                     return
                 
-                if not prompt:
-                    messagebox.showerror("Error", "Please enter a prompt for flashcard generation")
-                    return
-                
-                # Validate API keys
-                if not self.api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load API keys first")
-                    return
-                
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_h_status_label.configure(text=msg))
-                
-                # Process Stage H (always use default output dir from main view)
-                output_path = self.stage_h_processor.process_stage_h(
-                    stage_j_path=stage_j_path,
-                    stage_f_path=stage_f_path,
-                    prompt=prompt,
-                    model_name=model_name,
-                    output_dir=self.get_default_output_dir(stage_j_path),
-                    progress_callback=progress_callback
+                self.stage_h_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
                 )
                 
-                if output_path:
-                    self.last_stage_h_path = output_path
-                    self.update_stage_status("H", "completed", output_path)
+                # Get prompt
+                prompt = self.stage_h_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    default_prompt = self.prompt_manager.get_prompt("Flashcard Prompt")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default Flashcard prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                        return
+                
+                # Get model
+                model_name = self.stage_h_model_var.get() if hasattr(self, 'stage_h_model_var') else "gemini-2.5-pro"
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_h_delay_var.get() if hasattr(self, 'stage_h_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_pairs = len(valid_pairs)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_h_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair in enumerate(valid_pairs):
+                    stage_j_path = pair['stage_j_path']
+                    stage_f_path = pair['stage_f_path']
+                    
+                    stage_j_name = os.path.basename(stage_j_path)
+                    stage_f_name = os.path.basename(stage_f_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_h_pairs_info_list'):
+                        for pair_info in self.stage_h_pairs_info_list:
+                            if pair_info['pair'] == pair:
+                                self.root.after(0, lambda sl=pair_info['status_label']:
+                                               sl.configure(text="PROCESSING", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_pairs, sj=stage_j_name, sf=stage_f_name:
+                                   self.stage_h_status_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {sj} ↔ {sf}"))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.stage_h_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_h_status_label.configure(text=m))
+                        
+                        # Process Stage H
+                        output_path = self.stage_h_processor.process_stage_h(
+                            stage_j_path=stage_j_path,
+                            stage_f_path=stage_f_path,
+                            prompt=prompt,
+                            model_name=model_name,
+                            output_dir=self.get_default_output_dir(stage_j_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            pair['output_path'] = output_path
+                            pair['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_h_pairs_info_list'):
+                                for pair_info in self.stage_h_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="COMPLETED", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {stage_j_name} ↔ {stage_f_name} -> {os.path.basename(output_path)}"
+                            )
+                            
+                            # Update last_stage_h_path to the last completed output
+                            self.last_stage_h_path = output_path
+                        else:
+                            failed += 1
+                            pair['status'] = 'failed'
+                            pair['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_h_pairs_info_list'):
+                                for pair_info in self.stage_h_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="FAILED", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {stage_j_name} ↔ {stage_f_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        pair['status'] = 'failed'
+                        pair['error'] = str(e)
+                        self.logger.error(f"Error processing {stage_j_name} ↔ {stage_f_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_h_pairs_info_list'):
+                            for pair_info in self.stage_h_pairs_info_list:
+                                if pair_info['pair'] == pair:
+                                    self.root.after(0, lambda sl=pair_info['status_label']:
+                                                   sl.configure(text="FAILED", text_color="red"))
+                                    break
+                    
+                    # Delay before next batch (except for the last one)
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_h_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next batch..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_h_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_h_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage H batch completed!\n\n"
+                    f"Total pairs: {total_pairs}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+                
+                # Enable view CSV button if at least one succeeded
+                if completed > 0:
                     self.root.after(0, lambda: self.stage_h_view_csv_btn.configure(state="normal"))
-                    self.stage_h_status_label.configure(
-                        text=f"Stage H completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Flashcard Generation completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.update_stage_status("H", "error")
-                    self.stage_h_status_label.configure(text="Flashcard Generation failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Flashcard Generation processing failed. Check logs for details.")
             
             except Exception as e:
-                self.logger.error(f"Error in Flashcard Generation processing: {e}", exc_info=True)
-                self.update_stage_status("H", "error")
-                self.stage_h_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Flashcard Generation processing error:\n{str(e)}")
+                self.logger.error(f"Error in batch Stage H processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_h_process_btn.configure(state="normal", text="Process Flashcard Generation"))
+                self.root.after(0, lambda: self.stage_h_process_btn.configure(
+                    state="normal",
+                    text="Process All Pairs"
+                ))
         
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+    
+    def process_stage_h(self):
+        """Process Stage H (redirects to batch processing)"""
+        # Redirect to batch processing
+        self.process_stage_h_batch()
     
     def setup_stage_h_ui(self, parent):
         """Setup UI for Stage H: Flashcard Generation"""
@@ -6489,92 +6841,230 @@ class ContentAutomationGUI:
                             font=ctk.CTkFont(size=24, weight="bold"))
         title.pack(pady=(0, 20))
         
-        desc = ctk.CTkLabel(main_frame, text="Generate flashcards from Tagged data and Image File Catalog.", 
+        desc = ctk.CTkLabel(main_frame, text="Generate flashcards from Tagged data and Image File Catalog (Batch Processing).", 
                            font=ctk.CTkFont(size=12), text_color="gray")
         desc.pack(pady=(0, 20))
         
-        # Tagged Data File Selection
+        # Stage J Files Selection - Batch Processing
         stage_j_frame = ctk.CTkFrame(main_frame)
         stage_j_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(stage_j_frame, text="Tagged Data JSON (a file):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_j_frame,
+            text="Stage J JSON Files (Tagged Data) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_h_stage_j_var'):
-            self.stage_h_stage_j_var = ctk.StringVar()
-        # Auto-fill if available
-        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
-            self.stage_h_stage_j_var.set(self.last_stage_j_path)
+        # File selection buttons for Stage J
+        buttons_frame_j = ctk.CTkFrame(stage_j_frame)
+        buttons_frame_j.pack(fill="x", padx=10, pady=5)
         
-        entry_frame = ctk.CTkFrame(stage_j_frame)
-        entry_frame.pack(fill="x", padx=10, pady=5)
+        def browse_multiple_stage_j_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage J JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_h_selected_stage_j_files'):
+                    self.stage_h_selected_stage_j_files = []
+                for filename in filenames:
+                    if filename not in self.stage_h_selected_stage_j_files:
+                        self.stage_h_selected_stage_j_files.append(filename)
+                        self._add_stage_h_stage_j_file_to_ui(filename)
+                self._update_stage_h_pairs()
         
-        stage_j_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_h_stage_j_var)
-        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def select_folder_stage_j_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage J JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_h_selected_stage_j_files'):
+                self.stage_h_selected_stage_j_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_h_selected_stage_j_files:
+                    self.stage_h_selected_stage_j_files.append(json_file)
+                    self._add_stage_h_stage_j_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_h_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
         
-        ctk.CTkButton(entry_frame, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_h_stage_j_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame_j,
+            text="Browse Multiple Stage J Files",
+            command=browse_multiple_stage_j_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator
-        if not hasattr(self, 'stage_h_stage_j_valid'):
-            self.stage_h_stage_j_valid = ctk.CTkLabel(entry_frame, text="", width=30)
-        self.stage_h_stage_j_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame_j,
+            text="Select Folder (Stage J)",
+            command=select_folder_stage_j_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Image File Catalog Selection
+        # Stage J files list (scrollable)
+        list_frame_j = ctk.CTkFrame(stage_j_frame)
+        list_frame_j.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_j,
+            text="Selected Stage J Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_h_stage_j_files_list_scroll'):
+            self.stage_h_stage_j_files_list_scroll = ctk.CTkScrollableFrame(list_frame_j, height=100)
+        self.stage_h_stage_j_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_h_selected_stage_j_files'):
+            self.stage_h_selected_stage_j_files = []
+        
+        # Stage F Files Selection - Batch Processing
         stage_f_frame = ctk.CTkFrame(main_frame)
         stage_f_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(stage_f_frame, text="Image File Catalog JSON (f.json):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_f_frame,
+            text="Stage F JSON Files (Image File Catalog) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_h_stage_f_var'):
-            self.stage_h_stage_f_var = ctk.StringVar()
-        # Auto-fill if available (try to find f.json in same directory as Stage J)
-        if hasattr(self, 'last_stage_f_path') and self.last_stage_f_path and os.path.exists(self.last_stage_f_path):
-            self.stage_h_stage_f_var.set(self.last_stage_f_path)
-        elif self.stage_h_stage_j_var.get():
-            # Try to find Stage F file based on Stage J filename
-            # Stage J filename format: a{book}{chapter}.json
-            # Stage E filename format: e{book}{chapter}.json
-            # Stage F filename format: f_e{book}{chapter}.json
-            stage_j_path = self.stage_h_stage_j_var.get()
-            stage_j_dir = os.path.dirname(stage_j_path)
-            stage_j_basename = os.path.basename(stage_j_path)
-            stage_j_name_without_ext = os.path.splitext(stage_j_basename)[0]
+        # File selection buttons for Stage F
+        buttons_frame_f = ctk.CTkFrame(stage_f_frame)
+        buttons_frame_f.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_f_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage F JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_h_selected_stage_f_files'):
+                    self.stage_h_selected_stage_f_files = []
+                for filename in filenames:
+                    if filename not in self.stage_h_selected_stage_f_files:
+                        self.stage_h_selected_stage_f_files.append(filename)
+                        self._add_stage_h_stage_f_file_to_ui(filename)
+                self._update_stage_h_pairs()
+        
+        def select_folder_stage_f_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage F JSON files"
+            )
+            if not folder_path:
+                return
             
-            # Extract book and chapter from Stage J filename (a{book}{chapter})
-            # and construct Stage E filename (e{book}{chapter})
-            if stage_j_name_without_ext.startswith('a') and len(stage_j_name_without_ext) >= 7:
-                # Remove 'a' prefix to get book+chapter
-                book_chapter = stage_j_name_without_ext[1:]
-                stage_e_name = f"e{book_chapter}"
-                # Try new unique filename: f_e{book}{chapter}.json
-                f_json_path = os.path.join(stage_j_dir, f"f_{stage_e_name}.json")
-                if not os.path.exists(f_json_path):
-                    # Fallback to old format: f.json (for backward compatibility)
-                    f_json_path = os.path.join(stage_j_dir, "f.json")
-            else:
-                # Fallback to old format: f.json
-                f_json_path = os.path.join(stage_j_dir, "f.json")
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
             
-            if os.path.exists(f_json_path):
-                self.stage_h_stage_f_var.set(f_json_path)
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_h_selected_stage_f_files'):
+                self.stage_h_selected_stage_f_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_h_selected_stage_f_files:
+                    self.stage_h_selected_stage_f_files.append(json_file)
+                    self._add_stage_h_stage_f_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_h_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
         
-        entry_frame_f = ctk.CTkFrame(stage_f_frame)
-        entry_frame_f.pack(fill="x", padx=10, pady=5)
+        ctk.CTkButton(
+            buttons_frame_f,
+            text="Browse Multiple Stage F Files",
+            command=browse_multiple_stage_f_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        stage_f_entry = ctk.CTkEntry(entry_frame_f, textvariable=self.stage_h_stage_f_var)
-        stage_f_entry.pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(
+            buttons_frame_f,
+            text="Select Folder (Stage F)",
+            command=select_folder_stage_f_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        ctk.CTkButton(entry_frame_f, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_h_stage_f_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        # Stage F files list (scrollable)
+        list_frame_f = ctk.CTkFrame(stage_f_frame)
+        list_frame_f.pack(fill="both", expand=True, padx=10, pady=5)
         
-        # Validation indicator for Stage F file
-        if not hasattr(self, 'stage_h_stage_f_valid'):
-            self.stage_h_stage_f_valid = ctk.CTkLabel(entry_frame_f, text="", width=30)
-        self.stage_h_stage_f_valid.pack(side="right", padx=5)
+        ctk.CTkLabel(
+            list_frame_f,
+            text="Selected Stage F Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_h_stage_f_files_list_scroll'):
+            self.stage_h_stage_f_files_list_scroll = ctk.CTkScrollableFrame(list_frame_f, height=100)
+        self.stage_h_stage_f_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_h_selected_stage_f_files'):
+            self.stage_h_selected_stage_f_files = []
+        
+        # Pairs Section
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        pairs_header_frame = ctk.CTkFrame(pairs_frame)
+        pairs_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_header_frame,
+            text="Pairs (Stage J ↔ Stage F File):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkButton(
+            pairs_header_frame,
+            text="Auto-Pair",
+            command=self._auto_pair_stage_h_files,
+            width=120,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Pairs list (scrollable)
+        pairs_list_frame = ctk.CTkFrame(pairs_frame)
+        pairs_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_list_frame,
+            text="File Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_h_pairs_list_scroll'):
+            self.stage_h_pairs_list_scroll = ctk.CTkScrollableFrame(pairs_list_frame, height=150)
+        self.stage_h_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize pairs
+        if not hasattr(self, 'stage_h_pairs'):
+            self.stage_h_pairs = []
+        if not hasattr(self, 'stage_h_pairs_info_list'):
+            self.stage_h_pairs_info_list = []
         
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -6668,6 +7158,24 @@ class ContentAutomationGUI:
             )
         self.stage_h_model_combo.pack(anchor="w", padx=10, pady=5)
         
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Batches (seconds):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_h_delay_var'):
+            self.stage_h_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_h_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
+        
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
@@ -6675,12 +7183,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_h_process_btn'):
             self.stage_h_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process Flashcard Generation",
-                command=self.process_stage_h,
+                text="Process All Pairs",
+                command=self.process_stage_h_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_h_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_h_progress_bar'):
+            self.stage_h_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_h_progress_bar.pack(pady=10)
+        self.stage_h_progress_bar.set(0)
         
         # View CSV button
         if not hasattr(self, 'stage_h_view_csv_btn'):
@@ -6706,13 +7220,6 @@ class ContentAutomationGUI:
                 text_color="gray"
             )
         self.stage_h_status_label.pack(pady=5)
-        
-        # Bind validation
-        self.stage_h_stage_j_var.trace('w', lambda *args: self.validate_stage_h_files())
-        self.stage_h_stage_f_var.trace('w', lambda *args: self.validate_stage_h_files())
-        
-        # Initial validation
-        self.validate_stage_h_files()
     
     def setup_stage_v_ui(self, parent):
         """Setup UI for Stage V: Test File Generation"""
@@ -6737,68 +7244,193 @@ class ContentAutomationGUI:
                             font=ctk.CTkFont(size=24, weight="bold"))
         title.pack(pady=(0, 20))
         
-        desc = ctk.CTkLabel(main_frame, text="Generate test files from Tagged data and Word document in three steps.", 
+        desc = ctk.CTkLabel(main_frame, text="Generate test files from Tagged data and Word document (Batch Processing).", 
                            font=ctk.CTkFont(size=12), text_color="gray")
         desc.pack(pady=(0, 20))
         
-        # Tagged Data File Selection
+        # Stage J Files Selection - Batch Processing
         stage_j_frame = ctk.CTkFrame(main_frame)
         stage_j_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(stage_j_frame, text="Tagged Data JSON (a file):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_j_frame,
+            text="Stage J JSON Files (Tagged Data) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_v_stage_j_var'):
-            self.stage_v_stage_j_var = ctk.StringVar()
-        # Auto-fill if available
-        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
-            self.stage_v_stage_j_var.set(self.last_stage_j_path)
+        # File selection buttons for Stage J
+        buttons_frame_j = ctk.CTkFrame(stage_j_frame)
+        buttons_frame_j.pack(fill="x", padx=10, pady=5)
         
-        entry_frame = ctk.CTkFrame(stage_j_frame)
-        entry_frame.pack(fill="x", padx=10, pady=5)
+        def browse_multiple_stage_j_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage J JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_v_selected_stage_j_files'):
+                    self.stage_v_selected_stage_j_files = []
+                for filename in filenames:
+                    if filename not in self.stage_v_selected_stage_j_files:
+                        self.stage_v_selected_stage_j_files.append(filename)
+                        self._add_stage_v_stage_j_file_to_ui(filename)
+                self._update_stage_v_pairs()
         
-        stage_j_entry = ctk.CTkEntry(entry_frame, textvariable=self.stage_v_stage_j_var)
-        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def select_folder_stage_j_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage J JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_v_selected_stage_j_files'):
+                self.stage_v_selected_stage_j_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_v_selected_stage_j_files:
+                    self.stage_v_selected_stage_j_files.append(json_file)
+                    self._add_stage_v_stage_j_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_v_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
         
-        ctk.CTkButton(entry_frame, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_v_stage_j_var, 
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame_j,
+            text="Browse Multiple Stage J Files",
+            command=browse_multiple_stage_j_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator
-        if not hasattr(self, 'stage_v_stage_j_valid'):
-            self.stage_v_stage_j_valid = ctk.CTkLabel(entry_frame, text="", width=30)
-        self.stage_v_stage_j_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame_j,
+            text="Select Folder (Stage J)",
+            command=select_folder_stage_j_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Word File Selection
+        # Stage J files list (scrollable)
+        list_frame_j = ctk.CTkFrame(stage_j_frame)
+        list_frame_j.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_j,
+            text="Selected Stage J Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_v_stage_j_files_list_scroll'):
+            self.stage_v_stage_j_files_list_scroll = ctk.CTkScrollableFrame(list_frame_j, height=100)
+        self.stage_v_stage_j_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_v_selected_stage_j_files'):
+            self.stage_v_selected_stage_j_files = []
+        
+        # Word Files Selection - Batch Processing
         word_frame = ctk.CTkFrame(main_frame)
         word_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(word_frame, text="Word Document (Test Questions):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            word_frame,
+            text="Word Files (Test Questions) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_v_word_var'):
-            self.stage_v_word_var = ctk.StringVar()
+        # File selection buttons for Word files
+        buttons_frame_word = ctk.CTkFrame(word_frame)
+        buttons_frame_word.pack(fill="x", padx=10, pady=5)
         
-        entry_frame_word = ctk.CTkFrame(word_frame)
-        entry_frame_word.pack(fill="x", padx=10, pady=5)
+        def browse_multiple_word_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Word files",
+                filetypes=[("Word Documents", "*.docx *.doc"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_v_selected_word_files'):
+                    self.stage_v_selected_word_files = []
+                for filename in filenames:
+                    if filename not in self.stage_v_selected_word_files:
+                        self.stage_v_selected_word_files.append(filename)
+                        self._add_stage_v_word_file_to_ui(filename)
+                self._update_stage_v_pairs()
         
-        word_entry = ctk.CTkEntry(entry_frame_word, textvariable=self.stage_v_word_var)
-        word_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def select_folder_word_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Word files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            word_files = glob.glob(os.path.join(folder_path, "*.docx")) + glob.glob(os.path.join(folder_path, "*.doc"))
+            word_files = [f for f in word_files if os.path.isfile(f)]
+            
+            if not word_files:
+                messagebox.showinfo("Info", "No Word files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_v_selected_word_files'):
+                self.stage_v_selected_word_files = []
+            
+            added_count = 0
+            for word_file in word_files:
+                if word_file not in self.stage_v_selected_word_files:
+                    self.stage_v_selected_word_files.append(word_file)
+                    self._add_stage_v_word_file_to_ui(word_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_v_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} Word file(s) from folder")
         
-        ctk.CTkButton(entry_frame_word, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_v_word_var, 
-                                                                 filetypes=[("Word Documents", "*.docx *.doc")])).pack(side="right")
+        ctk.CTkButton(
+            buttons_frame_word,
+            text="Browse Multiple Word Files",
+            command=browse_multiple_word_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Validation indicator for Word file
-        if not hasattr(self, 'stage_v_word_valid'):
-            self.stage_v_word_valid = ctk.CTkLabel(entry_frame_word, text="", width=30)
-        self.stage_v_word_valid.pack(side="right", padx=5)
+        ctk.CTkButton(
+            buttons_frame_word,
+            text="Select Folder (Word)",
+            command=select_folder_word_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # OCR Extraction JSON File Selection
+        # Word files list (scrollable)
+        list_frame_word = ctk.CTkFrame(word_frame)
+        list_frame_word.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_word,
+            text="Selected Word Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_v_word_files_list_scroll'):
+            self.stage_v_word_files_list_scroll = ctk.CTkScrollableFrame(list_frame_word, height=100)
+        self.stage_v_word_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_v_selected_word_files'):
+            self.stage_v_selected_word_files = []
+        
+        # OCR Extraction JSON File Selection (Optional - Single File or Auto-Detect)
         ocr_extraction_frame = ctk.CTkFrame(main_frame)
         ocr_extraction_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON File:", 
+        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON File (Optional - Auto-detected per pair if not specified):", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
         if not hasattr(self, 'stage_v_ocr_extraction_var'):
@@ -6817,10 +7449,51 @@ class ContentAutomationGUI:
                      command=lambda: self.browse_file_for_stage(self.stage_v_ocr_extraction_var, 
                                                                  filetypes=[("JSON files", "*.json"), ("All files", "*.*")])).pack(side="right")
         
-        # Validation indicator
-        if not hasattr(self, 'stage_v_ocr_extraction_valid'):
-            self.stage_v_ocr_extraction_valid = ctk.CTkLabel(entry_frame_ocr, text="", width=30)
-        self.stage_v_ocr_extraction_valid.pack(side="right", padx=5)
+        ctk.CTkLabel(ocr_extraction_frame, text="Note: If not specified, OCR Extraction JSON will be auto-detected from Stage J directory for each pair.", 
+                    font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Pairs Section
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        pairs_header_frame = ctk.CTkFrame(pairs_frame)
+        pairs_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_header_frame,
+            text="Pairs (Stage J ↔ Word File):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkButton(
+            pairs_header_frame,
+            text="Auto-Pair",
+            command=self._auto_pair_stage_v_files,
+            width=120,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Pairs list (scrollable)
+        pairs_list_frame = ctk.CTkFrame(pairs_frame)
+        pairs_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_list_frame,
+            text="File Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_v_pairs_list_scroll'):
+            self.stage_v_pairs_list_scroll = ctk.CTkScrollableFrame(pairs_list_frame, height=150)
+        self.stage_v_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize pairs
+        if not hasattr(self, 'stage_v_pairs'):
+            self.stage_v_pairs = []
+        if not hasattr(self, 'stage_v_pairs_info_list'):
+            self.stage_v_pairs_info_list = []
         
         # Step 1 Section
         step1_frame = ctk.CTkFrame(main_frame)
@@ -7001,6 +7674,24 @@ class ContentAutomationGUI:
             )
         self.stage_v_model2_combo.pack(side="left", padx=5)
         
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Batches (seconds):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_v_delay_var'):
+            self.stage_v_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_v_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
+        
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
@@ -7008,12 +7699,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_v_process_btn'):
             self.stage_v_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process Test Bank Generation",
-                command=self.process_stage_v,
+                text="Process All Pairs",
+                command=self.process_stage_v_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_v_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_v_progress_bar'):
+            self.stage_v_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_v_progress_bar.pack(pady=10)
+        self.stage_v_progress_bar.set(0)
         
         # View CSV button
         if not hasattr(self, 'stage_v_view_csv_btn'):
@@ -7039,128 +7736,527 @@ class ContentAutomationGUI:
                 text_color="gray"
             )
         self.stage_v_status_label.pack(pady=5)
+    
+    def _add_stage_v_stage_j_file_to_ui(self, file_path: str):
+        """Add a Stage J file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_v_stage_j_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
         
-        # Bind validation
-        self.stage_v_stage_j_var.trace('w', lambda *args: self.validate_stage_v_files())
-        self.stage_v_word_var.trace('w', lambda *args: self.validate_stage_v_files())
-        if hasattr(self, 'stage_v_ocr_extraction_var'):
-            self.stage_v_ocr_extraction_var.trace('w', lambda *args: self.validate_stage_v_files())
+        file_name = os.path.basename(file_path)
         
-        # Initial validation
-        self.validate_stage_v_files()
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_v_selected_stage_j_files:
+                self.stage_v_selected_stage_j_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_v_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_v_word_file_to_ui(self, file_path: str):
+        """Add a Word file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_v_word_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_v_selected_word_files:
+                self.stage_v_selected_word_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_v_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_stage_j_for_v(self, stage_j_path: str):
+        """Extract book and chapter from Stage J file (from PointId or filename)"""
+        try:
+            # Try to load Stage J and extract from PointId
+            data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename (a{book}{chapter}.json)
+        try:
+            basename = os.path.basename(stage_j_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            if name_without_ext.startswith('a') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _extract_book_chapter_from_word_filename_for_v(self, word_path: str):
+        """Extract book and chapter from Word filename (various patterns)"""
+        import re
+        basename = os.path.basename(word_path)
+        name_without_ext = os.path.splitext(basename)[0]
+        
+        # Try various patterns
+        patterns = [
+            r'ch(\d{3})_(\d{3})',  # ch105_003.docx
+            r'chapter_(\d{3})_(\d{3})',  # chapter_105_003.docx
+            r'(\d{3})_(\d{3})',  # 105_003.docx
+            r'book(\d{3})_chapter(\d{3})',  # book105_chapter003.docx
+            r'e(\d{3})(\d{3})',  # e105003.docx
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, name_without_ext, re.IGNORECASE)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+        
+        return None, None
+    
+    def _auto_detect_ocr_extraction_for_pair(self, stage_j_path: str, common_ocr_path: Optional[str] = None):
+        """Auto-detect OCR Extraction JSON file for a Stage J file"""
+        # If common OCR path is provided, use it
+        if common_ocr_path and os.path.exists(common_ocr_path):
+            return common_ocr_path
+        
+        # Try to find OCR Extraction JSON in same directory as Stage J
+        stage_j_dir = os.path.dirname(stage_j_path)
+        stage_j_basename = os.path.basename(stage_j_path)
+        stage_j_name_without_ext = os.path.splitext(stage_j_basename)[0]
+        
+        # Try various patterns
+        possible_names = [
+            "OCR Extraction.json",
+            f"OCR Extraction_{stage_j_name_without_ext}.json",
+            "OCR Extraction_*.json",  # Will use glob
+        ]
+        
+        # Extract book/chapter from Stage J filename
+        book_id, chapter_id = self._extract_book_chapter_from_stage_j_for_v(stage_j_path)
+        if book_id and chapter_id:
+            possible_names.extend([
+                f"OCR Extraction_{book_id:03d}{chapter_id:03d}.json",
+                f"OCR_Extraction_{book_id:03d}{chapter_id:03d}.json",
+            ])
+        
+        # Try to find matching file
+        import glob
+        for pattern in possible_names:
+            if '*' in pattern:
+                # Use glob
+                matches = glob.glob(os.path.join(stage_j_dir, pattern))
+                if matches:
+                    return matches[0]
+            else:
+                # Direct file
+                file_path = os.path.join(stage_j_dir, pattern)
+                if os.path.exists(file_path):
+                    return file_path
+        
+        return None
+    
+    def _auto_pair_stage_v_files(self):
+        """Auto-pair Stage J files with Word files based on Book/Chapter"""
+        if not hasattr(self, 'stage_v_selected_stage_j_files') or not self.stage_v_selected_stage_j_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage J file")
+            return
+        
+        if not hasattr(self, 'stage_v_selected_word_files') or not self.stage_v_selected_word_files:
+            messagebox.showwarning("Warning", "Please add at least one Word file")
+            return
+        
+        # Get common OCR Extraction file if specified
+        common_ocr_path = None
+        if hasattr(self, 'stage_v_ocr_extraction_var') and self.stage_v_ocr_extraction_var.get():
+            ocr_path = self.stage_v_ocr_extraction_var.get().strip()
+            if ocr_path and os.path.exists(ocr_path):
+                common_ocr_path = ocr_path
+        
+        pairs = []
+        paired_word_files = set()
+        
+        for stage_j_path in self.stage_v_selected_stage_j_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_j_for_v(stage_j_path)
+            
+            if book_id is None or chapter_id is None:
+                # Can't extract book/chapter, skip
+                continue
+            
+            # Find matching Word file
+            matched_word = None
+            for word_path in self.stage_v_selected_word_files:
+                if word_path in paired_word_files:
+                    continue
+                
+                word_book, word_chapter = self._extract_book_chapter_from_word_filename_for_v(word_path)
+                
+                if word_book == book_id and word_chapter == chapter_id:
+                    matched_word = word_path
+                    paired_word_files.add(word_path)
+                    break
+            
+            # Auto-detect OCR Extraction JSON
+            ocr_extraction_path = self._auto_detect_ocr_extraction_for_pair(stage_j_path, common_ocr_path)
+            
+            pair = {
+                'stage_j_path': stage_j_path,
+                'word_path': matched_word,
+                'ocr_extraction_path': ocr_extraction_path,
+                'status': 'pending',
+                'output_path': None,
+                'error': None
+            }
+            pairs.append(pair)
+        
+        self.stage_v_pairs = pairs
+        self._update_stage_v_pairs_ui()
+        
+        paired_count = sum(1 for p in pairs if p['word_path'] is not None)
+        unpaired_count = len(pairs) - paired_count
+        ocr_detected_count = sum(1 for p in pairs if p['ocr_extraction_path'] is not None)
+        
+        messagebox.showinfo(
+            "Auto-Pairing Complete",
+            f"Paired: {paired_count}\nUnpaired: {unpaired_count}\nOCR Auto-detected: {ocr_detected_count}"
+        )
+    
+    def _update_stage_v_pairs(self):
+        """Update pairs when files are added/removed"""
+        # Clear existing pairs UI
+        for widget in self.stage_v_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_v_pairs_info_list = []
+        
+        # Re-pair if we have pairs
+        if hasattr(self, 'stage_v_pairs') and self.stage_v_pairs:
+            self._update_stage_v_pairs_ui()
+    
+    def _update_stage_v_pairs_ui(self):
+        """Update the pairs UI display"""
+        # Clear existing pairs UI
+        for widget in self.stage_v_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_v_pairs_info_list = []
+        
+        if not hasattr(self, 'stage_v_pairs') or not self.stage_v_pairs:
+            return
+        
+        for pair in self.stage_v_pairs:
+            pair_frame = ctk.CTkFrame(self.stage_v_pairs_list_scroll)
+            pair_frame.pack(fill="x", padx=5, pady=2)
+            
+            stage_j_name = os.path.basename(pair['stage_j_path']) if pair['stage_j_path'] else "None"
+            word_name = os.path.basename(pair['word_path']) if pair['word_path'] else "None"
+            ocr_name = os.path.basename(pair['ocr_extraction_path']) if pair['ocr_extraction_path'] else "Auto-detect"
+            
+            pair_text = f"{stage_j_name} ↔ {word_name}"
+            ocr_text = f"OCR: {ocr_name}"
+            
+            # Main pair info
+            info_frame = ctk.CTkFrame(pair_frame)
+            info_frame.pack(fill="x", padx=5, pady=2)
+            
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=pair_text,
+                font=ctk.CTkFont(size=11),
+                anchor="w"
+            )
+            name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text=pair.get('status', 'pending').upper(),
+                font=ctk.CTkFont(size=10),
+                text_color="gray" if pair.get('status') == 'pending' else 
+                          "green" if pair.get('status') == 'completed' else "red"
+            )
+            status_label.pack(side="right", padx=10, pady=5)
+            
+            # OCR info
+            ocr_label = ctk.CTkLabel(
+                pair_frame,
+                text=ocr_text,
+                font=ctk.CTkFont(size=9),
+                text_color="gray",
+                anchor="w"
+            )
+            ocr_label.pack(fill="x", padx=15, pady=(0, 5))
+            
+            self.stage_v_pairs_info_list.append({
+                'pair': pair,
+                'status_label': status_label,
+                'frame': pair_frame
+            })
     
     def validate_stage_v_files(self):
-        """Validate Stage V input files"""
-        stage_j_path = self.stage_v_stage_j_var.get().strip()
-        word_path = self.stage_v_word_var.get().strip()
-        ocr_extraction_path = self.stage_v_ocr_extraction_var.get().strip() if hasattr(self, 'stage_v_ocr_extraction_var') else ""
-        
-        # Validate Stage J file
-        if stage_j_path and os.path.exists(stage_j_path):
-            self.stage_v_stage_j_valid.configure(text="✓", text_color="green")
-        else:
-            self.stage_v_stage_j_valid.configure(text="", text_color="red")
-        
-        # Validate Word file
-        if word_path and os.path.exists(word_path):
-            self.stage_v_word_valid.configure(text="✓", text_color="green")
-        else:
-            self.stage_v_word_valid.configure(text="", text_color="red")
-        
-        # Validate OCR Extraction file
-        if hasattr(self, 'stage_v_ocr_extraction_valid'):
-            if ocr_extraction_path and os.path.exists(ocr_extraction_path):
-                self.stage_v_ocr_extraction_valid.configure(text="✓", text_color="green")
-            else:
-                self.stage_v_ocr_extraction_valid.configure(text="", text_color="red")
+        """Validate Stage V input files (kept for backward compatibility)"""
+        # Validation is now done per pair in batch mode
+        pass
     
-    def process_stage_v(self):
-        """Process Stage V in background thread"""
+    def process_stage_v_batch(self):
+        """Process multiple Stage J + Word file pairs for Stage V"""
         def worker():
             try:
-                self.stage_v_process_btn.configure(state="disabled", text="Processing...")
-                self.update_stage_status("V", "processing")
-                self.stage_v_status_label.configure(text="Processing Test Bank Generation...", text_color="blue")
-                
-                # Validate inputs
-                stage_j_path = self.stage_v_stage_j_var.get().strip()
-                word_path = self.stage_v_word_var.get().strip()
-                ocr_extraction_path = self.stage_v_ocr_extraction_var.get().strip() if hasattr(self, 'stage_v_ocr_extraction_var') else ""
-                prompt_1 = self.stage_v_prompt1_text.get("1.0", tk.END).strip()
-                # Use model from combo box if available, otherwise use default
-                model_name_1 = self.stage_v_model1_var.get() if hasattr(self, 'stage_v_model1_var') else self.get_default_model()
-                prompt_2 = self.stage_v_prompt2_text.get("1.0", tk.END).strip()
-                model_name_2 = self.stage_v_model2_var.get() if hasattr(self, 'stage_v_model2_var') else self.get_default_model()
-                
-                if not stage_j_path or not os.path.exists(stage_j_path):
-                    messagebox.showerror("Error", "Please select a valid Tagged Data JSON file")
+                if not hasattr(self, 'stage_v_pairs') or not self.stage_v_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create pairs first. Click 'Auto-Pair' button."
+                    ))
                     return
                 
-                if not word_path or not os.path.exists(word_path):
-                    messagebox.showerror("Error", "Please select a valid Word document")
+                # Filter pairs that have both Stage J and Word file
+                valid_pairs = [p for p in self.stage_v_pairs if p['stage_j_path'] and p['word_path']]
+                
+                if not valid_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid pairs found. Each pair must have both Stage J and Word file."
+                    ))
                     return
                 
-                if not ocr_extraction_path or not os.path.exists(ocr_extraction_path):
-                    messagebox.showerror("Error", "Please select a valid OCR Extraction JSON file")
+                # Check OCR Extraction for all pairs
+                pairs_without_ocr = [p for p in valid_pairs if not p.get('ocr_extraction_path')]
+                if pairs_without_ocr:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        f"{len(pairs_without_ocr)} pair(s) do not have OCR Extraction JSON.\n"
+                        "Please specify a common OCR Extraction file or ensure files exist in Stage J directories."
+                    ))
                     return
                 
-                if not prompt_1:
-                    messagebox.showerror("Error", "Please enter a prompt for Step 1")
-                    return
-                
-                if not prompt_2:
-                    messagebox.showerror("Error", "Please enter a prompt for Step 2")
-                    return
-                
-                # Validate API keys
-                if not self.api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load API keys first")
-                    return
-                
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_v_status_label.configure(text=msg))
-                
-                # Process Stage V (use default output dir from main view)
-                output_path = self.stage_v_processor.process_stage_v(
-                    stage_j_path=stage_j_path,
-                    word_file_path=word_path,
-                    ocr_extraction_json_path=ocr_extraction_path,
-                    prompt_1=prompt_1,
-                    model_name_1=model_name_1,
-                    prompt_2=prompt_2,
-                    model_name_2=model_name_2,
-                    output_dir=self.get_default_output_dir(stage_j_path),
-                    progress_callback=progress_callback
+                self.stage_v_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
                 )
                 
-                if output_path:
-                    self.last_stage_v_path = output_path
-                    self.update_stage_status("V", "completed", output_path)
+                # Get prompts
+                prompt_1 = self.stage_v_prompt1_text.get("1.0", tk.END).strip()
+                prompt_2 = self.stage_v_prompt2_text.get("1.0", tk.END).strip()
+                
+                if not prompt_1:
+                    default_prompt_1 = self.prompt_manager.get_prompt("Test Bank Generation - Step 1 Prompt")
+                    if default_prompt_1:
+                        prompt_1 = default_prompt_1
+                        self.logger.info("Using default Step 1 prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt for Step 1"))
+                        return
+                
+                if not prompt_2:
+                    default_prompt_2 = self.prompt_manager.get_prompt("Test Bank Generation - Step 2 Prompt")
+                    if default_prompt_2:
+                        prompt_2 = default_prompt_2
+                        self.logger.info("Using default Step 2 prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt for Step 2"))
+                        return
+                
+                # Get models
+                model_1 = self.stage_v_model1_var.get() if hasattr(self, 'stage_v_model1_var') else "gemini-2.5-pro"
+                model_2 = self.stage_v_model2_var.get() if hasattr(self, 'stage_v_model2_var') else "gemini-2.5-pro"
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_v_delay_var.get() if hasattr(self, 'stage_v_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_pairs = len(valid_pairs)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_v_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair in enumerate(valid_pairs):
+                    stage_j_path = pair['stage_j_path']
+                    word_path = pair['word_path']
+                    ocr_extraction_path = pair.get('ocr_extraction_path')
+                    
+                    stage_j_name = os.path.basename(stage_j_path)
+                    word_name = os.path.basename(word_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_v_pairs_info_list'):
+                        for pair_info in self.stage_v_pairs_info_list:
+                            if pair_info['pair'] == pair:
+                                self.root.after(0, lambda sl=pair_info['status_label']:
+                                               sl.configure(text="PROCESSING", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_pairs, sj=stage_j_name, w=word_name:
+                                   self.stage_v_status_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {sj} ↔ {w}"))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.stage_v_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_v_status_label.configure(text=m))
+                        
+                        # Process Stage V
+                        output_path = self.stage_v_processor.process_stage_v(
+                            stage_j_path=stage_j_path,
+                            word_file_path=word_path,
+                            ocr_extraction_json_path=ocr_extraction_path,
+                            prompt_1=prompt_1,
+                            model_name_1=model_1,
+                            prompt_2=prompt_2,
+                            model_name_2=model_2,
+                            output_dir=self.get_default_output_dir(stage_j_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            pair['output_path'] = output_path
+                            pair['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_v_pairs_info_list'):
+                                for pair_info in self.stage_v_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="COMPLETED", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {stage_j_name} ↔ {word_name} -> {os.path.basename(output_path)}"
+                            )
+                            
+                            # Update last_stage_v_path to the last completed output
+                            self.last_stage_v_path = output_path
+                        else:
+                            failed += 1
+                            pair['status'] = 'failed'
+                            pair['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_v_pairs_info_list'):
+                                for pair_info in self.stage_v_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="FAILED", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {stage_j_name} ↔ {word_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        pair['status'] = 'failed'
+                        pair['error'] = str(e)
+                        self.logger.error(f"Error processing {stage_j_name} ↔ {word_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_v_pairs_info_list'):
+                            for pair_info in self.stage_v_pairs_info_list:
+                                if pair_info['pair'] == pair:
+                                    self.root.after(0, lambda sl=pair_info['status_label']:
+                                                   sl.configure(text="FAILED", text_color="red"))
+                                    break
+                    
+                    # Delay before next batch (except for the last one)
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_v_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next batch..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_v_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_v_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage V batch completed!\n\n"
+                    f"Total pairs: {total_pairs}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+                
+                # Enable view CSV button if at least one succeeded
+                if completed > 0:
                     self.root.after(0, lambda: self.stage_v_view_csv_btn.configure(state="normal"))
-                    self.stage_v_status_label.configure(
-                        text=f"Stage V completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Test Bank Generation completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.update_stage_status("V", "error")
-                    self.stage_v_status_label.configure(text="Test Bank Generation failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Test Bank Generation processing failed. Check logs for details.")
             
             except Exception as e:
-                self.logger.error(f"Error in Test Bank Generation processing: {e}", exc_info=True)
-                self.update_stage_status("V", "error")
-                self.stage_v_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Test Bank Generation processing error:\n{str(e)}")
+                self.logger.error(f"Error in batch Stage V processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_v_process_btn.configure(state="normal", text="Process Test Bank Generation"))
+                self.root.after(0, lambda: self.stage_v_process_btn.configure(
+                    state="normal",
+                    text="Process All Pairs"
+                ))
         
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
     
+    def process_stage_v(self):
+        """Process Stage V (redirects to batch processing)"""
+        # Redirect to batch processing
+        self.process_stage_v_batch()
+    
     def setup_stage_m_ui(self, parent):
-        """Setup UI for Stage M: Topic ID List"""
+        """Setup UI for Stage M: Topic List Extraction (Batch Processing)"""
         main_frame = ctk.CTkScrollableFrame(parent)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
@@ -7182,35 +8278,114 @@ class ContentAutomationGUI:
                             font=ctk.CTkFont(size=24, weight="bold"))
         title.pack(pady=(0, 20))
         
-        desc = ctk.CTkLabel(main_frame, text="Extract unique chapter / subchapter / topic combinations from Flashcard file (ac).", 
+        desc = ctk.CTkLabel(main_frame, text="Extract unique chapter / subchapter / topic combinations from Flashcard files (ac) - Batch Processing.", 
                            font=ctk.CTkFont(size=12), text_color="gray")
         desc.pack(pady=(0, 20))
 
-        # Flashcard File Selection
+        # Flashcard Files Selection - Batch Processing
         stage_h_frame = ctk.CTkFrame(main_frame)
         stage_h_frame.pack(fill="x", pady=10)
 
-        ctk.CTkLabel(stage_h_frame, text="Flashcard JSON (ac file):",
+        ctk.CTkLabel(
+            stage_h_frame,
+            text="Flashcard JSON Files (ac files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # File selection buttons
+        buttons_frame_h = ctk.CTkFrame(stage_h_frame)
+        buttons_frame_h.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_h_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Flashcard JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_m_selected_stage_h_files'):
+                    self.stage_m_selected_stage_h_files = []
+                for filename in filenames:
+                    if filename not in self.stage_m_selected_stage_h_files:
+                        self.stage_m_selected_stage_h_files.append(filename)
+                        self._add_stage_m_stage_h_file_to_ui(filename)
+        
+        def select_folder_stage_h_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Flashcard JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_m_selected_stage_h_files'):
+                self.stage_m_selected_stage_h_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_m_selected_stage_h_files:
+                    self.stage_m_selected_stage_h_files.append(json_file)
+                    self._add_stage_m_stage_h_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
+        ctk.CTkButton(
+            buttons_frame_h,
+            text="Browse Multiple Flashcard Files",
+            command=browse_multiple_stage_h_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_h,
+            text="Select Folder (Flashcard)",
+            command=select_folder_stage_h_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+
+        # Flashcard files list (scrollable)
+        list_frame_h = ctk.CTkFrame(stage_h_frame)
+        list_frame_h.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_h,
+            text="Selected Flashcard Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_m_stage_h_files_list_scroll'):
+            self.stage_m_stage_h_files_list_scroll = ctk.CTkScrollableFrame(list_frame_h, height=150)
+        self.stage_m_stage_h_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_m_selected_stage_h_files'):
+            self.stage_m_selected_stage_h_files = []
+        
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Files (seconds):", 
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-
-        if not hasattr(self, 'stage_m_stage_h_var'):
-            self.stage_m_stage_h_var = ctk.StringVar()
-        # Auto-fill if available (use last Stage H output if tracked in future)
-
-        entry_frame_h = ctk.CTkFrame(stage_h_frame)
-        entry_frame_h.pack(fill="x", padx=10, pady=5)
-
-        stage_h_entry = ctk.CTkEntry(entry_frame_h, textvariable=self.stage_m_stage_h_var)
-        stage_h_entry.pack(side="left", fill="x", expand=True, padx=5)
-
-        ctk.CTkButton(entry_frame_h, text="Browse",
-                     command=lambda: self.browse_file_for_stage(self.stage_m_stage_h_var,
-                                                                 filetypes=[("JSON", "*.json")])).pack(side="right")
-
-        # Validation indicator
-        if not hasattr(self, 'stage_m_stage_h_valid'):
-            self.stage_m_stage_h_valid = ctk.CTkLabel(entry_frame_h, text="", width=30)
-        self.stage_m_stage_h_valid.pack(side="right", padx=5)
+        
+        if not hasattr(self, 'stage_m_delay_var'):
+            self.stage_m_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_m_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
 
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
@@ -7219,12 +8394,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_m_process_btn'):
             self.stage_m_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process Topic List Extraction",
-                command=self.process_stage_m,
+                text="Process All Files",
+                command=self.process_stage_m_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_m_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_m_progress_bar'):
+            self.stage_m_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_m_progress_bar.pack(pady=10)
+        self.stage_m_progress_bar.set(0)
 
         # View CSV button
         if not hasattr(self, 'stage_m_view_csv_btn'):
@@ -7251,80 +8432,178 @@ class ContentAutomationGUI:
             )
         self.stage_m_status_label.pack(pady=5)
 
-        # Bind validation
-        self.stage_m_stage_h_var.trace('w', lambda *args: self.validate_stage_m_files())
-
-        # Initial validation
-        self.validate_stage_m_files()
-
     def validate_stage_m_files(self):
-        """Validate Stage M input file"""
-        stage_h_path = self.stage_m_stage_h_var.get().strip()
+        """Validate Stage M input files (kept for backward compatibility)"""
+        # Validation is now done per file in batch mode
+        pass
 
-        if stage_h_path and os.path.exists(stage_h_path):
-            self.stage_m_stage_h_valid.configure(text="Ok", text_color="green")
-        else:
-            self.stage_m_stage_h_valid.configure(text="", text_color="red")
+    def _add_stage_m_stage_h_file_to_ui(self, file_path: str):
+        """Add a Flashcard file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_m_stage_h_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_m_selected_stage_h_files:
+                self.stage_m_selected_stage_h_files.remove(file_path)
+            file_frame.destroy()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
 
-    def process_stage_m(self):
-        """Process Stage M in background thread"""
+    def process_stage_m_batch(self):
+        """Process multiple Flashcard files for Stage M (Batch Processing)"""
         def worker():
             try:
-                self.stage_m_process_btn.configure(state="disabled", text="Processing...")
-                self.update_stage_status("M", "processing")
-                self.stage_m_status_label.configure(text="Processing Topic List Extraction...", text_color="blue")
-
-                # Validate inputs
-                stage_h_path = self.stage_m_stage_h_var.get().strip()
-
-                if not stage_h_path or not os.path.exists(stage_h_path):
-                    messagebox.showerror("Error", "Please select a valid Flashcard JSON file")
+                if not hasattr(self, 'stage_m_selected_stage_h_files') or not self.stage_m_selected_stage_h_files:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add at least one Flashcard JSON file"
+                    ))
                     return
-
-                # Validate API keys (not strictly needed for Stage M, but keep consistent)
-                if not self.api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load API keys first")
+                
+                # Filter valid files
+                valid_files = [f for f in self.stage_m_selected_stage_h_files if os.path.exists(f)]
+                
+                if not valid_files:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid files found. Please check file paths."
+                    ))
                     return
-
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_m_status_label.configure(text=msg))
-
-                # Detect book/chapter for status convenience (optional)
-                # Always use default output dir from main view
-                output_path = self.stage_m_processor.process_stage_m(
-                    stage_h_path=stage_h_path,
-                    output_dir=self.get_default_output_dir(stage_h_path),
-                    progress_callback=progress_callback
+                
+                self.stage_m_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
                 )
-
-                if output_path:
-                    self.last_stage_m_path = output_path
-                    self.update_stage_status("M", "completed", output_path)
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_m_delay_var.get() if hasattr(self, 'stage_m_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_files = len(valid_files)
+                completed = 0
+                failed = 0
+                output_paths = []
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_m_progress_bar.set(0))
+                
+                # Process each file sequentially
+                for idx, stage_h_path in enumerate(valid_files):
+                    file_name = os.path.basename(stage_h_path)
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_files, fn=file_name:
+                                   self.stage_m_status_label.configure(
+                                       text=f"Processing file {idx+1}/{total}: {fn}",
+                                       text_color="blue"
+                                   ))
+                    
+                    # Progress bar
+                    progress = idx / total_files
+                    self.root.after(0, lambda p=progress: self.stage_m_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_m_status_label.configure(text=m))
+                        
+                        # Process Stage M
+                        output_path = self.stage_m_processor.process_stage_m(
+                            stage_h_path=stage_h_path,
+                            output_dir=self.get_default_output_dir(stage_h_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            output_paths.append(output_path)
+                            self.last_stage_m_path = output_path  # Keep last output for CSV view
+                            
+                            self.logger.info(
+                                f"Successfully processed: {file_name} -> {os.path.basename(output_path)}"
+                            )
+                        else:
+                            failed += 1
+                            self.logger.error(f"Failed to process: {file_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        self.logger.error(f"Error processing {file_name}: {str(e)}", exc_info=True)
+                    
+                    # Delay before next file (except for the last one)
+                    if idx < total_files - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_m_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next file..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_m_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_m_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage M batch completed!\n\n"
+                    f"Total files: {total_files}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+                
+                # Enable view CSV button if at least one succeeded
+                if completed > 0:
                     self.root.after(0, lambda: self.stage_m_view_csv_btn.configure(state="normal"))
-                    self.stage_m_status_label.configure(
-                        text=f"Stage M completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Topic List Extraction completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.update_stage_status("M", "error")
-                    self.stage_m_status_label.configure(text="Topic List Extraction failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Topic List Extraction processing failed. Check logs for details.")
-
+            
             except Exception as e:
-                self.logger.error(f"Error in Topic List Extraction processing: {e}", exc_info=True)
-                self.update_stage_status("M", "error")
-                self.stage_m_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Topic List Extraction processing error:\n{str(e)}")
+                self.logger.error(f"Error in batch Stage M processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_m_process_btn.configure(state="normal", text="Process Topic List Extraction"))
-
+                self.root.after(0, lambda: self.stage_m_process_btn.configure(
+                    state="normal",
+                    text="Process All Files"
+                ))
+        
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+
+    def process_stage_m(self):
+        """Process Stage M (redirects to batch processing for backward compatibility)"""
+        # Redirect to batch processing
+        self.process_stage_m_batch()
     
     def setup_stage_l_ui(self, parent):
-        """Setup UI for Stage L: Chapter Overview"""
+        """Setup UI for Stage L: Chapter Overview (Batch Processing)"""
         main_frame = ctk.CTkScrollableFrame(parent)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
@@ -7348,68 +8627,232 @@ class ContentAutomationGUI:
         
         desc = ctk.CTkLabel(
             main_frame,
-            text="Generate per-topic chapter overview from Tagged data (a file) and Test Bank (b file).",
+            text="Generate per-topic chapter overview from Tagged data (a file) and Test Bank (b file) - Batch Processing.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
 
-        # Tagged Data File Selection
+        # Stage J Files Selection - Batch Processing
         stage_j_frame = ctk.CTkFrame(main_frame)
         stage_j_frame.pack(fill="x", pady=10)
 
-        ctk.CTkLabel(stage_j_frame, text="Tagged Data JSON (a file):",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_j_frame,
+            text="Tagged Data JSON Files (a files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
 
-        if not hasattr(self, 'stage_l_stage_j_var'):
-            self.stage_l_stage_j_var = ctk.StringVar()
-        # Auto-fill if available
-        if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path and os.path.exists(self.last_stage_j_path):
-            self.stage_l_stage_j_var.set(self.last_stage_j_path)
-
-        entry_frame_j = ctk.CTkFrame(stage_j_frame)
-        entry_frame_j.pack(fill="x", padx=10, pady=5)
-
-        stage_j_entry = ctk.CTkEntry(entry_frame_j, textvariable=self.stage_l_stage_j_var)
-        stage_j_entry.pack(side="left", fill="x", expand=True, padx=5)
-
+        # File selection buttons for Stage J
+        buttons_frame_j = ctk.CTkFrame(stage_j_frame)
+        buttons_frame_j.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_j_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Tagged Data JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_l_selected_stage_j_files'):
+                    self.stage_l_selected_stage_j_files = []
+                for filename in filenames:
+                    if filename not in self.stage_l_selected_stage_j_files:
+                        self.stage_l_selected_stage_j_files.append(filename)
+                        self._add_stage_l_stage_j_file_to_ui(filename)
+                self._update_stage_l_pairs()
+        
+        def select_folder_stage_j_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Tagged Data JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_l_selected_stage_j_files'):
+                self.stage_l_selected_stage_j_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_l_selected_stage_j_files:
+                    self.stage_l_selected_stage_j_files.append(json_file)
+                    self._add_stage_l_stage_j_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_l_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_j,
-            text="Browse",
-            command=lambda: self.browse_file_for_stage(self.stage_l_stage_j_var, filetypes=[("JSON", "*.json")])
-        ).pack(side="right")
+            buttons_frame_j,
+            text="Browse Multiple Stage J Files",
+            command=browse_multiple_stage_j_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_j,
+            text="Select Folder (Stage J)",
+            command=select_folder_stage_j_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
 
-        # Validation indicator for Stage J file
-        if not hasattr(self, 'stage_l_stage_j_valid'):
-            self.stage_l_stage_j_valid = ctk.CTkLabel(entry_frame_j, text="", width=30)
-        self.stage_l_stage_j_valid.pack(side="right", padx=5)
+        # Stage J files list (scrollable)
+        list_frame_j = ctk.CTkFrame(stage_j_frame)
+        list_frame_j.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_j,
+            text="Selected Stage J Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_l_stage_j_files_list_scroll'):
+            self.stage_l_stage_j_files_list_scroll = ctk.CTkScrollableFrame(list_frame_j, height=100)
+        self.stage_l_stage_j_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_l_selected_stage_j_files'):
+            self.stage_l_selected_stage_j_files = []
 
-        # Stage V File Selection
+        # Stage V Files Selection - Batch Processing
         stage_v_frame = ctk.CTkFrame(main_frame)
         stage_v_frame.pack(fill="x", pady=10)
 
-        ctk.CTkLabel(stage_v_frame, text="Test Bank JSON (b file):",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            stage_v_frame,
+            text="Test Bank JSON Files (b files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
 
-        if not hasattr(self, 'stage_l_stage_v_var'):
-            self.stage_l_stage_v_var = ctk.StringVar()
-
-        entry_frame_v = ctk.CTkFrame(stage_v_frame)
-        entry_frame_v.pack(fill="x", padx=10, pady=5)
-
-        stage_v_entry = ctk.CTkEntry(entry_frame_v, textvariable=self.stage_l_stage_v_var)
-        stage_v_entry.pack(side="left", fill="x", expand=True, padx=5)
-
+        # File selection buttons for Stage V
+        buttons_frame_v = ctk.CTkFrame(stage_v_frame)
+        buttons_frame_v.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_v_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Test Bank JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_l_selected_stage_v_files'):
+                    self.stage_l_selected_stage_v_files = []
+                for filename in filenames:
+                    if filename not in self.stage_l_selected_stage_v_files:
+                        self.stage_l_selected_stage_v_files.append(filename)
+                        self._add_stage_l_stage_v_file_to_ui(filename)
+                self._update_stage_l_pairs()
+        
+        def select_folder_stage_v_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Test Bank JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_l_selected_stage_v_files'):
+                self.stage_l_selected_stage_v_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_l_selected_stage_v_files:
+                    self.stage_l_selected_stage_v_files.append(json_file)
+                    self._add_stage_l_stage_v_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_l_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_v,
-            text="Browse",
-            command=lambda: self.browse_file_for_stage(self.stage_l_stage_v_var, filetypes=[("JSON", "*.json")])
-        ).pack(side="right")
+            buttons_frame_v,
+            text="Browse Multiple Stage V Files",
+            command=browse_multiple_stage_v_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_v,
+            text="Select Folder (Stage V)",
+            command=select_folder_stage_v_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
 
-        # Validation indicator for Stage V file
-        if not hasattr(self, 'stage_l_stage_v_valid'):
-            self.stage_l_stage_v_valid = ctk.CTkLabel(entry_frame_v, text="", width=30)
-        self.stage_l_stage_v_valid.pack(side="right", padx=5)
+        # Stage V files list (scrollable)
+        list_frame_v = ctk.CTkFrame(stage_v_frame)
+        list_frame_v.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_v,
+            text="Selected Stage V Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_l_stage_v_files_list_scroll'):
+            self.stage_l_stage_v_files_list_scroll = ctk.CTkScrollableFrame(list_frame_v, height=100)
+        self.stage_l_stage_v_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_l_selected_stage_v_files'):
+            self.stage_l_selected_stage_v_files = []
+        
+        # Pairs Section
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        pairs_header_frame = ctk.CTkFrame(pairs_frame)
+        pairs_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_header_frame,
+            text="Pairs (Stage J ↔ Stage V):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkButton(
+            pairs_header_frame,
+            text="Auto-Pair",
+            command=self._auto_pair_stage_l_files,
+            width=120,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Pairs list (scrollable)
+        pairs_list_frame = ctk.CTkFrame(pairs_frame)
+        pairs_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_list_frame,
+            text="File Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_l_pairs_list_scroll'):
+            self.stage_l_pairs_list_scroll = ctk.CTkScrollableFrame(pairs_list_frame, height=150)
+        self.stage_l_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize pairs
+        if not hasattr(self, 'stage_l_pairs'):
+            self.stage_l_pairs = []
+        if not hasattr(self, 'stage_l_pairs_info_list'):
+            self.stage_l_pairs_info_list = []
 
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -7501,6 +8944,24 @@ class ContentAutomationGUI:
                 width=300
             )
         self.stage_l_model_combo.pack(anchor="w", padx=10, pady=5)
+        
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Pairs (seconds):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_l_delay_var'):
+            self.stage_l_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_l_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
 
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
@@ -7509,12 +8970,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_l_process_btn'):
             self.stage_l_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process Chapter Summary",
-                command=self.process_stage_l,
+                text="Process All Pairs",
+                command=self.process_stage_l_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_l_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_l_progress_bar'):
+            self.stage_l_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_l_progress_bar.pack(pady=10)
+        self.stage_l_progress_bar.set(0)
 
         # View CSV button
         if not hasattr(self, 'stage_l_view_csv_btn'):
@@ -7541,101 +9008,454 @@ class ContentAutomationGUI:
             )
         self.stage_l_status_label.pack(pady=5)
 
-        # Bind validation
-        self.stage_l_stage_j_var.trace('w', lambda *args: self.validate_stage_l_files())
-        self.stage_l_stage_v_var.trace('w', lambda *args: self.validate_stage_l_files())
-
-        # Initial validation
-        self.validate_stage_l_files()
-
     def validate_stage_l_files(self):
-        """Validate Stage L input files"""
-        stage_j_path = self.stage_l_stage_j_var.get().strip()
-        stage_v_path = self.stage_l_stage_v_var.get().strip()
+        """Validate Stage L input files (kept for backward compatibility)"""
+        # Validation is now done per pair in batch mode
+        pass
 
-        # Stage J
-        if stage_j_path and os.path.exists(stage_j_path):
-            self.stage_l_stage_j_valid.configure(text="Ok", text_color="green")
-        else:
-            self.stage_l_stage_j_valid.configure(text="", text_color="red")
+    def _add_stage_l_stage_j_file_to_ui(self, file_path: str):
+        """Add a Stage J file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_l_stage_j_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_l_selected_stage_j_files:
+                self.stage_l_selected_stage_j_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_l_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_l_stage_v_file_to_ui(self, file_path: str):
+        """Add a Stage V file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_l_stage_v_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_l_selected_stage_v_files:
+                self.stage_l_selected_stage_v_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_l_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_stage_j_for_l(self, stage_j_path: str):
+        """Extract book and chapter from Stage J file (from PointId or filename)"""
+        try:
+            # Try to load Stage J and extract from PointId
+            data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename (a{book}{chapter}.json or a{book}{chapter}+{name}.json)
+        try:
+            basename = os.path.basename(stage_j_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try pattern: a{book}{chapter}+{name}
+            match = re.match(r'^a(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern: a{book}{chapter}
+            if name_without_ext.startswith('a') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _extract_book_chapter_from_stage_v_for_l(self, stage_v_path: str):
+        """Extract book and chapter from Stage V file (from PointId or filename)"""
+        try:
+            # Try to load Stage V and extract from PointId
+            data = json.load(open(stage_v_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename (b{book}{chapter}.json or b{book}{chapter}+{name}.json)
+        try:
+            basename = os.path.basename(stage_v_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try pattern: b{book}{chapter}+{name}
+            match = re.match(r'^b(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern: b{book}{chapter}
+            if name_without_ext.startswith('b') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _auto_pair_stage_l_files(self):
+        """Auto-pair Stage J files with Stage V files based on Book/Chapter"""
+        if not hasattr(self, 'stage_l_selected_stage_j_files') or not self.stage_l_selected_stage_j_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage J file")
+            return
+        
+        if not hasattr(self, 'stage_l_selected_stage_v_files') or not self.stage_l_selected_stage_v_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage V file")
+            return
+        
+        pairs = []
+        paired_stage_v_files = set()
+        
+        for stage_j_path in self.stage_l_selected_stage_j_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_j_for_l(stage_j_path)
+            
+            if book_id is None or chapter_id is None:
+                # Can't extract book/chapter, skip
+                continue
+            
+            # Find matching Stage V file
+            matched_stage_v = None
+            for stage_v_path in self.stage_l_selected_stage_v_files:
+                if stage_v_path in paired_stage_v_files:
+                    continue
+                
+                stage_v_book, stage_v_chapter = self._extract_book_chapter_from_stage_v_for_l(stage_v_path)
+                
+                if stage_v_book == book_id and stage_v_chapter == chapter_id:
+                    matched_stage_v = stage_v_path
+                    paired_stage_v_files.add(stage_v_path)
+                    break
+            
+            pair = {
+                'stage_j_path': stage_j_path,
+                'stage_v_path': matched_stage_v,
+                'book_id': book_id,
+                'chapter_id': chapter_id,
+                'status': 'pending',
+                'output_path': None,
+                'error': None
+            }
+            pairs.append(pair)
+        
+        self.stage_l_pairs = pairs
+        self._update_stage_l_pairs_ui()
+        
+        paired_count = sum(1 for p in pairs if p['stage_v_path'] is not None)
+        unpaired_count = len(pairs) - paired_count
+        
+        messagebox.showinfo(
+            "Auto-Pairing Complete",
+            f"Paired: {paired_count}\nUnpaired: {unpaired_count}"
+        )
+    
+    def _update_stage_l_pairs(self):
+        """Update pairs when files are added/removed"""
+        # Clear existing pairs UI
+        for widget in self.stage_l_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_l_pairs_info_list = []
+        
+        # Re-pair if we have pairs
+        if hasattr(self, 'stage_l_pairs') and self.stage_l_pairs:
+            self._update_stage_l_pairs_ui()
+    
+    def _update_stage_l_pairs_ui(self):
+        """Update the pairs UI display"""
+        # Clear existing pairs UI
+        for widget in self.stage_l_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_l_pairs_info_list = []
+        
+        if not hasattr(self, 'stage_l_pairs') or not self.stage_l_pairs:
+            return
+        
+        for pair in self.stage_l_pairs:
+            pair_frame = ctk.CTkFrame(self.stage_l_pairs_list_scroll)
+            pair_frame.pack(fill="x", padx=5, pady=2)
+            
+            stage_j_name = os.path.basename(pair['stage_j_path']) if pair['stage_j_path'] else "None"
+            stage_v_name = os.path.basename(pair['stage_v_path']) if pair['stage_v_path'] else "None"
+            
+            pair_text = f"{stage_j_name} ↔ {stage_v_name}"
+            
+            # Main pair info
+            info_frame = ctk.CTkFrame(pair_frame)
+            info_frame.pack(fill="x", padx=5, pady=2)
+            
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=pair_text,
+                font=ctk.CTkFont(size=11),
+                anchor="w"
+            )
+            name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text=pair.get('status', 'pending').upper(),
+                font=ctk.CTkFont(size=10),
+                text_color="gray" if pair.get('status') == 'pending' else 
+                          "green" if pair.get('status') == 'completed' else "red"
+            )
+            status_label.pack(side="right", padx=10, pady=5)
+            
+            self.stage_l_pairs_info_list.append({
+                'pair': pair,
+                'status_label': status_label,
+                'frame': pair_frame
+            })
 
-        # Stage V
-        if stage_v_path and os.path.exists(stage_v_path):
-            self.stage_l_stage_v_valid.configure(text="Ok", text_color="green")
-        else:
-            self.stage_l_stage_v_valid.configure(text="", text_color="red")
-
-    def process_stage_l(self):
-        """Process Stage L in background thread"""
+    def process_stage_l_batch(self):
+        """Process multiple Stage J + Stage V pairs for Stage L"""
         def worker():
             try:
-                self.stage_l_process_btn.configure(state="disabled", text="Processing...")
-                self.update_stage_status("L", "processing")
-                self.stage_l_status_label.configure(text="Processing Chapter Summary...", text_color="blue")
-
-                # Validate inputs
-                stage_j_path = self.stage_l_stage_j_var.get().strip()
-                stage_v_path = self.stage_l_stage_v_var.get().strip()
-
-                if not stage_j_path or not os.path.exists(stage_j_path):
-                    messagebox.showerror("Error", "Please select a valid Tagged Data JSON file (a file)")
+                if not hasattr(self, 'stage_l_pairs') or not self.stage_l_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create pairs first. Click 'Auto-Pair' button."
+                    ))
                     return
-
-                if not stage_v_path or not os.path.exists(stage_v_path):
-                    messagebox.showerror("Error", "Please select a valid Test Bank JSON file (b file)")
+                
+                # Filter pairs that have both Stage J and Stage V file
+                valid_pairs = [p for p in self.stage_l_pairs if p['stage_j_path'] and p['stage_v_path']]
+                
+                if not valid_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid pairs found. Each pair must have both Stage J and Stage V file."
+                    ))
                     return
-
-                prompt = self.stage_l_prompt_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                model_name = self.get_default_model()
-
-                if not prompt:
-                    messagebox.showerror("Error", "Please enter a prompt for Chapter Summary")
-                    return
-
-                # Validate API keys (to be consistent with other stages)
-                if not self.api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load API keys first")
-                    return
-
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_l_status_label.configure(text=msg))
-
-                # Process Stage L (always use default output dir from main view)
-                output_path = self.stage_l_processor.process_stage_l(
-                    stage_j_path=stage_j_path,
-                    stage_v_path=stage_v_path,
-                    prompt=prompt,
-                    model_name=model_name,
-                    output_dir=self.get_default_output_dir(stage_j_path),
-                    progress_callback=progress_callback
+                
+                self.stage_l_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
                 )
-
-                if output_path:
-                    self.last_stage_l_path = output_path
-                    self.update_stage_status("L", "completed", output_path)
+                
+                # Get prompt
+                prompt = self.stage_l_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    default_prompt = self.prompt_manager.get_prompt("Chapter Summary Prompt")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default Chapter Summary prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                        return
+                
+                # Get model
+                model_name = self.stage_l_model_var.get() if hasattr(self, 'stage_l_model_var') else "gemini-2.5-pro"
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_l_delay_var.get() if hasattr(self, 'stage_l_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_pairs = len(valid_pairs)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_l_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair in enumerate(valid_pairs):
+                    stage_j_path = pair['stage_j_path']
+                    stage_v_path = pair['stage_v_path']
+                    
+                    stage_j_name = os.path.basename(stage_j_path)
+                    stage_v_name = os.path.basename(stage_v_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_l_pairs_info_list'):
+                        for pair_info in self.stage_l_pairs_info_list:
+                            if pair_info['pair'] == pair:
+                                self.root.after(0, lambda sl=pair_info['status_label']:
+                                               sl.configure(text="PROCESSING", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_pairs, sj=stage_j_name, sv=stage_v_name:
+                                   self.stage_l_status_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {sj} ↔ {sv}"))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.stage_l_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_l_status_label.configure(text=m))
+                        
+                        # Process Stage L
+                        output_path = self.stage_l_processor.process_stage_l(
+                            stage_j_path=stage_j_path,
+                            stage_v_path=stage_v_path,
+                            prompt=prompt,
+                            model_name=model_name,
+                            output_dir=self.get_default_output_dir(stage_j_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            pair['output_path'] = output_path
+                            pair['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_l_pairs_info_list'):
+                                for pair_info in self.stage_l_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="COMPLETED", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {stage_j_name} ↔ {stage_v_name} -> {os.path.basename(output_path)}"
+                            )
+                            
+                            # Update last_stage_l_path to the last completed output
+                            self.last_stage_l_path = output_path
+                        else:
+                            failed += 1
+                            pair['status'] = 'failed'
+                            pair['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_l_pairs_info_list'):
+                                for pair_info in self.stage_l_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="FAILED", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {stage_j_name} ↔ {stage_v_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        pair['status'] = 'failed'
+                        pair['error'] = str(e)
+                        self.logger.error(f"Error processing {stage_j_name} ↔ {stage_v_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_l_pairs_info_list'):
+                            for pair_info in self.stage_l_pairs_info_list:
+                                if pair_info['pair'] == pair:
+                                    self.root.after(0, lambda sl=pair_info['status_label']:
+                                                   sl.configure(text="FAILED", text_color="red"))
+                                    break
+                    
+                    # Delay before next batch (except for the last one)
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_l_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next batch..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_l_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_l_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage L batch completed!\n\n"
+                    f"Total pairs: {total_pairs}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+                
+                # Enable view CSV button if at least one succeeded
+                if completed > 0:
                     self.root.after(0, lambda: self.stage_l_view_csv_btn.configure(state="normal"))
-                    self.stage_l_status_label.configure(
-                        text=f"Stage L completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Chapter Summary completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.update_stage_status("L", "error")
-                    self.stage_l_status_label.configure(text="Chapter Summary failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Chapter Summary processing failed. Check logs for details.")
-
+            
             except Exception as e:
-                self.logger.error(f"Error in Chapter Summary processing: {e}", exc_info=True)
-                self.update_stage_status("L", "error")
-                self.stage_l_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Chapter Summary processing error:\n{str(e)}")
+                self.logger.error(f"Error in batch Stage L processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_l_process_btn.configure(state="normal", text="Process Chapter Summary"))
-
+                self.root.after(0, lambda: self.stage_l_process_btn.configure(
+                    state="normal",
+                    text="Process All Pairs"
+                ))
+        
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+
+    def process_stage_l(self):
+        """Process Stage L (redirects to batch processing for backward compatibility)"""
+        # Redirect to batch processing
+        self.process_stage_l_batch()
     
     def setup_stage_x_ui(self, parent):
         """Setup UI for Stage X: Book Changes Detection"""
@@ -7662,31 +9482,107 @@ class ContentAutomationGUI:
         
         desc = ctk.CTkLabel(
             main_frame,
-            text="Detect changes between old book PDF and current Stage A data. Part 1: Extract PDF. Part 2: Detect changes.",
+            text="Detect changes between old book PDF and current Stage A data - Batch Processing. Part 1: Extract PDF. Part 2: Detect changes.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
         
-        # Part 1: PDF Extraction
+        # Old Book PDF Files Selection - Batch Processing
+        pdf_frame = ctk.CTkFrame(main_frame)
+        pdf_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            pdf_frame,
+            text="Old Book PDF Files - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
+        
+        # File selection buttons for PDF
+        buttons_frame_pdf = ctk.CTkFrame(pdf_frame)
+        buttons_frame_pdf.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_pdf_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Old Book PDF files",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_x_selected_pdf_files'):
+                    self.stage_x_selected_pdf_files = []
+                for filename in filenames:
+                    if filename not in self.stage_x_selected_pdf_files:
+                        self.stage_x_selected_pdf_files.append(filename)
+                        self._add_stage_x_pdf_file_to_ui(filename)
+                self._update_stage_x_pairs()
+        
+        def select_folder_pdf_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing PDF files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            pdf_files = glob.glob(os.path.join(folder_path, "*.pdf"))
+            pdf_files = [f for f in pdf_files if os.path.isfile(f)]
+            
+            if not pdf_files:
+                messagebox.showinfo("Info", "No PDF files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_x_selected_pdf_files'):
+                self.stage_x_selected_pdf_files = []
+            
+            added_count = 0
+            for pdf_file in pdf_files:
+                if pdf_file not in self.stage_x_selected_pdf_files:
+                    self.stage_x_selected_pdf_files.append(pdf_file)
+                    self._add_stage_x_pdf_file_to_ui(pdf_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_x_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} PDF file(s) from folder")
+        
+        ctk.CTkButton(
+            buttons_frame_pdf,
+            text="Browse Multiple PDF Files",
+            command=browse_multiple_pdf_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_pdf,
+            text="Select Folder (PDF)",
+            command=select_folder_pdf_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # PDF files list (scrollable)
+        list_frame_pdf = ctk.CTkFrame(pdf_frame)
+        list_frame_pdf.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_pdf,
+            text="Selected PDF Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_x_pdf_files_list_scroll'):
+            self.stage_x_pdf_files_list_scroll = ctk.CTkScrollableFrame(list_frame_pdf, height=100)
+        self.stage_x_pdf_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_x_selected_pdf_files'):
+            self.stage_x_selected_pdf_files = []
+        
+        # Part 1: PDF Extraction Settings
         part1_frame = ctk.CTkFrame(main_frame)
         part1_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(part1_frame, text="Part 1: PDF Extraction",
+        ctk.CTkLabel(part1_frame, text="Part 1: PDF Extraction Settings",
                     font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        # Old Book PDF
-        pdf_frame = ctk.CTkFrame(part1_frame)
-        pdf_frame.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(pdf_frame, text="Old Book PDF:", width=150).pack(side="left", padx=5)
-        if not hasattr(self, 'stage_x_old_pdf_var'):
-            self.stage_x_old_pdf_var = ctk.StringVar()
-        ctk.CTkEntry(pdf_frame, textvariable=self.stage_x_old_pdf_var, width=400).pack(side="left", padx=5, fill="x", expand=True)
-        ctk.CTkButton(
-            pdf_frame,
-            text="Browse",
-            command=lambda: self.stage_x_old_pdf_var.set(filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")]))
-        ).pack(side="left", padx=5)
         
         # PDF Extraction Prompt Section
         pdf_prompt_frame = ctk.CTkFrame(part1_frame)
@@ -7758,27 +9654,167 @@ class ContentAutomationGUI:
             self.stage_x_pdf_model_var = ctk.StringVar(value=default_model)
         ctk.CTkComboBox(pdf_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_x_pdf_model_var, width=300).pack(side="left", padx=5)
         
-        # Part 2: Change Detection
+        # Stage A Files Selection - Batch Processing
+        stage_a_frame = ctk.CTkFrame(main_frame)
+        stage_a_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            stage_a_frame,
+            text="Stage A JSON Files (a files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
+        
+        # File selection buttons for Stage A
+        buttons_frame_a = ctk.CTkFrame(stage_a_frame)
+        buttons_frame_a.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_a_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage A JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_x_selected_stage_a_files'):
+                    self.stage_x_selected_stage_a_files = []
+                for filename in filenames:
+                    if filename not in self.stage_x_selected_stage_a_files:
+                        self.stage_x_selected_stage_a_files.append(filename)
+                        self._add_stage_x_stage_a_file_to_ui(filename)
+                self._update_stage_x_pairs()
+        
+        def select_folder_stage_a_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage A JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_x_selected_stage_a_files'):
+                self.stage_x_selected_stage_a_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_x_selected_stage_a_files:
+                    self.stage_x_selected_stage_a_files.append(json_file)
+                    self._add_stage_x_stage_a_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_x_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
+        ctk.CTkButton(
+            buttons_frame_a,
+            text="Browse Multiple Stage A Files",
+            command=browse_multiple_stage_a_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_a,
+            text="Select Folder (Stage A)",
+            command=select_folder_stage_a_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Stage A files list (scrollable)
+        list_frame_a = ctk.CTkFrame(stage_a_frame)
+        list_frame_a.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_a,
+            text="Selected Stage A Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_x_stage_a_files_list_scroll'):
+            self.stage_x_stage_a_files_list_scroll = ctk.CTkScrollableFrame(list_frame_a, height=100)
+        self.stage_x_stage_a_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_x_selected_stage_a_files'):
+            self.stage_x_selected_stage_a_files = []
+        
+        # Pairs Section
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        pairs_header_frame = ctk.CTkFrame(pairs_frame)
+        pairs_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_header_frame,
+            text="Pairs (PDF ↔ Stage A):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Auto-Pair options frame
+        auto_pair_options_frame = ctk.CTkFrame(pairs_header_frame)
+        auto_pair_options_frame.pack(side="right", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_x_pairing_mode_var'):
+            self.stage_x_pairing_mode_var = ctk.StringVar(value="common")
+        
+        ctk.CTkRadioButton(
+            auto_pair_options_frame,
+            text="Common PDF",
+            variable=self.stage_x_pairing_mode_var,
+            value="common",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkRadioButton(
+            auto_pair_options_frame,
+            text="Pair by Book/Chapter",
+            variable=self.stage_x_pairing_mode_var,
+            value="pair",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            pairs_header_frame,
+            text="Auto-Pair",
+            command=self._auto_pair_stage_x_files,
+            width=120,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Pairs list (scrollable)
+        pairs_list_frame = ctk.CTkFrame(pairs_frame)
+        pairs_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_list_frame,
+            text="File Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_x_pairs_list_scroll'):
+            self.stage_x_pairs_list_scroll = ctk.CTkScrollableFrame(pairs_list_frame, height=150)
+        self.stage_x_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize pairs
+        if not hasattr(self, 'stage_x_pairs'):
+            self.stage_x_pairs = []
+        if not hasattr(self, 'stage_x_pairs_info_list'):
+            self.stage_x_pairs_info_list = []
+        
+        # Part 2: Change Detection Settings
         part2_frame = ctk.CTkFrame(main_frame)
         part2_frame.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(part2_frame, text="Part 2: Change Detection",
+        ctk.CTkLabel(part2_frame, text="Part 2: Change Detection Settings",
                     font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        # Stage A File
-        stage_a_frame = ctk.CTkFrame(part2_frame)
-        stage_a_frame.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(stage_a_frame, text="Stage A JSON (a file):", width=150).pack(side="left", padx=5)
-        if not hasattr(self, 'stage_x_stage_a_var'):
-            self.stage_x_stage_a_var = ctk.StringVar()
-            if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path:
-                self.stage_x_stage_a_var.set(self.last_stage_j_path)
-        ctk.CTkEntry(stage_a_frame, textvariable=self.stage_x_stage_a_var, width=400).pack(side="left", padx=5, fill="x", expand=True)
-        ctk.CTkButton(
-            stage_a_frame,
-            text="Browse",
-            command=lambda: self.stage_x_stage_a_var.set(filedialog.askopenfilename(filetypes=[("JSON files", "*.json")]))
-        ).pack(side="left", padx=5)
         
         # Change Detection Prompt Section
         change_prompt_frame = ctk.CTkFrame(part2_frame)
@@ -7850,6 +9886,24 @@ class ContentAutomationGUI:
             self.stage_x_change_model_var = ctk.StringVar(value=default_model)
         ctk.CTkComboBox(change_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_x_change_model_var, width=300).pack(side="left", padx=5)
         
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Pairs (seconds):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_x_delay_var'):
+            self.stage_x_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_x_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
+        
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
@@ -7857,12 +9911,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_x_process_btn'):
             self.stage_x_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process Book Changes Detection",
-                command=self.process_stage_x,
+                text="Process All Pairs",
+                command=self.process_stage_x_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_x_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_x_progress_bar'):
+            self.stage_x_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_x_progress_bar.pack(pady=10)
+        self.stage_x_progress_bar.set(0)
         
         # Status Label
         if not hasattr(self, 'stage_x_status_label'):
@@ -7899,29 +9959,107 @@ class ContentAutomationGUI:
         
         desc = ctk.CTkLabel(
             main_frame,
-            text="Step 1: Extract PDF from old reference (2 parts). Step 2: Detect deletions by comparing OCR Extraction JSON with extracted PDF.",
+            text="Step 1: Extract PDF from old reference (2 parts). Step 2: Detect deletions by comparing OCR Extraction JSON with extracted PDF - Batch Processing.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
         
-        # Step 1: Old Reference PDF File
+        # Old Reference PDF Files Selection - Batch Processing
         old_pdf_frame = ctk.CTkFrame(main_frame)
         old_pdf_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(old_pdf_frame, text="Old Reference PDF File (Step 1):",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_y_old_pdf_var'):
-            self.stage_y_old_pdf_var = ctk.StringVar()
+        ctk.CTkLabel(
+            old_pdf_frame,
+            text="Old Reference PDF Files - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        entry_frame_old_pdf = ctk.CTkFrame(old_pdf_frame)
-        entry_frame_old_pdf.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_old_pdf, textvariable=self.stage_y_old_pdf_var).pack(side="left", fill="x", expand=True, padx=5)
+        # File selection buttons for PDF
+        buttons_frame_pdf = ctk.CTkFrame(old_pdf_frame)
+        buttons_frame_pdf.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_pdf_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Old Reference PDF files",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_y_selected_pdf_files'):
+                    self.stage_y_selected_pdf_files = []
+                for filename in filenames:
+                    if filename not in self.stage_y_selected_pdf_files:
+                        self.stage_y_selected_pdf_files.append(filename)
+                        self._add_stage_y_pdf_file_to_ui(filename)
+                self._update_stage_y_pairs()
+        
+        def select_folder_pdf_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing PDF files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            pdf_files = glob.glob(os.path.join(folder_path, "*.pdf"))
+            pdf_files = [f for f in pdf_files if os.path.isfile(f)]
+            
+            if not pdf_files:
+                messagebox.showinfo("Info", "No PDF files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_y_selected_pdf_files'):
+                self.stage_y_selected_pdf_files = []
+            
+            added_count = 0
+            for pdf_file in pdf_files:
+                if pdf_file not in self.stage_y_selected_pdf_files:
+                    self.stage_y_selected_pdf_files.append(pdf_file)
+                    self._add_stage_y_pdf_file_to_ui(pdf_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_y_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} PDF file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_old_pdf,
-            text="Browse",
-            command=lambda: self.stage_y_old_pdf_var.set(filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")]))
-        ).pack(side="right")
+            buttons_frame_pdf,
+            text="Browse Multiple PDF Files",
+            command=browse_multiple_pdf_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_pdf,
+            text="Select Folder (PDF)",
+            command=select_folder_pdf_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # PDF files list (scrollable)
+        list_frame_pdf = ctk.CTkFrame(old_pdf_frame)
+        list_frame_pdf.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_pdf,
+            text="Selected PDF Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_y_pdf_files_list_scroll'):
+            self.stage_y_pdf_files_list_scroll = ctk.CTkScrollableFrame(list_frame_pdf, height=100)
+        self.stage_y_pdf_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_y_selected_pdf_files'):
+            self.stage_y_selected_pdf_files = []
+        
+        # Step 1: OCR Extraction Settings
+        step1_settings_frame = ctk.CTkFrame(main_frame)
+        step1_settings_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(step1_settings_frame, text="Step 1: OCR Extraction Settings",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
         # Step 1: OCR Extraction Prompt
         ocr_prompt_frame = ctk.CTkFrame(main_frame)
@@ -7943,26 +10081,167 @@ class ContentAutomationGUI:
             self.stage_y_ocr_model_var = ctk.StringVar(value="gemini-2.5-pro")
         ctk.CTkComboBox(ocr_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_y_ocr_model_var, width=400).pack(anchor="w", padx=10, pady=(0, 10))
         
-        # Step 2: OCR Extraction JSON File
+        # OCR Extraction JSON Files Selection - Batch Processing
         ocr_extraction_frame = ctk.CTkFrame(main_frame)
         ocr_extraction_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON (Step 2 - from OCR Extraction stage):",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_y_ocr_extraction_var'):
-            self.stage_y_ocr_extraction_var = ctk.StringVar()
-            # Try to auto-fill from last OCR extraction output if available
-            if hasattr(self, 'ocr_extraction_output_var') and self.ocr_extraction_output_var.get():
-                self.stage_y_ocr_extraction_var.set(self.ocr_extraction_output_var.get())
+        ctk.CTkLabel(
+            ocr_extraction_frame,
+            text="OCR Extraction JSON Files (Step 2 - from OCR Extraction stage) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        entry_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
-        entry_frame_ocr.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_ocr, textvariable=self.stage_y_ocr_extraction_var).pack(side="left", fill="x", expand=True, padx=5)
+        # File selection buttons for OCR Extraction
+        buttons_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
+        buttons_frame_ocr.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_ocr_extraction_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select OCR Extraction JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_y_selected_ocr_extraction_files'):
+                    self.stage_y_selected_ocr_extraction_files = []
+                for filename in filenames:
+                    if filename not in self.stage_y_selected_ocr_extraction_files:
+                        self.stage_y_selected_ocr_extraction_files.append(filename)
+                        self._add_stage_y_ocr_extraction_file_to_ui(filename)
+                self._update_stage_y_pairs()
+        
+        def select_folder_ocr_extraction_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing OCR Extraction JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_y_selected_ocr_extraction_files'):
+                self.stage_y_selected_ocr_extraction_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_y_selected_ocr_extraction_files:
+                    self.stage_y_selected_ocr_extraction_files.append(json_file)
+                    self._add_stage_y_ocr_extraction_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_y_pairs()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_ocr,
-            text="Browse",
-            command=lambda: self.stage_y_ocr_extraction_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
-        ).pack(side="right")
+            buttons_frame_ocr,
+            text="Browse Multiple OCR Extraction Files",
+            command=browse_multiple_ocr_extraction_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_ocr,
+            text="Select Folder (OCR Extraction)",
+            command=select_folder_ocr_extraction_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # OCR Extraction files list (scrollable)
+        list_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
+        list_frame_ocr.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_ocr,
+            text="Selected OCR Extraction Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_y_ocr_extraction_files_list_scroll'):
+            self.stage_y_ocr_extraction_files_list_scroll = ctk.CTkScrollableFrame(list_frame_ocr, height=100)
+        self.stage_y_ocr_extraction_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_y_selected_ocr_extraction_files'):
+            self.stage_y_selected_ocr_extraction_files = []
+        
+        # Pairs Section
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        pairs_header_frame = ctk.CTkFrame(pairs_frame)
+        pairs_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_header_frame,
+            text="Pairs (PDF ↔ OCR Extraction):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Auto-Pair options frame
+        auto_pair_options_frame = ctk.CTkFrame(pairs_header_frame)
+        auto_pair_options_frame.pack(side="right", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_pairing_mode_var'):
+            self.stage_y_pairing_mode_var = ctk.StringVar(value="common")
+        
+        ctk.CTkRadioButton(
+            auto_pair_options_frame,
+            text="Common PDF",
+            variable=self.stage_y_pairing_mode_var,
+            value="common",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkRadioButton(
+            auto_pair_options_frame,
+            text="Pair by Book/Chapter",
+            variable=self.stage_y_pairing_mode_var,
+            value="pair",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            pairs_header_frame,
+            text="Auto-Pair",
+            command=self._auto_pair_stage_y_files,
+            width=120,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Pairs list (scrollable)
+        pairs_list_frame = ctk.CTkFrame(pairs_frame)
+        pairs_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            pairs_list_frame,
+            text="File Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_y_pairs_list_scroll'):
+            self.stage_y_pairs_list_scroll = ctk.CTkScrollableFrame(pairs_list_frame, height=150)
+        self.stage_y_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize pairs
+        if not hasattr(self, 'stage_y_pairs'):
+            self.stage_y_pairs = []
+        if not hasattr(self, 'stage_y_pairs_info_list'):
+            self.stage_y_pairs_info_list = []
+        
+        # Step 2: Deletion Detection Settings
+        step2_settings_frame = ctk.CTkFrame(main_frame)
+        step2_settings_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(step2_settings_frame, text="Step 2: Deletion Detection Settings",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
         # Step 2: Deletion Detection Prompt
         deletion_prompt_frame = ctk.CTkFrame(main_frame)
@@ -8030,6 +10309,33 @@ class ContentAutomationGUI:
             if default_prompt_name:
                 self.on_stage_y_deletion_default_prompt_selected(default_prompt_name)
         
+        # Step 2: Deletion Detection Model
+        deletion_model_frame = ctk.CTkFrame(step2_settings_frame)
+        deletion_model_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(deletion_model_frame, text="Deletion Detection Model (Step 2):", width=200).pack(side="left", padx=5)
+        if not hasattr(self, 'stage_y_deletion_model_var'):
+            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
+            self.stage_y_deletion_model_var = ctk.StringVar(value=default_model)
+        ctk.CTkComboBox(deletion_model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_y_deletion_model_var, width=300).pack(side="left", padx=5)
+        
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Pairs (seconds):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_y_delay_var'):
+            self.stage_y_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_y_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
+        
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
@@ -8037,12 +10343,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_y_process_btn'):
             self.stage_y_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process Deletion Detection",
-                command=self.process_stage_y,
+                text="Process All Pairs",
+                command=self.process_stage_y_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_y_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_y_progress_bar'):
+            self.stage_y_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_y_progress_bar.pack(pady=10)
+        self.stage_y_progress_bar.set(0)
         
         # Status Label
         if not hasattr(self, 'stage_y_status_label'):
@@ -8053,6 +10365,492 @@ class ContentAutomationGUI:
                 text_color="gray"
             )
         self.stage_y_status_label.pack(pady=5)
+    
+    def _add_stage_y_pdf_file_to_ui(self, file_path: str):
+        """Add a PDF file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_y_pdf_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_y_selected_pdf_files:
+                self.stage_y_selected_pdf_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_y_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_y_ocr_extraction_file_to_ui(self, file_path: str):
+        """Add an OCR Extraction file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_y_ocr_extraction_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_y_selected_ocr_extraction_files:
+                self.stage_y_selected_ocr_extraction_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_y_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_ocr_extraction_for_y(self, ocr_extraction_path: str):
+        """Extract book and chapter from OCR Extraction JSON file (from metadata or filename)"""
+        try:
+            # Try to load OCR Extraction JSON and extract from metadata
+            data = json.load(open(ocr_extraction_path, 'r', encoding='utf-8'))
+            metadata = self.get_metadata_from_json(data)
+            book_id = metadata.get("book_id")
+            chapter_id = metadata.get("chapter_id")
+            if book_id is not None and chapter_id is not None:
+                return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename
+        try:
+            basename = os.path.basename(ocr_extraction_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try various patterns: {prefix}{book}{chapter}+{name} or {prefix}{book}{chapter}
+            match = re.match(r'^[a-z]?(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern without +: {prefix}{book}{chapter}
+            if len(name_without_ext) >= 7:
+                # Try to extract 6 digits
+                digits_match = re.search(r'(\d{3})(\d{3})', name_without_ext)
+                if digits_match:
+                    book_id = int(digits_match.group(1))
+                    chapter_id = int(digits_match.group(2))
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _auto_pair_stage_y_files(self):
+        """Auto-pair PDF files with OCR Extraction files"""
+        pairing_mode = self.stage_y_pairing_mode_var.get() if hasattr(self, 'stage_y_pairing_mode_var') else "common"
+        
+        if not hasattr(self, 'stage_y_selected_pdf_files') or not self.stage_y_selected_pdf_files:
+            messagebox.showwarning("Warning", "Please add at least one PDF file")
+            return
+        
+        if not hasattr(self, 'stage_y_selected_ocr_extraction_files') or not self.stage_y_selected_ocr_extraction_files:
+            messagebox.showwarning("Warning", "Please add at least one OCR Extraction file")
+            return
+        
+        pairs = []
+        
+        if pairing_mode == "common":
+            # Use first PDF for all OCR Extraction files
+            common_pdf = self.stage_y_selected_pdf_files[0]
+            for ocr_extraction_path in self.stage_y_selected_ocr_extraction_files:
+                book_id, chapter_id = self._extract_book_chapter_from_ocr_extraction_for_y(ocr_extraction_path)
+                pair = {
+                    'pdf_path': common_pdf,
+                    'ocr_extraction_path': ocr_extraction_path,
+                    'book_id': book_id,
+                    'chapter_id': chapter_id,
+                    'status': 'pending',
+                    'output_path': None,
+                    'error': None
+                }
+                pairs.append(pair)
+        else:
+            # Pair by Book/Chapter (if multiple PDFs, try to match)
+            # For now, use first PDF for all (can be enhanced later)
+            if len(self.stage_y_selected_pdf_files) == 1:
+                common_pdf = self.stage_y_selected_pdf_files[0]
+                for ocr_extraction_path in self.stage_y_selected_ocr_extraction_files:
+                    book_id, chapter_id = self._extract_book_chapter_from_ocr_extraction_for_y(ocr_extraction_path)
+                    pair = {
+                        'pdf_path': common_pdf,
+                        'ocr_extraction_path': ocr_extraction_path,
+                        'book_id': book_id,
+                        'chapter_id': chapter_id,
+                        'status': 'pending',
+                        'output_path': None,
+                        'error': None
+                    }
+                    pairs.append(pair)
+            else:
+                # Multiple PDFs: try to pair by Book/Chapter
+                paired_pdfs = set()
+                for ocr_extraction_path in self.stage_y_selected_ocr_extraction_files:
+                    book_id, chapter_id = self._extract_book_chapter_from_ocr_extraction_for_y(ocr_extraction_path)
+                    
+                    if book_id is None or chapter_id is None:
+                        # Can't extract book/chapter, use first PDF
+                        matched_pdf = self.stage_y_selected_pdf_files[0]
+                    else:
+                        # Try to find matching PDF (for now, use first available)
+                        matched_pdf = None
+                        for pdf_path in self.stage_y_selected_pdf_files:
+                            if pdf_path not in paired_pdfs:
+                                matched_pdf = pdf_path
+                                paired_pdfs.add(pdf_path)
+                                break
+                        
+                        if not matched_pdf:
+                            matched_pdf = self.stage_y_selected_pdf_files[0]
+                    
+                    pair = {
+                        'pdf_path': matched_pdf,
+                        'ocr_extraction_path': ocr_extraction_path,
+                        'book_id': book_id,
+                        'chapter_id': chapter_id,
+                        'status': 'pending',
+                        'output_path': None,
+                        'error': None
+                    }
+                    pairs.append(pair)
+        
+        self.stage_y_pairs = pairs
+        self._update_stage_y_pairs_ui()
+        
+        paired_count = len(pairs)
+        messagebox.showinfo(
+            "Auto-Pairing Complete",
+            f"Created {paired_count} pair(s)"
+        )
+    
+    def _update_stage_y_pairs(self):
+        """Update pairs when files are added/removed"""
+        # Clear existing pairs UI
+        for widget in self.stage_y_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_y_pairs_info_list = []
+        
+        # Re-pair if we have pairs
+        if hasattr(self, 'stage_y_pairs') and self.stage_y_pairs:
+            self._update_stage_y_pairs_ui()
+    
+    def _update_stage_y_pairs_ui(self):
+        """Update the pairs UI display"""
+        # Clear existing pairs UI
+        for widget in self.stage_y_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_y_pairs_info_list = []
+        
+        if not hasattr(self, 'stage_y_pairs') or not self.stage_y_pairs:
+            return
+        
+        for pair in self.stage_y_pairs:
+            pair_frame = ctk.CTkFrame(self.stage_y_pairs_list_scroll)
+            pair_frame.pack(fill="x", padx=5, pady=2)
+            
+            pdf_name = os.path.basename(pair['pdf_path']) if pair['pdf_path'] else "None"
+            ocr_name = os.path.basename(pair['ocr_extraction_path']) if pair['ocr_extraction_path'] else "None"
+            
+            pair_text = f"{pdf_name} ↔ {ocr_name}"
+            
+            # Main pair info
+            info_frame = ctk.CTkFrame(pair_frame)
+            info_frame.pack(fill="x", padx=5, pady=2)
+            
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=pair_text,
+                font=ctk.CTkFont(size=11),
+                anchor="w"
+            )
+            name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text=pair.get('status', 'pending').upper(),
+                font=ctk.CTkFont(size=10),
+                text_color="gray" if pair.get('status') == 'pending' else 
+                          "green" if pair.get('status') == 'completed' else "red"
+            )
+            status_label.pack(side="right", padx=10, pady=5)
+            
+            self.stage_y_pairs_info_list.append({
+                'pair': pair,
+                'status_label': status_label,
+                'frame': pair_frame
+            })
+    
+    def process_stage_y_batch(self):
+        """Process multiple PDF + OCR Extraction pairs for Stage Y"""
+        def worker():
+            try:
+                if not hasattr(self, 'stage_y_pairs') or not self.stage_y_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create pairs first. Click 'Auto-Pair' button."
+                    ))
+                    return
+                
+                # Filter pairs that have both PDF and OCR Extraction file
+                valid_pairs = [p for p in self.stage_y_pairs if p['pdf_path'] and p['ocr_extraction_path']]
+                
+                if not valid_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid pairs found. Each pair must have both PDF and OCR Extraction file."
+                    ))
+                    return
+                
+                self.stage_y_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
+                )
+                
+                # Get prompts
+                ocr_prompt = self.stage_y_ocr_prompt_text.get("1.0", tk.END).strip()
+                if not ocr_prompt:
+                    default_ocr_prompt = self.prompt_manager.get_prompt("OCR Extraction Prompt")
+                    if default_ocr_prompt:
+                        ocr_prompt = default_ocr_prompt
+                        self.logger.info("Using default OCR extraction prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter an OCR extraction prompt"))
+                        return
+                
+                deletion_prompt = self.stage_y_deletion_prompt_text.get("1.0", tk.END).strip()
+                if not deletion_prompt:
+                    default_deletion_prompt = self.prompt_manager.get_prompt("Deletion Detection Prompt")
+                    if default_deletion_prompt:
+                        deletion_prompt = default_deletion_prompt
+                        self.logger.info("Using default deletion detection prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a deletion detection prompt"))
+                        return
+                
+                # Get models
+                ocr_model = self.stage_y_ocr_model_var.get() if hasattr(self, 'stage_y_ocr_model_var') else "gemini-2.5-pro"
+                deletion_model = self.stage_y_deletion_model_var.get() if hasattr(self, 'stage_y_deletion_model_var') else "gemini-2.5-pro"
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_y_delay_var.get() if hasattr(self, 'stage_y_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_pairs = len(valid_pairs)
+                completed = 0
+                failed = 0
+                
+                # Step 1 output cache: {pdf_path: step1_output_path}
+                step1_cache = {}
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_y_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair in enumerate(valid_pairs):
+                    pdf_path = pair['pdf_path']
+                    ocr_extraction_path = pair['ocr_extraction_path']
+                    
+                    pdf_name = os.path.basename(pdf_path)
+                    ocr_name = os.path.basename(ocr_extraction_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_y_pairs_info_list'):
+                        for pair_info in self.stage_y_pairs_info_list:
+                            if pair_info['pair'] == pair:
+                                self.root.after(0, lambda sl=pair_info['status_label']:
+                                               sl.configure(text="PROCESSING", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_pairs, pdf=pdf_name, ocr=ocr_name:
+                                   self.stage_y_status_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {pdf} ↔ {ocr}",
+                                       text_color="blue"
+                                   ))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.stage_y_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_y_status_label.configure(text=m))
+                        
+                        # Check cache for Step 1 output
+                        if pdf_path not in step1_cache:
+                            # Step 1: Extract PDF (one time per PDF)
+                            self.root.after(0, lambda: self.stage_y_status_label.configure(
+                                text=f"Step 1: Extracting PDF: {pdf_name}..."))
+                            
+                            # Determine output directory for Step 1
+                            step1_output_dir = self.get_default_output_dir(ocr_extraction_path)
+                            
+                            # Extract book and chapter from OCR Extraction JSON for Step 1
+                            book_id, chapter_id = self._extract_book_chapter_from_ocr_extraction_for_y(ocr_extraction_path)
+                            if book_id is None:
+                                book_id = 105  # default
+                            if chapter_id is None:
+                                chapter_id = 3  # default
+                            
+                            # Call Step 1 extraction
+                            step1_output = self.stage_y_processor._step1_extract_pdf(
+                                pdf_path=pdf_path,
+                                prompt=ocr_prompt,
+                                model_name=ocr_model,
+                                output_dir=step1_output_dir,
+                                book_id=book_id,
+                                chapter_id=chapter_id,
+                                progress_callback=progress_callback
+                            )
+                            
+                            if not step1_output or not os.path.exists(step1_output):
+                                raise Exception(f"Step 1 (PDF extraction) failed for {pdf_name}")
+                            
+                            step1_cache[pdf_path] = step1_output
+                            self.logger.info(f"Cached Step 1 output: {pdf_path} -> {step1_output}")
+                        else:
+                            step1_output = step1_cache[pdf_path]
+                            self.logger.info(f"Using cached Step 1 output: {pdf_path}")
+                        
+                        # Step 2: Detect deletions
+                        self.root.after(0, lambda: self.stage_y_status_label.configure(
+                            text=f"Step 2: Detecting deletions: {ocr_name}..."))
+                        
+                        # Process Stage Y (use cached Step 1 output)
+                        output_path = self.stage_y_processor.process_stage_y(
+                            old_book_pdf_path=pdf_path,
+                            ocr_extraction_prompt=ocr_prompt,
+                            ocr_extraction_model=ocr_model,
+                            ocr_extraction_json_path=ocr_extraction_path,
+                            deletion_detection_prompt=deletion_prompt,
+                            deletion_detection_model=deletion_model,
+                            output_dir=self.get_default_output_dir(ocr_extraction_path),
+                            progress_callback=progress_callback,
+                            step1_output_path=step1_output  # Use cached Step 1 output
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            pair['output_path'] = output_path
+                            pair['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_y_pairs_info_list'):
+                                for pair_info in self.stage_y_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="COMPLETED", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {pdf_name} ↔ {ocr_name} -> {os.path.basename(output_path)}"
+                            )
+                        else:
+                            failed += 1
+                            pair['status'] = 'failed'
+                            pair['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_y_pairs_info_list'):
+                                for pair_info in self.stage_y_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="FAILED", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {pdf_name} ↔ {ocr_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        pair['status'] = 'failed'
+                        pair['error'] = str(e)
+                        self.logger.error(f"Error processing {pdf_name} ↔ {ocr_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_y_pairs_info_list'):
+                            for pair_info in self.stage_y_pairs_info_list:
+                                if pair_info['pair'] == pair:
+                                    self.root.after(0, lambda sl=pair_info['status_label']:
+                                                   sl.configure(text="FAILED", text_color="red"))
+                                    break
+                    
+                    # Delay before next batch (except for the last one)
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_y_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next batch..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_y_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_y_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage Y batch completed!\n\n"
+                    f"Total pairs: {total_pairs}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+            
+            except Exception as e:
+                self.logger.error(f"Error in batch Stage Y processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
+            finally:
+                self.root.after(0, lambda: self.stage_y_process_btn.configure(
+                    state="normal",
+                    text="Process All Pairs"
+                ))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
     
     def setup_stage_z_ui(self, parent):
         """Setup UI for Stage Z: RichText Generation"""
@@ -8079,67 +10877,321 @@ class ContentAutomationGUI:
         
         desc = ctk.CTkLabel(
             main_frame,
-            text="Generate RichText format output from Stage A, Stage X, and Stage Y data.",
+            text="Generate RichText format output from Stage A, Stage X, and Stage Y data - Batch Processing.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
         
-        # Stage A File
+        # Stage A Files Selection - Batch Processing
         stage_a_frame = ctk.CTkFrame(main_frame)
         stage_a_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(stage_a_frame, text="Stage A JSON (a file):",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_z_stage_a_var'):
-            self.stage_z_stage_a_var = ctk.StringVar()
-            if hasattr(self, 'last_stage_j_path') and self.last_stage_j_path:
-                self.stage_z_stage_a_var.set(self.last_stage_j_path)
+        ctk.CTkLabel(
+            stage_a_frame,
+            text="Stage A JSON Files (a files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        entry_frame_a = ctk.CTkFrame(stage_a_frame)
-        entry_frame_a.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_a, textvariable=self.stage_z_stage_a_var).pack(side="left", fill="x", expand=True, padx=5)
+        # File selection buttons for Stage A
+        buttons_frame_a = ctk.CTkFrame(stage_a_frame)
+        buttons_frame_a.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_a_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage A JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_z_selected_stage_a_files'):
+                    self.stage_z_selected_stage_a_files = []
+                for filename in filenames:
+                    if filename not in self.stage_z_selected_stage_a_files:
+                        self.stage_z_selected_stage_a_files.append(filename)
+                        self._add_stage_z_stage_a_file_to_ui(filename)
+                self._update_stage_z_triples()
+        
+        def select_folder_stage_a_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage A JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_z_selected_stage_a_files'):
+                self.stage_z_selected_stage_a_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_z_selected_stage_a_files:
+                    self.stage_z_selected_stage_a_files.append(json_file)
+                    self._add_stage_z_stage_a_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_z_triples()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_a,
-            text="Browse",
-            command=lambda: self.stage_z_stage_a_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
-        ).pack(side="right")
+            buttons_frame_a,
+            text="Browse Multiple Stage A Files",
+            command=browse_multiple_stage_a_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Stage X Output
+        ctk.CTkButton(
+            buttons_frame_a,
+            text="Select Folder (Stage A)",
+            command=select_folder_stage_a_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Stage A files list (scrollable)
+        list_frame_a = ctk.CTkFrame(stage_a_frame)
+        list_frame_a.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_a,
+            text="Selected Stage A Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_z_stage_a_files_list_scroll'):
+            self.stage_z_stage_a_files_list_scroll = ctk.CTkScrollableFrame(list_frame_a, height=100)
+        self.stage_z_stage_a_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_z_selected_stage_a_files'):
+            self.stage_z_selected_stage_a_files = []
+        
+        # Stage X Output Files Selection - Batch Processing
         stage_x_frame = ctk.CTkFrame(main_frame)
         stage_x_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(stage_x_frame, text="Stage X Output JSON:",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_z_stage_x_var'):
-            self.stage_z_stage_x_var = ctk.StringVar()
+        ctk.CTkLabel(
+            stage_x_frame,
+            text="Stage X Output JSON Files (x files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        entry_frame_x = ctk.CTkFrame(stage_x_frame)
-        entry_frame_x.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_x, textvariable=self.stage_z_stage_x_var).pack(side="left", fill="x", expand=True, padx=5)
+        # File selection buttons for Stage X
+        buttons_frame_x = ctk.CTkFrame(stage_x_frame)
+        buttons_frame_x.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_x_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage X output JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_z_selected_stage_x_files'):
+                    self.stage_z_selected_stage_x_files = []
+                for filename in filenames:
+                    if filename not in self.stage_z_selected_stage_x_files:
+                        self.stage_z_selected_stage_x_files.append(filename)
+                        self._add_stage_z_stage_x_file_to_ui(filename)
+                self._update_stage_z_triples()
+        
+        def select_folder_stage_x_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage X output JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_z_selected_stage_x_files'):
+                self.stage_z_selected_stage_x_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_z_selected_stage_x_files:
+                    self.stage_z_selected_stage_x_files.append(json_file)
+                    self._add_stage_z_stage_x_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_z_triples()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_x,
-            text="Browse",
-            command=lambda: self.stage_z_stage_x_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
-        ).pack(side="right")
+            buttons_frame_x,
+            text="Browse Multiple Stage X Files",
+            command=browse_multiple_stage_x_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
         
-        # Stage Y Output
+        ctk.CTkButton(
+            buttons_frame_x,
+            text="Select Folder (Stage X)",
+            command=select_folder_stage_x_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Stage X files list (scrollable)
+        list_frame_x = ctk.CTkFrame(stage_x_frame)
+        list_frame_x.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_x,
+            text="Selected Stage X Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_z_stage_x_files_list_scroll'):
+            self.stage_z_stage_x_files_list_scroll = ctk.CTkScrollableFrame(list_frame_x, height=100)
+        self.stage_z_stage_x_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_z_selected_stage_x_files'):
+            self.stage_z_selected_stage_x_files = []
+        
+        # Stage Y Output Files Selection - Batch Processing
         stage_y_frame = ctk.CTkFrame(main_frame)
         stage_y_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(stage_y_frame, text="Stage Y Output JSON:",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         
-        if not hasattr(self, 'stage_z_stage_y_var'):
-            self.stage_z_stage_y_var = ctk.StringVar()
+        ctk.CTkLabel(
+            stage_y_frame,
+            text="Stage Y Output JSON Files (y files) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
         
-        entry_frame_y = ctk.CTkFrame(stage_y_frame)
-        entry_frame_y.pack(fill="x", padx=10, pady=5)
-        ctk.CTkEntry(entry_frame_y, textvariable=self.stage_z_stage_y_var).pack(side="left", fill="x", expand=True, padx=5)
+        # File selection buttons for Stage Y
+        buttons_frame_y = ctk.CTkFrame(stage_y_frame)
+        buttons_frame_y.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_stage_y_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select Stage Y output JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'stage_z_selected_stage_y_files'):
+                    self.stage_z_selected_stage_y_files = []
+                for filename in filenames:
+                    if filename not in self.stage_z_selected_stage_y_files:
+                        self.stage_z_selected_stage_y_files.append(filename)
+                        self._add_stage_z_stage_y_file_to_ui(filename)
+                self._update_stage_z_triples()
+        
+        def select_folder_stage_y_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing Stage Y output JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'stage_z_selected_stage_y_files'):
+                self.stage_z_selected_stage_y_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.stage_z_selected_stage_y_files:
+                    self.stage_z_selected_stage_y_files.append(json_file)
+                    self._add_stage_z_stage_y_file_to_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._update_stage_z_triples()
+            messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
         ctk.CTkButton(
-            entry_frame_y,
-            text="Browse",
-            command=lambda: self.stage_z_stage_y_var.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))
-        ).pack(side="right")
+            buttons_frame_y,
+            text="Browse Multiple Stage Y Files",
+            command=browse_multiple_stage_y_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame_y,
+            text="Select Folder (Stage Y)",
+            command=select_folder_stage_y_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Stage Y files list (scrollable)
+        list_frame_y = ctk.CTkFrame(stage_y_frame)
+        list_frame_y.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame_y,
+            text="Selected Stage Y Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_z_stage_y_files_list_scroll'):
+            self.stage_z_stage_y_files_list_scroll = ctk.CTkScrollableFrame(list_frame_y, height=100)
+        self.stage_z_stage_y_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'stage_z_selected_stage_y_files'):
+            self.stage_z_selected_stage_y_files = []
+        
+        # Triples Section
+        triples_frame = ctk.CTkFrame(main_frame)
+        triples_frame.pack(fill="x", pady=10)
+        
+        triples_header_frame = ctk.CTkFrame(triples_frame)
+        triples_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            triples_header_frame,
+            text="Triples (Stage A ↔ Stage X ↔ Stage Y):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkButton(
+            triples_header_frame,
+            text="Auto-Triple-Pair",
+            command=self._auto_triple_pair_stage_z_files,
+            width=150,
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen"
+        ).pack(side="right", padx=10, pady=5)
+        
+        # Triples list (scrollable)
+        triples_list_frame = ctk.CTkFrame(triples_frame)
+        triples_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            triples_list_frame,
+            text="File Triples:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_z_triples_list_scroll'):
+            self.stage_z_triples_list_scroll = ctk.CTkScrollableFrame(triples_list_frame, height=150)
+        self.stage_z_triples_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize triples
+        if not hasattr(self, 'stage_z_triples'):
+            self.stage_z_triples = []
+        if not hasattr(self, 'stage_z_triples_info_list'):
+            self.stage_z_triples_info_list = []
         
         # Prompt Section
         prompt_frame = ctk.CTkFrame(main_frame)
@@ -8214,6 +11266,24 @@ class ContentAutomationGUI:
             self.stage_z_model_var = ctk.StringVar(value=default_model)
         ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_z_model_var, width=300).pack(anchor="w", padx=10, pady=5)
         
+        # Delay Setting
+        delay_frame = ctk.CTkFrame(main_frame)
+        delay_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(delay_frame, text="Delay Between Triples (seconds):", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_z_delay_var'):
+            self.stage_z_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry_frame = ctk.CTkFrame(delay_frame)
+        delay_entry_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delay_entry_frame, text="Delay:").pack(side="left", padx=5)
+        delay_entry = ctk.CTkEntry(delay_entry_frame, textvariable=self.stage_z_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(delay_entry_frame, text="seconds", text_color="gray").pack(side="left", padx=5)
+        
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
         process_btn_frame.pack(fill="x", pady=20)
@@ -8221,12 +11291,18 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_z_process_btn'):
             self.stage_z_process_btn = ctk.CTkButton(
                 process_btn_frame,
-                text="Process RichText Generation",
-                command=self.process_stage_z,
+                text="Process All Triples",
+                command=self.process_stage_z_batch,
                 font=ctk.CTkFont(size=16, weight="bold"),
                 height=40
             )
         self.stage_z_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'stage_z_progress_bar'):
+            self.stage_z_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.stage_z_progress_bar.pack(pady=10)
+        self.stage_z_progress_bar.set(0)
         
         # Status Label
         if not hasattr(self, 'stage_z_status_label'):
@@ -8238,204 +11314,1756 @@ class ContentAutomationGUI:
             )
         self.stage_z_status_label.pack(pady=5)
     
-    def process_stage_x(self):
-        """Process Stage X in background thread"""
+    def setup_json_to_csv_ui(self, parent):
+        """Setup UI for JSON to CSV Converter"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(main_frame, text="JSON to CSV Converter", 
+                    font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(
+            main_frame,
+            text="Convert multiple JSON files from all stages to CSV format - Batch Processing.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # JSON Files Selection - Batch Processing
+        json_files_frame = ctk.CTkFrame(main_frame)
+        json_files_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            json_files_frame,
+            text="JSON Files - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=10, pady=5)
+        
+        # File selection buttons
+        buttons_frame = ctk.CTkFrame(json_files_frame)
+        buttons_frame.pack(fill="x", padx=10, pady=5)
+        
+        def browse_multiple_json_files():
+            filenames = filedialog.askopenfilenames(
+                title="Select JSON files",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filenames:
+                if not hasattr(self, 'json_to_csv_selected_files'):
+                    self.json_to_csv_selected_files = []
+                for filename in filenames:
+                    if filename not in self.json_to_csv_selected_files:
+                        self.json_to_csv_selected_files.append(filename)
+                        self._add_json_file_to_csv_ui(filename)
+        
+        def select_folder_json_files():
+            folder_path = filedialog.askdirectory(
+                title="Select folder containing JSON files"
+            )
+            if not folder_path:
+                return
+            
+            import glob
+            json_files = glob.glob(os.path.join(folder_path, "*.json"))
+            json_files = [f for f in json_files if os.path.isfile(f)]
+            
+            if not json_files:
+                messagebox.showinfo("Info", "No JSON files found in selected folder")
+                return
+            
+            if not hasattr(self, 'json_to_csv_selected_files'):
+                self.json_to_csv_selected_files = []
+            
+            added_count = 0
+            for json_file in json_files:
+                if json_file not in self.json_to_csv_selected_files:
+                    self.json_to_csv_selected_files.append(json_file)
+                    self._add_json_file_to_csv_ui(json_file)
+                    added_count += 1
+            
+            if added_count > 0:
+                messagebox.showinfo("Success", f"Added {added_count} JSON file(s) from folder")
+        
+        ctk.CTkButton(
+            buttons_frame,
+            text="Browse Multiple JSON Files",
+            command=browse_multiple_json_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame,
+            text="Select Folder (JSON)",
+            command=select_folder_json_files,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # JSON files list (scrollable)
+        list_frame = ctk.CTkFrame(json_files_frame)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame,
+            text="Selected JSON Files:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'json_to_csv_files_list_scroll'):
+            self.json_to_csv_files_list_scroll = ctk.CTkScrollableFrame(list_frame, height=150)
+        self.json_to_csv_files_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected files list
+        if not hasattr(self, 'json_to_csv_selected_files'):
+            self.json_to_csv_selected_files = []
+        
+        # Settings Section
+        settings_frame = ctk.CTkFrame(main_frame)
+        settings_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(settings_frame, text="Conversion Settings",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Delimiter Selection
+        delimiter_frame = ctk.CTkFrame(settings_frame)
+        delimiter_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(delimiter_frame, text="CSV Delimiter:", width=150).pack(side="left", padx=5)
+        
+        if not hasattr(self, 'json_to_csv_delimiter_var'):
+            self.json_to_csv_delimiter_var = ctk.StringVar(value=";;;")
+        
+        delimiter_options_frame = ctk.CTkFrame(delimiter_frame)
+        delimiter_options_frame.pack(side="left", padx=5)
+        
+        ctk.CTkRadioButton(
+            delimiter_options_frame,
+            text=";;; (Default)",
+            variable=self.json_to_csv_delimiter_var,
+            value=";;;",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkRadioButton(
+            delimiter_options_frame,
+            text=", (Comma)",
+            variable=self.json_to_csv_delimiter_var,
+            value=",",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkRadioButton(
+            delimiter_options_frame,
+            text="; (Semicolon)",
+            variable=self.json_to_csv_delimiter_var,
+            value=";",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkRadioButton(
+            delimiter_options_frame,
+            text="Tab",
+            variable=self.json_to_csv_delimiter_var,
+            value="\t",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=5)
+        
+        # Output Directory Selection
+        output_dir_frame = ctk.CTkFrame(settings_frame)
+        output_dir_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(output_dir_frame, text="Output Directory:", width=150).pack(side="left", padx=5)
+        
+        if not hasattr(self, 'json_to_csv_output_dir_var'):
+            self.json_to_csv_output_dir_var = ctk.StringVar(value="")
+        
+        if not hasattr(self, 'json_to_csv_same_folder_var'):
+            self.json_to_csv_same_folder_var = ctk.BooleanVar(value=True)
+        
+        ctk.CTkCheckBox(
+            output_dir_frame,
+            text="Save in same folder as JSON files",
+            variable=self.json_to_csv_same_folder_var,
+            command=self._on_json_to_csv_output_dir_option_change
+        ).pack(side="left", padx=5)
+        
+        output_dir_entry_frame = ctk.CTkFrame(output_dir_frame)
+        output_dir_entry_frame.pack(side="left", fill="x", expand=True, padx=5)
+        
+        if not hasattr(self, 'json_to_csv_output_dir_entry'):
+            self.json_to_csv_output_dir_entry = ctk.CTkEntry(
+                output_dir_entry_frame,
+                textvariable=self.json_to_csv_output_dir_var,
+                state="disabled"
+            )
+        self.json_to_csv_output_dir_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        ctk.CTkButton(
+            output_dir_entry_frame,
+            text="Browse",
+            command=self._browse_json_to_csv_output_dir,
+            width=100
+        ).pack(side="left", padx=5)
+        
+        # Process Button
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        if not hasattr(self, 'json_to_csv_process_btn'):
+            self.json_to_csv_process_btn = ctk.CTkButton(
+                process_btn_frame,
+                text="Convert All to CSV",
+                command=self.convert_json_to_csv_batch,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                height=40
+            )
+        self.json_to_csv_process_btn.pack(pady=10)
+        
+        # Progress bar for batch processing
+        if not hasattr(self, 'json_to_csv_progress_bar'):
+            self.json_to_csv_progress_bar = ctk.CTkProgressBar(process_btn_frame, width=400)
+        self.json_to_csv_progress_bar.pack(pady=10)
+        self.json_to_csv_progress_bar.set(0)
+        
+        # Status Label
+        if not hasattr(self, 'json_to_csv_status_label'):
+            self.json_to_csv_status_label = ctk.CTkLabel(
+                process_btn_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.json_to_csv_status_label.pack(pady=5)
+        
+        # Results list (scrollable)
+        results_frame = ctk.CTkFrame(main_frame)
+        results_frame.pack(fill="both", expand=True, pady=10)
+        
+        ctk.CTkLabel(
+            results_frame,
+            text="Conversion Results:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'json_to_csv_results_list_scroll'):
+            self.json_to_csv_results_list_scroll = ctk.CTkScrollableFrame(results_frame, height=150)
+        self.json_to_csv_results_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize results list
+        if not hasattr(self, 'json_to_csv_results_list'):
+            self.json_to_csv_results_list = []
+    
+    def _add_stage_z_stage_a_file_to_ui(self, file_path: str):
+        """Add a Stage A file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_z_stage_a_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_z_selected_stage_a_files:
+                self.stage_z_selected_stage_a_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_z_triples()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_z_stage_x_file_to_ui(self, file_path: str):
+        """Add a Stage X file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_z_stage_x_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_z_selected_stage_x_files:
+                self.stage_z_selected_stage_x_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_z_triples()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_z_stage_y_file_to_ui(self, file_path: str):
+        """Add a Stage Y file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_z_stage_y_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_z_selected_stage_y_files:
+                self.stage_z_selected_stage_y_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_z_triples()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_stage_a_for_z(self, stage_a_path: str):
+        """Extract book and chapter from Stage A file (from PointId or filename)"""
+        try:
+            # Try to load Stage A and extract from PointId
+            data = json.load(open(stage_a_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename
+        try:
+            basename = os.path.basename(stage_a_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try pattern: a{book}{chapter}+{name}
+            match = re.match(r'^a(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern: a{book}{chapter}
+            if name_without_ext.startswith('a') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _extract_book_chapter_from_stage_x_for_z(self, stage_x_path: str):
+        """Extract book and chapter from Stage X output file (from metadata or filename)"""
+        try:
+            # Try to load Stage X and extract from metadata
+            data = json.load(open(stage_x_path, 'r', encoding='utf-8'))
+            metadata = self.get_metadata_from_json(data)
+            book_id = metadata.get("book_id")
+            chapter_id = metadata.get("chapter_id")
+            if book_id is not None and chapter_id is not None:
+                return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename
+        try:
+            basename = os.path.basename(stage_x_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try pattern: x{book}{chapter}+{name}
+            match = re.match(r'^x(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern: x{book}{chapter}
+            if name_without_ext.startswith('x') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _extract_book_chapter_from_stage_y_for_z(self, stage_y_path: str):
+        """Extract book and chapter from Stage Y output file (from metadata or filename)"""
+        try:
+            # Try to load Stage Y and extract from metadata
+            data = json.load(open(stage_y_path, 'r', encoding='utf-8'))
+            metadata = self.get_metadata_from_json(data)
+            book_id = metadata.get("book_id")
+            chapter_id = metadata.get("chapter_id")
+            if book_id is not None and chapter_id is not None:
+                return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename
+        try:
+            basename = os.path.basename(stage_y_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try pattern: y{book}{chapter}+{name}
+            match = re.match(r'^y(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern: y{book}{chapter}
+            if name_without_ext.startswith('y') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _auto_triple_pair_stage_z_files(self):
+        """Auto-pair Stage A, Stage X, and Stage Y files based on Book/Chapter"""
+        if not hasattr(self, 'stage_z_selected_stage_a_files') or not self.stage_z_selected_stage_a_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage A file")
+            return
+        
+        if not hasattr(self, 'stage_z_selected_stage_x_files') or not self.stage_z_selected_stage_x_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage X file")
+            return
+        
+        if not hasattr(self, 'stage_z_selected_stage_y_files') or not self.stage_z_selected_stage_y_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage Y file")
+            return
+        
+        # Build dictionaries: {(book_id, chapter_id): file_path}
+        stage_a_dict = {}
+        stage_x_dict = {}
+        stage_y_dict = {}
+        
+        for stage_a_path in self.stage_z_selected_stage_a_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_a_for_z(stage_a_path)
+            if book_id is not None and chapter_id is not None:
+                key = (book_id, chapter_id)
+                stage_a_dict[key] = stage_a_path
+        
+        for stage_x_path in self.stage_z_selected_stage_x_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_x_for_z(stage_x_path)
+            if book_id is not None and chapter_id is not None:
+                key = (book_id, chapter_id)
+                stage_x_dict[key] = stage_x_path
+        
+        for stage_y_path in self.stage_z_selected_stage_y_files:
+            book_id, chapter_id = self._extract_book_chapter_from_stage_y_for_z(stage_y_path)
+            if book_id is not None and chapter_id is not None:
+                key = (book_id, chapter_id)
+                stage_y_dict[key] = stage_y_path
+        
+        # Find common Book/Chapter keys (all three files must exist)
+        common_keys = set(stage_a_dict.keys()) & set(stage_x_dict.keys()) & set(stage_y_dict.keys())
+        
+        if not common_keys:
+            messagebox.showwarning(
+                "Warning",
+                "No matching Book/Chapter found across all three file types. "
+                "Please ensure that Stage A, Stage X, and Stage Y files have matching Book/Chapter IDs."
+            )
+            return
+        
+        # Create triples
+        triples = []
+        for key in sorted(common_keys):
+            book_id, chapter_id = key
+            triple = {
+                'stage_a_path': stage_a_dict[key],
+                'stage_x_path': stage_x_dict[key],
+                'stage_y_path': stage_y_dict[key],
+                'book_id': book_id,
+                'chapter_id': chapter_id,
+                'status': 'pending',
+                'output_path': None,
+                'error': None
+            }
+            triples.append(triple)
+        
+        self.stage_z_triples = triples
+        self._update_stage_z_triples_ui()
+        
+        triple_count = len(triples)
+        messagebox.showinfo(
+            "Auto-Triple-Pairing Complete",
+            f"Created {triple_count} triple(s) for Book/Chapter combinations"
+        )
+    
+    def _update_stage_z_triples(self):
+        """Update triples when files are added/removed"""
+        # Clear existing triples UI
+        for widget in self.stage_z_triples_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_z_triples_info_list = []
+        
+        # Re-pair if we have triples
+        if hasattr(self, 'stage_z_triples') and self.stage_z_triples:
+            self._update_stage_z_triples_ui()
+    
+    def _update_stage_z_triples_ui(self):
+        """Update the triples UI display"""
+        # Clear existing triples UI
+        for widget in self.stage_z_triples_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_z_triples_info_list = []
+        
+        if not hasattr(self, 'stage_z_triples') or not self.stage_z_triples:
+            return
+        
+        for triple in self.stage_z_triples:
+            triple_frame = ctk.CTkFrame(self.stage_z_triples_list_scroll)
+            triple_frame.pack(fill="x", padx=5, pady=2)
+            
+            stage_a_name = os.path.basename(triple['stage_a_path']) if triple['stage_a_path'] else "None"
+            stage_x_name = os.path.basename(triple['stage_x_path']) if triple['stage_x_path'] else "None"
+            stage_y_name = os.path.basename(triple['stage_y_path']) if triple['stage_y_path'] else "None"
+            
+            triple_text = f"{stage_a_name} ↔ {stage_x_name} ↔ {stage_y_name}"
+            
+            # Main triple info
+            info_frame = ctk.CTkFrame(triple_frame)
+            info_frame.pack(fill="x", padx=5, pady=2)
+            
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=triple_text,
+                font=ctk.CTkFont(size=11),
+                anchor="w"
+            )
+            name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text=triple.get('status', 'pending').upper(),
+                font=ctk.CTkFont(size=10),
+                text_color="gray" if triple.get('status') == 'pending' else 
+                          "green" if triple.get('status') == 'completed' else "red"
+            )
+            status_label.pack(side="right", padx=10, pady=5)
+            
+            self.stage_z_triples_info_list.append({
+                'triple': triple,
+                'status_label': status_label,
+                'frame': triple_frame
+            })
+    
+    def process_stage_z_batch(self):
+        """Process multiple Stage A + Stage X + Stage Y triples for Stage Z"""
         def worker():
             try:
-                self.stage_x_process_btn.configure(state="disabled", text="Processing...")
-                self.stage_x_status_label.configure(text="Processing Book Changes Detection...", text_color="blue")
-                
-                # Validate inputs
-                old_pdf_path = self.stage_x_old_pdf_var.get().strip()
-                stage_a_path = self.stage_x_stage_a_var.get().strip()
-                pdf_prompt = self.stage_x_pdf_prompt_text.get("1.0", tk.END).strip()
-                change_prompt = self.stage_x_change_prompt_text.get("1.0", tk.END).strip()
-                
-                if not old_pdf_path or not os.path.exists(old_pdf_path):
-                    messagebox.showerror("Error", "Please select a valid old book PDF file.")
+                if not hasattr(self, 'stage_z_triples') or not self.stage_z_triples:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create triples first. Click 'Auto-Triple-Pair' button."
+                    ))
                     return
                 
-                if not stage_a_path or not os.path.exists(stage_a_path):
-                    messagebox.showerror("Error", "Please select a valid Stage A JSON file.")
+                # Filter triples that have all three files
+                valid_triples = [t for t in self.stage_z_triples 
+                               if t['stage_a_path'] and t['stage_x_path'] and t['stage_y_path']]
+                
+                if not valid_triples:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid triples found. Each triple must have Stage A, Stage X, and Stage Y files."
+                    ))
                     return
                 
-                if not pdf_prompt:
-                    messagebox.showerror("Error", "Please enter PDF extraction prompt.")
-                    return
-                
-                if not change_prompt:
-                    messagebox.showerror("Error", "Please enter change detection prompt.")
-                    return
-                
-                # Always use default model from main view settings
-                pdf_model = self.get_default_model()
-                change_model = self.get_default_model()
-                
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_x_status_label.configure(text=msg))
-                
-                output_path = self.stage_x_processor.process_stage_x(
-                    old_book_pdf_path=old_pdf_path,
-                    pdf_extraction_prompt=pdf_prompt,
-                    pdf_extraction_model=pdf_model,
-                    stage_a_path=stage_a_path,
-                    changes_prompt=change_prompt,
-                    changes_model=change_model,
-                    output_dir=self.get_default_output_dir(stage_a_path),
-                    progress_callback=progress_callback
+                self.stage_z_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
                 )
                 
-                if output_path:
-                    self.last_stage_x_path = output_path
-                    self.stage_x_status_label.configure(
-                        text=f"Stage X completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Book Changes Detection completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.stage_x_status_label.configure(text="Book Changes Detection failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Book Changes Detection failed. Check logs for details.")
+                # Get prompt
+                prompt = self.stage_z_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    default_prompt = self.prompt_manager.get_prompt("RichText Generation Prompt")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default RichText generation prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a RichText generation prompt"))
+                        return
+                
+                # Get model
+                model_name = self.stage_z_model_var.get() if hasattr(self, 'stage_z_model_var') else "gemini-2.5-pro"
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_z_delay_var.get() if hasattr(self, 'stage_z_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_triples = len(valid_triples)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_z_progress_bar.set(0))
+                
+                # Process each triple
+                for idx, triple in enumerate(valid_triples):
+                    stage_a_path = triple['stage_a_path']
+                    stage_x_path = triple['stage_x_path']
+                    stage_y_path = triple['stage_y_path']
                     
+                    stage_a_name = os.path.basename(stage_a_path)
+                    stage_x_name = os.path.basename(stage_x_path)
+                    stage_y_name = os.path.basename(stage_y_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_z_triples_info_list'):
+                        for triple_info in self.stage_z_triples_info_list:
+                            if triple_info['triple'] == triple:
+                                self.root.after(0, lambda sl=triple_info['status_label']:
+                                               sl.configure(text="PROCESSING", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_triples, sa=stage_a_name, sx=stage_x_name, sy=stage_y_name:
+                                   self.stage_z_status_label.configure(
+                                       text=f"Processing triple {idx+1}/{total}: {sa} ↔ {sx} ↔ {sy}",
+                                       text_color="blue"
+                                   ))
+                    
+                    # Progress bar
+                    progress = idx / total_triples
+                    self.root.after(0, lambda p=progress: self.stage_z_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_z_status_label.configure(text=m))
+                        
+                        # Process Stage Z
+                        output_path = self.stage_z_processor.process_stage_z(
+                            stage_a_path=stage_a_path,
+                            stage_x_output_path=stage_x_path,
+                            stage_y_output_path=stage_y_path,
+                            prompt=prompt,
+                            model_name=model_name,
+                            output_dir=self.get_default_output_dir(stage_a_path),
+                            progress_callback=progress_callback
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            triple['output_path'] = output_path
+                            triple['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_z_triples_info_list'):
+                                for triple_info in self.stage_z_triples_info_list:
+                                    if triple_info['triple'] == triple:
+                                        self.root.after(0, lambda sl=triple_info['status_label']:
+                                                       sl.configure(text="COMPLETED", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {stage_a_name} ↔ {stage_x_name} ↔ {stage_y_name} -> {os.path.basename(output_path)}"
+                            )
+                        else:
+                            failed += 1
+                            triple['status'] = 'failed'
+                            triple['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_z_triples_info_list'):
+                                for triple_info in self.stage_z_triples_info_list:
+                                    if triple_info['triple'] == triple:
+                                        self.root.after(0, lambda sl=triple_info['status_label']:
+                                                       sl.configure(text="FAILED", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {stage_a_name} ↔ {stage_x_name} ↔ {stage_y_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        triple['status'] = 'failed'
+                        triple['error'] = str(e)
+                        self.logger.error(f"Error processing {stage_a_name} ↔ {stage_x_name} ↔ {stage_y_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_z_triples_info_list'):
+                            for triple_info in self.stage_z_triples_info_list:
+                                if triple_info['triple'] == triple:
+                                    self.root.after(0, lambda sl=triple_info['status_label']:
+                                                   sl.configure(text="FAILED", text_color="red"))
+                                    break
+                    
+                    # Delay before next batch (except for the last one)
+                    if idx < total_triples - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_z_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next batch..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_z_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_z_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage Z batch completed!\n\n"
+                    f"Total triples: {total_triples}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+            
             except Exception as e:
-                self.logger.error(f"Error in Stage X processing: {e}", exc_info=True)
-                self.stage_x_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Book Changes Detection error:\n{str(e)}")
+                self.logger.error(f"Error in batch Stage Z processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_x_process_btn.configure(state="normal", text="Process Book Changes Detection"))
+                self.root.after(0, lambda: self.stage_z_process_btn.configure(
+                    state="normal",
+                    text="Process All Triples"
+                ))
         
+        # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+    
+    def _add_stage_x_pdf_file_to_ui(self, file_path: str):
+        """Add a PDF file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_x_pdf_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_x_selected_pdf_files:
+                self.stage_x_selected_pdf_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_x_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _add_stage_x_stage_a_file_to_ui(self, file_path: str):
+        """Add a Stage A file to the UI list"""
+        file_frame = ctk.CTkFrame(self.stage_x_stage_a_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.stage_x_selected_stage_a_files:
+                self.stage_x_selected_stage_a_files.remove(file_path)
+            file_frame.destroy()
+            self._update_stage_x_pairs()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _extract_book_chapter_from_stage_a_for_x(self, stage_a_path: str):
+        """Extract book and chapter from Stage A file (from PointId or filename)"""
+        try:
+            # Try to load Stage A and extract from PointId
+            data = json.load(open(stage_a_path, 'r', encoding='utf-8'))
+            records = data.get("data") or data.get("rows", [])
+            if records and records[0].get("PointId"):
+                point_id = records[0].get("PointId")
+                if isinstance(point_id, str) and len(point_id) >= 6:
+                    book_id = int(point_id[0:3])
+                    chapter_id = int(point_id[3:6])
+                    return book_id, chapter_id
+        except:
+            pass
+        
+        # Fallback: try to extract from filename (a{book}{chapter}.json or a{book}{chapter}+{name}.json)
+        try:
+            basename = os.path.basename(stage_a_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            import re
+            # Try pattern: a{book}{chapter}+{name}
+            match = re.match(r'^a(\d{3})(\d{3})\+', name_without_ext)
+            if match:
+                book_id = int(match.group(1))
+                chapter_id = int(match.group(2))
+                return book_id, chapter_id
+            # Try pattern: a{book}{chapter}
+            if name_without_ext.startswith('a') and len(name_without_ext) >= 7:
+                book_chapter = name_without_ext[1:]
+                book_id = int(book_chapter[0:3])
+                chapter_id = int(book_chapter[3:6])
+                return book_id, chapter_id
+        except:
+            pass
+        
+        return None, None
+    
+    def _auto_pair_stage_x_files(self):
+        """Auto-pair PDF files with Stage A files"""
+        pairing_mode = self.stage_x_pairing_mode_var.get() if hasattr(self, 'stage_x_pairing_mode_var') else "common"
+        
+        if not hasattr(self, 'stage_x_selected_pdf_files') or not self.stage_x_selected_pdf_files:
+            messagebox.showwarning("Warning", "Please add at least one PDF file")
+            return
+        
+        if not hasattr(self, 'stage_x_selected_stage_a_files') or not self.stage_x_selected_stage_a_files:
+            messagebox.showwarning("Warning", "Please add at least one Stage A file")
+            return
+        
+        pairs = []
+        
+        if pairing_mode == "common":
+            # Use first PDF for all Stage A files
+            common_pdf = self.stage_x_selected_pdf_files[0]
+            for stage_a_path in self.stage_x_selected_stage_a_files:
+                book_id, chapter_id = self._extract_book_chapter_from_stage_a_for_x(stage_a_path)
+                pair = {
+                    'pdf_path': common_pdf,
+                    'stage_a_path': stage_a_path,
+                    'book_id': book_id,
+                    'chapter_id': chapter_id,
+                    'status': 'pending',
+                    'output_path': None,
+                    'error': None
+                }
+                pairs.append(pair)
+        else:
+            # Pair by Book/Chapter (if multiple PDFs, try to match)
+            # For now, use first PDF for all (can be enhanced later)
+            if len(self.stage_x_selected_pdf_files) == 1:
+                common_pdf = self.stage_x_selected_pdf_files[0]
+                for stage_a_path in self.stage_x_selected_stage_a_files:
+                    book_id, chapter_id = self._extract_book_chapter_from_stage_a_for_x(stage_a_path)
+                    pair = {
+                        'pdf_path': common_pdf,
+                        'stage_a_path': stage_a_path,
+                        'book_id': book_id,
+                        'chapter_id': chapter_id,
+                        'status': 'pending',
+                        'output_path': None,
+                        'error': None
+                    }
+                    pairs.append(pair)
+            else:
+                # Multiple PDFs: try to pair by Book/Chapter
+                paired_pdfs = set()
+                for stage_a_path in self.stage_x_selected_stage_a_files:
+                    book_id, chapter_id = self._extract_book_chapter_from_stage_a_for_x(stage_a_path)
+                    
+                    if book_id is None or chapter_id is None:
+                        # Can't extract book/chapter, use first PDF
+                        matched_pdf = self.stage_x_selected_pdf_files[0]
+                    else:
+                        # Try to find matching PDF (for now, use first available)
+                        matched_pdf = None
+                        for pdf_path in self.stage_x_selected_pdf_files:
+                            if pdf_path not in paired_pdfs:
+                                matched_pdf = pdf_path
+                                paired_pdfs.add(pdf_path)
+                                break
+                        
+                        if not matched_pdf:
+                            matched_pdf = self.stage_x_selected_pdf_files[0]
+                    
+                    pair = {
+                        'pdf_path': matched_pdf,
+                        'stage_a_path': stage_a_path,
+                        'book_id': book_id,
+                        'chapter_id': chapter_id,
+                        'status': 'pending',
+                        'output_path': None,
+                        'error': None
+                    }
+                    pairs.append(pair)
+        
+        self.stage_x_pairs = pairs
+        self._update_stage_x_pairs_ui()
+        
+        paired_count = len(pairs)
+        messagebox.showinfo(
+            "Auto-Pairing Complete",
+            f"Created {paired_count} pair(s)"
+        )
+    
+    def _update_stage_x_pairs(self):
+        """Update pairs when files are added/removed"""
+        # Clear existing pairs UI
+        for widget in self.stage_x_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_x_pairs_info_list = []
+        
+        # Re-pair if we have pairs
+        if hasattr(self, 'stage_x_pairs') and self.stage_x_pairs:
+            self._update_stage_x_pairs_ui()
+    
+    def _update_stage_x_pairs_ui(self):
+        """Update the pairs UI display"""
+        # Clear existing pairs UI
+        for widget in self.stage_x_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        self.stage_x_pairs_info_list = []
+        
+        if not hasattr(self, 'stage_x_pairs') or not self.stage_x_pairs:
+            return
+        
+        for pair in self.stage_x_pairs:
+            pair_frame = ctk.CTkFrame(self.stage_x_pairs_list_scroll)
+            pair_frame.pack(fill="x", padx=5, pady=2)
+            
+            pdf_name = os.path.basename(pair['pdf_path']) if pair['pdf_path'] else "None"
+            stage_a_name = os.path.basename(pair['stage_a_path']) if pair['stage_a_path'] else "None"
+            
+            pair_text = f"{pdf_name} ↔ {stage_a_name}"
+            
+            # Main pair info
+            info_frame = ctk.CTkFrame(pair_frame)
+            info_frame.pack(fill="x", padx=5, pady=2)
+            
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=pair_text,
+                font=ctk.CTkFont(size=11),
+                anchor="w"
+            )
+            name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text=pair.get('status', 'pending').upper(),
+                font=ctk.CTkFont(size=10),
+                text_color="gray" if pair.get('status') == 'pending' else 
+                          "green" if pair.get('status') == 'completed' else "red"
+            )
+            status_label.pack(side="right", padx=10, pady=5)
+            
+            self.stage_x_pairs_info_list.append({
+                'pair': pair,
+                'status_label': status_label,
+                'frame': pair_frame
+            })
+    
+    def process_stage_x_batch(self):
+        """Process multiple PDF + Stage A pairs for Stage X"""
+        def worker():
+            try:
+                if not hasattr(self, 'stage_x_pairs') or not self.stage_x_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add files and create pairs first. Click 'Auto-Pair' button."
+                    ))
+                    return
+                
+                # Filter pairs that have both PDF and Stage A file
+                valid_pairs = [p for p in self.stage_x_pairs if p['pdf_path'] and p['stage_a_path']]
+                
+                if not valid_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "No valid pairs found. Each pair must have both PDF and Stage A file."
+                    ))
+                    return
+                
+                self.stage_x_process_btn.configure(
+                    state="disabled",
+                    text="Processing Batch..."
+                )
+                
+                # Get prompts
+                pdf_prompt = self.stage_x_pdf_prompt_text.get("1.0", tk.END).strip()
+                if not pdf_prompt:
+                    default_pdf_prompt = self.prompt_manager.get_prompt("OCR Extraction Prompt")
+                    if default_pdf_prompt:
+                        pdf_prompt = default_pdf_prompt
+                        self.logger.info("Using default PDF extraction prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a PDF extraction prompt"))
+                        return
+                
+                change_prompt = self.stage_x_change_prompt_text.get("1.0", tk.END).strip()
+                if not change_prompt:
+                    default_change_prompt = self.prompt_manager.get_prompt("Change Detection Prompt")
+                    if default_change_prompt:
+                        change_prompt = default_change_prompt
+                        self.logger.info("Using default change detection prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a change detection prompt"))
+                        return
+                
+                # Get models
+                pdf_model = self.stage_x_pdf_model_var.get() if hasattr(self, 'stage_x_pdf_model_var') else "gemini-2.5-pro"
+                change_model = self.stage_x_change_model_var.get() if hasattr(self, 'stage_x_change_model_var') else "gemini-2.5-pro"
+                
+                # Get delay
+                try:
+                    delay_seconds = float(self.stage_x_delay_var.get() if hasattr(self, 'stage_x_delay_var') else "5")
+                    if delay_seconds < 0:
+                        delay_seconds = 0
+                except:
+                    delay_seconds = 5
+                
+                total_pairs = len(valid_pairs)
+                completed = 0
+                failed = 0
+                
+                # PDF extraction cache: {pdf_path: extracted_json_path}
+                pdf_extraction_cache = {}
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.stage_x_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair in enumerate(valid_pairs):
+                    pdf_path = pair['pdf_path']
+                    stage_a_path = pair['stage_a_path']
+                    
+                    pdf_name = os.path.basename(pdf_path)
+                    stage_a_name = os.path.basename(stage_a_path)
+                    
+                    # Update status to processing
+                    if hasattr(self, 'stage_x_pairs_info_list'):
+                        for pair_info in self.stage_x_pairs_info_list:
+                            if pair_info['pair'] == pair:
+                                self.root.after(0, lambda sl=pair_info['status_label']:
+                                               sl.configure(text="PROCESSING", text_color="blue"))
+                                break
+                    
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_pairs, pdf=pdf_name, sa=stage_a_name:
+                                   self.stage_x_status_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {pdf} ↔ {sa}",
+                                       text_color="blue"
+                                   ))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.stage_x_progress_bar.set(p))
+                    
+                    try:
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg:
+                                           self.stage_x_status_label.configure(text=m))
+                        
+                        # Check cache for PDF extraction
+                        if pdf_path not in pdf_extraction_cache:
+                            # Part 1: Extract PDF (one time per PDF)
+                            self.root.after(0, lambda: self.stage_x_status_label.configure(
+                                text=f"Extracting PDF: {pdf_name}..."))
+                            
+                            # Determine output directory for PDF extraction
+                            pdf_output_dir = self.get_default_output_dir(stage_a_path)
+                            
+                            extracted_path = self.stage_x_processor._extract_pdf_with_txt_saving(
+                                pdf_path=pdf_path,
+                                prompt=pdf_prompt,
+                                model_name=pdf_model,
+                                output_dir=pdf_output_dir,
+                                progress_callback=progress_callback
+                            )
+                            
+                            if not extracted_path or not os.path.exists(extracted_path):
+                                raise Exception(f"PDF extraction failed for {pdf_name}")
+                            
+                            pdf_extraction_cache[pdf_path] = extracted_path
+                            self.logger.info(f"Cached PDF extraction: {pdf_path} -> {extracted_path}")
+                        else:
+                            extracted_path = pdf_extraction_cache[pdf_path]
+                            self.logger.info(f"Using cached PDF extraction: {pdf_path}")
+                        
+                        # Part 2: Detect changes
+                        self.root.after(0, lambda: self.stage_x_status_label.configure(
+                            text=f"Detecting changes: {stage_a_name}..."))
+                        
+                        # Process Stage X (use cached extracted path if available)
+                        output_path = self.stage_x_processor.process_stage_x(
+                            old_book_pdf_path=pdf_path,
+                            pdf_extraction_prompt=pdf_prompt,
+                            pdf_extraction_model=pdf_model,
+                            stage_a_path=stage_a_path,
+                            changes_prompt=change_prompt,
+                            changes_model=change_model,
+                            output_dir=self.get_default_output_dir(stage_a_path),
+                            progress_callback=progress_callback,
+                            pdf_extracted_path=extracted_path  # Use cached extraction
+                        )
+                        
+                        if output_path and os.path.exists(output_path):
+                            completed += 1
+                            pair['output_path'] = output_path
+                            pair['status'] = 'completed'
+                            
+                            # Update status to completed
+                            if hasattr(self, 'stage_x_pairs_info_list'):
+                                for pair_info in self.stage_x_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="COMPLETED", text_color="green"))
+                                        break
+                            
+                            self.logger.info(
+                                f"Successfully processed: {pdf_name} ↔ {stage_a_name} -> {os.path.basename(output_path)}"
+                            )
+                        else:
+                            failed += 1
+                            pair['status'] = 'failed'
+                            pair['error'] = "Processing returned no output"
+                            
+                            # Update status to failed
+                            if hasattr(self, 'stage_x_pairs_info_list'):
+                                for pair_info in self.stage_x_pairs_info_list:
+                                    if pair_info['pair'] == pair:
+                                        self.root.after(0, lambda sl=pair_info['status_label']:
+                                                       sl.configure(text="FAILED", text_color="red"))
+                                        break
+                            
+                            self.logger.error(f"Failed to process: {pdf_name} ↔ {stage_a_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        pair['status'] = 'failed'
+                        pair['error'] = str(e)
+                        self.logger.error(f"Error processing {pdf_name} ↔ {stage_a_name}: {str(e)}", exc_info=True)
+                        
+                        # Update status to failed
+                        if hasattr(self, 'stage_x_pairs_info_list'):
+                            for pair_info in self.stage_x_pairs_info_list:
+                                if pair_info['pair'] == pair:
+                                    self.root.after(0, lambda sl=pair_info['status_label']:
+                                                   sl.configure(text="FAILED", text_color="red"))
+                                    break
+                    
+                    # Delay before next batch (except for the last one)
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        self.root.after(0, lambda: self.stage_x_status_label.configure(
+                            text=f"Waiting {delay_seconds} seconds before next batch..."))
+                        import time
+                        time.sleep(delay_seconds)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.stage_x_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.stage_x_status_label.configure(
+                    text=f"Batch completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Batch Processing Complete",
+                    f"Stage X batch completed!\n\n"
+                    f"Total pairs: {total_pairs}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+            
+            except Exception as e:
+                self.logger.error(f"Error in batch Stage X processing: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch processing error:\n{str(e)}"
+                ))
+            finally:
+                self.root.after(0, lambda: self.stage_x_process_btn.configure(
+                    state="normal",
+                    text="Process All Pairs"
+                ))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def process_stage_x(self):
+        """Process Stage X (redirects to batch processing for backward compatibility)"""
+        # Redirect to batch processing
+        self.process_stage_x_batch()
     
     def process_stage_y(self):
-        """Process Stage Y in background thread"""
-        def worker():
-            try:
-                self.stage_y_process_btn.configure(state="disabled", text="Processing...")
-                self.stage_y_status_label.configure(text="Processing Deletion Detection...", text_color="blue")
-                
-                # Validate inputs
-                old_pdf_path = self.stage_y_old_pdf_var.get().strip()
-                ocr_extraction_prompt = self.stage_y_ocr_prompt_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                ocr_extraction_model = self.get_default_model()
-                ocr_extraction_json_path = self.stage_y_ocr_extraction_var.get().strip()
-                deletion_detection_prompt = self.stage_y_deletion_prompt_text.get("1.0", tk.END).strip()
-                deletion_detection_model = self.get_default_model()
-                
-                if not old_pdf_path or not os.path.exists(old_pdf_path):
-                    messagebox.showerror("Error", "Please select a valid old reference PDF file.")
-                    return
-                
-                if not ocr_extraction_prompt:
-                    messagebox.showerror("Error", "Please enter OCR Extraction prompt.")
-                    return
-                
-                if not ocr_extraction_json_path or not os.path.exists(ocr_extraction_json_path):
-                    messagebox.showerror("Error", "Please select a valid OCR Extraction JSON file.")
-                    return
-                
-                if not deletion_detection_prompt:
-                    messagebox.showerror("Error", "Please enter Deletion Detection prompt.")
-                    return
-                
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_y_status_label.configure(text=msg))
-                
-                output_path = self.stage_y_processor.process_stage_y(
-                    old_book_pdf_path=old_pdf_path,
-                    ocr_extraction_prompt=ocr_extraction_prompt,
-                    ocr_extraction_model=ocr_extraction_model,
-                    ocr_extraction_json_path=ocr_extraction_json_path,
-                    deletion_detection_prompt=deletion_detection_prompt,
-                    deletion_detection_model=deletion_detection_model,
-                    output_dir=self.get_default_output_dir(ocr_extraction_json_path),
-                    progress_callback=progress_callback
-                )
-                
-                if output_path:
-                    self.last_stage_y_path = output_path
-                    self.stage_y_status_label.configure(
-                        text=f"Stage Y completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"Deletion Detection completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.stage_y_status_label.configure(text="Deletion Detection failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "Deletion Detection failed. Check logs for details.")
-                    
-            except Exception as e:
-                self.logger.error(f"Error in Stage Y processing: {e}", exc_info=True)
-                self.stage_y_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"Deletion Detection error:\n{str(e)}")
-            finally:
-                self.root.after(0, lambda: self.stage_y_process_btn.configure(state="normal", text="Process Deletion Detection"))
-        
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
+        """Process Stage Y (redirects to batch processing for backward compatibility)"""
+        # Redirect to batch processing
+        self.process_stage_y_batch()
     
     def process_stage_z(self):
-        """Process Stage Z in background thread"""
+        """Process Stage Z (redirects to batch processing for backward compatibility)"""
+        # Redirect to batch processing
+        self.process_stage_z_batch()
+    
+    def _add_json_file_to_csv_ui(self, file_path: str):
+        """Add a JSON file to the UI list"""
+        file_frame = ctk.CTkFrame(self.json_to_csv_files_list_scroll)
+        file_frame.pack(fill="x", padx=5, pady=2)
+        
+        file_name = os.path.basename(file_path)
+        
+        name_label = ctk.CTkLabel(
+            file_frame,
+            text=file_name,
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        name_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        
+        def remove_file():
+            if file_path in self.json_to_csv_selected_files:
+                self.json_to_csv_selected_files.remove(file_path)
+            file_frame.destroy()
+        
+        remove_btn = ctk.CTkButton(
+            file_frame,
+            text="✕",
+            command=remove_file,
+            width=30,
+            height=25,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        remove_btn.pack(side="right", padx=5, pady=5)
+    
+    def _on_json_to_csv_output_dir_option_change(self):
+        """Handle output directory option change"""
+        if self.json_to_csv_same_folder_var.get():
+            self.json_to_csv_output_dir_entry.configure(state="disabled")
+            self.json_to_csv_output_dir_var.set("")
+        else:
+            self.json_to_csv_output_dir_entry.configure(state="normal")
+    
+    def _browse_json_to_csv_output_dir(self):
+        """Browse for output directory"""
+        folder_path = filedialog.askdirectory(
+            title="Select output directory for CSV files"
+        )
+        if folder_path:
+            self.json_to_csv_output_dir_var.set(folder_path)
+            self.json_to_csv_same_folder_var.set(False)
+            self.json_to_csv_output_dir_entry.configure(state="normal")
+    
+    def convert_json_to_csv_file(self, json_file_path: str, output_csv_path: str, delimiter: str = ";;;") -> bool:
+        """
+        Convert JSON file to CSV file with comprehensive support for multiple JSON structures.
+        
+        Supports:
+        - Direct arrays: [{...}, {...}]
+        - Objects with data/points/rows: {metadata: {...}, data: [...]}
+        - Nested structures: {metadata: {...}, chapters: [{subchapters: [{topics: [{extractions: [...]}]}]}]}
+        
+        Args:
+            json_file_path: Path to JSON file
+            output_csv_path: Path to output CSV file
+            delimiter: CSV delimiter (default: ";;;")
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        def flatten_nested_structure(data, parent_key: str = "", separator: str = "_"):
+            """
+            Flatten nested structures (chapters -> subchapters -> topics -> extractions) into flat rows.
+            
+            Args:
+                data: The data structure to flatten
+                parent_key: Parent key for nested structures
+                separator: Separator for nested keys
+                
+            Returns:
+                List of flattened dictionaries
+            """
+            rows = []
+            
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        # Check if this is a nested structure with chapters/subchapters/topics/extractions
+                        if "chapters" in item:
+                            # Process chapters
+                            for chapter in item.get("chapters", []):
+                                chapter_name = chapter.get("chapter", "")
+                                
+                                # Process subchapters
+                                for subchapter in chapter.get("subchapters", []):
+                                    subchapter_name = subchapter.get("subchapter", "")
+                                    
+                                    # Process topics
+                                    for topic in subchapter.get("topics", []):
+                                        topic_name = topic.get("topic", "")
+                                        
+                                        # Process extractions
+                                        for extraction in topic.get("extractions", []):
+                                            row = {
+                                                "chapter": chapter_name,
+                                                "subchapter": subchapter_name,
+                                                "topic": topic_name,
+                                                **extraction
+                                            }
+                                            rows.append(row)
+                                        
+                                        # If topic has no extractions but has other data, add it
+                                        if not topic.get("extractions") and topic:
+                                            row = {
+                                                "chapter": chapter_name,
+                                                "subchapter": subchapter_name,
+                                                "topic": topic_name,
+                                                **{k: v for k, v in topic.items() if k != "extractions"}
+                                            }
+                                            rows.append(row)
+                                    
+                                    # If subchapter has no topics but has other data
+                                    if not subchapter.get("topics") and subchapter:
+                                        row = {
+                                            "chapter": chapter_name,
+                                            "subchapter": subchapter_name,
+                                            **{k: v for k, v in subchapter.items() if k != "topics"}
+                                        }
+                                        rows.append(row)
+                                
+                                # If chapter has no subchapters but has other data
+                                if not chapter.get("subchapters") and chapter:
+                                    row = {
+                                        "chapter": chapter_name,
+                                        **{k: v for k, v in chapter.items() if k != "subchapters"}
+                                    }
+                                    rows.append(row)
+                        else:
+                            # Regular list item, add as is
+                            rows.append(item)
+            elif isinstance(data, dict):
+                # Single dictionary, return as list
+                return [data]
+            
+            return rows
+        
+        def extract_rows_from_json(json_data):
+            """
+            Extract rows from JSON data supporting multiple structures.
+            
+            Args:
+                json_data: JSON data (dict or list)
+                
+            Returns:
+                List of data records
+            """
+            # If json_data is already a list, check if it needs flattening
+            if isinstance(json_data, list):
+                # Check if first item has nested structure
+                if json_data and isinstance(json_data[0], dict) and "chapters" in json_data[0]:
+                    return flatten_nested_structure(json_data)
+                return json_data
+            
+            # If json_data is a dict, look for data/points/rows/chapters keys
+            if isinstance(json_data, dict):
+                # Check for nested chapters structure first
+                if "chapters" in json_data:
+                    chapters_data = json_data["chapters"]
+                    if isinstance(chapters_data, list):
+                        # Check if it's a nested structure
+                        if chapters_data and isinstance(chapters_data[0], dict) and "subchapters" in chapters_data[0]:
+                            return flatten_nested_structure(chapters_data)
+                        return chapters_data
+                    elif isinstance(chapters_data, dict):
+                        # Single chapter dict, try to extract rows/data from it
+                        if "rows" in chapters_data:
+                            return chapters_data["rows"]
+                        elif "data" in chapters_data:
+                            return chapters_data["data"]
+                        else:
+                            return [chapters_data]
+                
+                # Check for standard keys
+                if "data" in json_data:
+                    data = json_data["data"]
+                    if isinstance(data, list) and data and isinstance(data[0], dict) and "chapters" in data[0]:
+                        return flatten_nested_structure(data)
+                    return data if isinstance(data, list) else [data]
+                
+                elif "points" in json_data:
+                    return json_data["points"] if isinstance(json_data["points"], list) else [json_data["points"]]
+                
+                elif "rows" in json_data:
+                    return json_data["rows"] if isinstance(json_data["rows"], list) else [json_data["rows"]]
+                
+                else:
+                    # Try using BaseStageProcessor method if available
+                    if hasattr(self, 'stage_z_processor'):
+                        rows = self.stage_z_processor.get_data_from_json(json_data)
+                        if rows:
+                            return rows
+                    elif hasattr(self, 'stage_e_processor'):
+                        rows = self.stage_e_processor.get_data_from_json(json_data)
+                        if rows:
+                            return rows
+                    
+                    # No recognized key, return empty list
+                    return []
+            
+            return []
+        
+        try:
+            # Load JSON file
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            # Extract rows from JSON
+            rows = extract_rows_from_json(json_data)
+            
+            if not rows:
+                self.logger.warning(f"No data rows found in {json_file_path}")
+                return False
+            
+            # Filter out non-dict items
+            rows = [row for row in rows if isinstance(row, dict)]
+            
+            if not rows:
+                self.logger.error(f"Invalid JSON format: no valid dictionary rows found in {json_file_path}")
+                return False
+            
+            # Get all unique headers from all rows and normalize case-sensitive duplicates
+            all_headers_dict = {}  # lowercase_key -> original_key (most common case)
+            header_counts = {}  # lowercase_key -> {original_key: count}
+            
+            for row in rows:
+                for key in row.keys():
+                    key_lower = key.lower()
+                    if key_lower not in header_counts:
+                        header_counts[key_lower] = {}
+                    if key not in header_counts[key_lower]:
+                        header_counts[key_lower][key] = 0
+                    header_counts[key_lower][key] += 1
+            
+            # For each lowercase key, choose the most common original case
+            for key_lower, variants in header_counts.items():
+                # Choose the variant with highest count, or first alphabetically if tie
+                most_common = max(variants.items(), key=lambda x: (x[1], x[0]))
+                all_headers_dict[key_lower] = most_common[0]
+            
+            headers = sorted(list(all_headers_dict.values()))
+            
+            if not headers:
+                self.logger.error(f"No headers found in {json_file_path}")
+                return False
+            
+            # Create mapping from original keys to normalized keys (build once, use many times)
+            key_mapping = {}
+            for key_lower, normalized_key in all_headers_dict.items():
+                # Find all original keys that map to this normalized key
+                for original_key in header_counts[key_lower].keys():
+                    if original_key != normalized_key:
+                        key_mapping[original_key] = normalized_key
+            
+            # Normalize all rows to use consistent key casing
+            normalized_rows = []
+            for row in rows:
+                normalized_row = {}
+                for key, value in row.items():
+                    normalized_key = key_mapping.get(key, key)
+                    # If normalized key already exists in this row, merge values (prefer non-empty)
+                    if normalized_key in normalized_row:
+                        if not normalized_row[normalized_key] and value:
+                            normalized_row[normalized_key] = value
+                        # If both have values, prefer the one from the normalized key
+                    else:
+                        normalized_row[normalized_key] = value
+                normalized_rows.append(normalized_row)
+            
+            rows = normalized_rows
+            
+            # Build CSV content
+            csv_lines = []
+            
+            # Add header row
+            csv_lines.append(delimiter.join(headers))
+            
+            # Add data rows
+            for row in rows:
+                csv_line = delimiter.join(str(row.get(h, "")) for h in headers)
+                csv_lines.append(csv_line)
+            
+            csv_text = "\n".join(csv_lines)
+            
+            # Save CSV file
+            os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+            with open(output_csv_path, 'w', encoding='utf-8') as f:
+                f.write(csv_text)
+            
+            self.logger.info(f"Successfully converted {json_file_path} to {output_csv_path} (Total rows: {len(rows)}, Total columns: {len(headers)})")
+            return True
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse JSON file {json_file_path}: {str(e)}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Error converting {json_file_path} to CSV: {str(e)}", exc_info=True)
+            return False
+    
+    def convert_json_to_csv_batch(self):
+        """Convert multiple JSON files to CSV format"""
         def worker():
             try:
-                self.stage_z_process_btn.configure(state="disabled", text="Processing...")
-                self.stage_z_status_label.configure(text="Processing RichText Generation...", text_color="blue")
-                
-                # Validate inputs
-                stage_a_path = self.stage_z_stage_a_var.get().strip()
-                stage_x_path = self.stage_z_stage_x_var.get().strip()
-                stage_y_path = self.stage_z_stage_y_var.get().strip()
-                prompt = self.stage_z_prompt_text.get("1.0", tk.END).strip()
-                
-                if not stage_a_path or not os.path.exists(stage_a_path):
-                    messagebox.showerror("Error", "Please select a valid Stage A JSON file.")
+                if not hasattr(self, 'json_to_csv_selected_files') or not self.json_to_csv_selected_files:
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Warning",
+                        "Please add at least one JSON file to convert."
+                    ))
                     return
                 
-                if not stage_x_path or not os.path.exists(stage_x_path):
-                    messagebox.showerror("Error", "Please select a valid Stage X output JSON file.")
-                    return
-                
-                if not stage_y_path or not os.path.exists(stage_y_path):
-                    messagebox.showerror("Error", "Please select a valid Stage Y output JSON file.")
-                    return
-                
-                if not prompt:
-                    messagebox.showerror("Error", "Please enter a prompt for RichText Generation.")
-                    return
-                
-                # Always use default model from main view settings
-                model_name = self.get_default_model()
-                
-                def progress_callback(msg: str):
-                    self.root.after(0, lambda: self.stage_z_status_label.configure(text=msg))
-                
-                output_path = self.stage_z_processor.process_stage_z(
-                    stage_a_path=stage_a_path,
-                    stage_x_output_path=stage_x_path,
-                    stage_y_output_path=stage_y_path,
-                    prompt=prompt,
-                    model_name=model_name,
-                    output_dir=self.get_default_output_dir(stage_a_path),
-                    progress_callback=progress_callback
+                self.json_to_csv_process_btn.configure(
+                    state="disabled",
+                    text="Converting..."
                 )
                 
-                if output_path:
-                    self.last_stage_z_path = output_path
-                    self.stage_z_status_label.configure(
-                        text=f"Stage Z completed successfully!\nOutput: {os.path.basename(output_path)}",
-                        text_color="green"
-                    )
-                    messagebox.showinfo("Success", f"RichText Generation completed!\n\nOutput saved to:\n{output_path}")
-                else:
-                    self.stage_z_status_label.configure(text="RichText Generation failed. Check logs for details.", text_color="red")
-                    messagebox.showerror("Error", "RichText Generation failed. Check logs for details.")
+                # Get delimiter
+                delimiter = self.json_to_csv_delimiter_var.get() if hasattr(self, 'json_to_csv_delimiter_var') else ";;;"
+                
+                # Get output directory option
+                use_same_folder = self.json_to_csv_same_folder_var.get() if hasattr(self, 'json_to_csv_same_folder_var') else True
+                custom_output_dir = self.json_to_csv_output_dir_var.get().strip() if hasattr(self, 'json_to_csv_output_dir_var') else ""
+                
+                # Validate custom output directory if specified
+                if not use_same_folder and custom_output_dir:
+                    if not os.path.exists(custom_output_dir):
+                        self.root.after(0, lambda: messagebox.showerror(
+                            "Error",
+                            f"Output directory does not exist:\n{custom_output_dir}"
+                        ))
+                        return
+                
+                total_files = len(self.json_to_csv_selected_files)
+                completed = 0
+                failed = 0
+                
+                # Clear previous results
+                for widget in self.json_to_csv_results_list_scroll.winfo_children():
+                    widget.destroy()
+                self.json_to_csv_results_list = []
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.json_to_csv_progress_bar.set(0))
+                
+                # Process each file
+                for idx, json_file_path in enumerate(self.json_to_csv_selected_files):
+                    file_name = os.path.basename(json_file_path)
                     
+                    # Update progress label
+                    self.root.after(0, lambda idx=idx, total=total_files, fn=file_name:
+                                   self.json_to_csv_status_label.configure(
+                                       text=f"Converting {idx+1}/{total}: {fn}",
+                                       text_color="blue"
+                                   ))
+                    
+                    # Progress bar
+                    progress = idx / total_files
+                    self.root.after(0, lambda p=progress: self.json_to_csv_progress_bar.set(p))
+                    
+                    try:
+                        # Determine output CSV path
+                        json_basename = os.path.splitext(os.path.basename(json_file_path))[0]
+                        csv_filename = f"{json_basename}.csv"
+                        
+                        if use_same_folder:
+                            # Save in same folder as JSON file
+                            output_csv_path = os.path.join(os.path.dirname(json_file_path), csv_filename)
+                        else:
+                            # Save in custom output directory
+                            if custom_output_dir:
+                                output_csv_path = os.path.join(custom_output_dir, csv_filename)
+                            else:
+                                # Fallback to same folder
+                                output_csv_path = os.path.join(os.path.dirname(json_file_path), csv_filename)
+                        
+                        # Convert JSON to CSV
+                        success = self.convert_json_to_csv_file(
+                            json_file_path=json_file_path,
+                            output_csv_path=output_csv_path,
+                            delimiter=delimiter
+                        )
+                        
+                        if success:
+                            completed += 1
+                            result = {
+                                'json_file': json_file_path,
+                                'csv_file': output_csv_path,
+                                'status': 'success'
+                            }
+                            self.json_to_csv_results_list.append(result)
+                            
+                            # Add to UI
+                            result_frame = ctk.CTkFrame(self.json_to_csv_results_list_scroll)
+                            result_frame.pack(fill="x", padx=5, pady=2)
+                            
+                            result_text = f"Success: {file_name} -> {csv_filename}"
+                            result_label = ctk.CTkLabel(
+                                result_frame,
+                                text=result_text,
+                                font=ctk.CTkFont(size=11),
+                                anchor="w",
+                                text_color="green"
+                            )
+                            result_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+                            
+                            self.logger.info(f"Successfully converted: {file_name} → {csv_filename}")
+                        else:
+                            failed += 1
+                            result = {
+                                'json_file': json_file_path,
+                                'csv_file': None,
+                                'status': 'failed'
+                            }
+                            self.json_to_csv_results_list.append(result)
+                            
+                            # Add to UI
+                            result_frame = ctk.CTkFrame(self.json_to_csv_results_list_scroll)
+                            result_frame.pack(fill="x", padx=5, pady=2)
+                            
+                            result_text = f"Failed: {file_name} (Failed)"
+                            result_label = ctk.CTkLabel(
+                                result_frame,
+                                text=result_text,
+                                font=ctk.CTkFont(size=11),
+                                anchor="w",
+                                text_color="red"
+                            )
+                            result_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+                            
+                            self.logger.error(f"Failed to convert: {file_name}")
+                            
+                    except Exception as e:
+                        failed += 1
+                        self.logger.error(f"Error converting {file_name}: {str(e)}", exc_info=True)
+                        
+                        # Add error to UI
+                        result_frame = ctk.CTkFrame(self.json_to_csv_results_list_scroll)
+                        result_frame.pack(fill="x", padx=5, pady=2)
+                        
+                        result_text = f"Error: {file_name} (Error: {str(e)[:50]})"
+                        result_label = ctk.CTkLabel(
+                            result_frame,
+                            text=result_text,
+                            font=ctk.CTkFont(size=11),
+                            anchor="w",
+                            text_color="red"
+                        )
+                        result_label.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+                
+                # Final progress update
+                self.root.after(0, lambda: self.json_to_csv_progress_bar.set(1.0))
+                
+                self.root.after(0, lambda: self.json_to_csv_status_label.configure(
+                    text=f"Conversion completed: {completed} succeeded, {failed} failed",
+                    text_color="green" if failed == 0 else "orange"
+                ))
+                
+                # Show summary
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Conversion Complete",
+                    f"JSON to CSV conversion completed!\n\n"
+                    f"Total files: {total_files}\n"
+                    f"Successful: {completed}\n"
+                    f"Failed: {failed}"
+                ))
+            
             except Exception as e:
-                self.logger.error(f"Error in Stage Z processing: {e}", exc_info=True)
-                self.stage_z_status_label.configure(text=f"Error: {str(e)}", text_color="red")
-                messagebox.showerror("Error", f"RichText Generation error:\n{str(e)}")
+                self.logger.error(f"Error in batch JSON to CSV conversion: {str(e)}", exc_info=True)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error",
+                    f"Batch conversion error:\n{str(e)}"
+                ))
             finally:
-                self.root.after(0, lambda: self.stage_z_process_btn.configure(state="normal", text="Process RichText Generation"))
+                self.root.after(0, lambda: self.json_to_csv_process_btn.configure(
+                    state="normal",
+                    text="Convert All to CSV"
+                ))
         
+        # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
     
