@@ -30,10 +30,19 @@ class MultiPartPostProcessor:
         Load PointId mapping from TXT file.
         Each line = start PointId for one chapter (in order)
         
-        Format:
+        Supports multiple formats:
+        - Exact 10-digit format: 1251330001
+        - Numbers with spaces/text: "Chapter 1: 1251330001" or "1251330001 some text"
+        - Numbers less than 10 digits: will be padded to 10 digits
+        - Multiple numbers per line: first number is used
+        
+        Format examples:
         1251330001
         1151031001
         1451432001
+        OR
+        Chapter 1: 1251330001
+        1251330001 (Chapter 2)
         
         Args:
             txt_path: Path to TXT file containing PointId mappings
@@ -53,12 +62,34 @@ class MultiPartPostProcessor:
                         self.logger.debug(f"Line {line_num}: Skipped (empty or comment): '{original_line.rstrip()}'")
                         continue
                     
-                    # Validate format: must be 10 digits
+                    # Try to extract numbers from the line
+                    # First, try exact 10-digit format
                     if len(line) == 10 and line.isdigit():
                         pointids.append(line)
                         self.logger.info(f"Line {line_num}: Loaded PointId = {line} (Book: {line[0:3]}, Chapter: {line[3:6]}, Index: {line[6:10]})")
                     else:
-                        self.logger.warning(f"Line {line_num}: Invalid PointId format: '{line}' (length: {len(line)}, isdigit: {line.isdigit()}, expected 10 digits)")
+                        # Extract all numbers from the line using regex
+                        numbers = re.findall(r'\d+', line)
+                        if numbers:
+                            # Use the first number found
+                            first_number = numbers[0]
+                            
+                            # If number is less than 10 digits, pad it to 10 digits
+                            if len(first_number) < 10:
+                                # Pad with zeros at the end (right-pad)
+                                padded_number = first_number.ljust(10, '0')
+                                self.logger.info(f"Line {line_num}: Extracted number '{first_number}' (length: {len(first_number)}), padded to 10 digits: {padded_number}")
+                                pointids.append(padded_number)
+                            elif len(first_number) == 10:
+                                pointids.append(first_number)
+                                self.logger.info(f"Line {line_num}: Extracted PointId = {first_number} (Book: {first_number[0:3]}, Chapter: {first_number[3:6]}, Index: {first_number[6:10]})")
+                            else:
+                                # If number is more than 10 digits, take first 10 digits
+                                truncated = first_number[:10]
+                                pointids.append(truncated)
+                                self.logger.warning(f"Line {line_num}: Extracted number '{first_number}' (length: {len(first_number)}), truncated to 10 digits: {truncated}")
+                        else:
+                            self.logger.warning(f"Line {line_num}: No numbers found in line: '{line}'")
             
             self.logger.info(f"Loaded {len(pointids)} PointId mappings from {txt_path}")
             if pointids:
@@ -361,6 +392,7 @@ class MultiPartPostProcessor:
     def _extract_json_blocks_from_text(self, text: str) -> List[Dict[str, Any]]:
         """
         Extract JSON blocks from a single text response.
+        Handles markdown code blocks, escaped JSON strings, and direct JSON.
         
         Returns:
             List of JSON objects extracted from the text
@@ -370,7 +402,8 @@ class MultiPartPostProcessor:
         
         json_blocks = []
         
-        # Strategy 1: Find JSON blocks between ```json and ``` or ``` and ```
+        # Strategy 1: Try to extract from markdown code blocks
+        # First try: ```json ... ```
         json_block_patterns = [
             r'```json\s*(.*?)\s*```',  # ```json ... ```
             r'```\s*(.*?)\s*```',       # ``` ... ```
@@ -381,9 +414,10 @@ class MultiPartPostProcessor:
             found_matches = re.findall(pattern, text, re.DOTALL)
             if found_matches:
                 matches = found_matches
+                self.logger.debug(f"Found {len(matches)} JSON block(s) using pattern: {pattern}")
                 break
         
-        # Strategy 2: If no code blocks found, try to extract JSON directly
+        # Strategy 2: If no code blocks found, try to extract JSON directly from text
         if not matches:
             # Try to find JSON object/array in the text
             start_obj = text.find('{')
@@ -396,11 +430,25 @@ class MultiPartPostProcessor:
                     if end > start:
                         candidate = text[start:end + 1]
                         matches = [candidate]
+                        self.logger.debug("Found JSON object in text (no code blocks)")
                 elif start_arr != -1:
                     end = text.rfind(']')
                     if end > start:
                         candidate = text[start:end + 1]
                         matches = [candidate]
+                        self.logger.debug("Found JSON array in text (no code blocks)")
+        
+        # Strategy 3: If text is an escaped JSON string (like in raw_responses), try to unescape it
+        if not matches:
+            try:
+                # Check if it's a JSON-encoded string
+                if text.startswith('"') and text.endswith('"'):
+                    unescaped = json.loads(text)
+                    if isinstance(unescaped, str):
+                        # Recursively try to extract from unescaped string
+                        return self._extract_json_blocks_from_text(unescaped)
+            except:
+                pass
         
         # Parse each match
         for match in matches:
@@ -408,11 +456,14 @@ class MultiPartPostProcessor:
             if not json_str:
                 continue
             
+            # Try to parse JSON
             try:
                 json_obj = json.loads(json_str)
                 json_blocks.append(json_obj)
+                self.logger.debug(f"Successfully parsed JSON block (type: {type(json_obj).__name__})")
             except json.JSONDecodeError as e:
-                # Try fallback extraction
+                self.logger.warning(f"JSON parse failed: {e}. Trying fallback extraction...")
+                # Try fallback extraction - find largest valid JSON object/array
                 start_obj = json_str.find("{")
                 start_arr = json_str.find("[")
                 
@@ -423,8 +474,9 @@ class MultiPartPostProcessor:
                             candidate = json_str[start_obj:end_obj + 1]
                             json_obj = json.loads(candidate)
                             json_blocks.append(json_obj)
+                            self.logger.debug("Successfully parsed JSON using fallback extraction (object)")
                         except json.JSONDecodeError:
-                            pass
+                            self.logger.warning(f"Fallback extraction failed for JSON object")
                 elif start_arr != -1:
                     end_arr = json_str.rfind("]")
                     if end_arr > start_arr:
@@ -432,8 +484,16 @@ class MultiPartPostProcessor:
                             candidate = json_str[start_arr:end_arr + 1]
                             json_obj = json.loads(candidate)
                             json_blocks.append(json_obj)
+                            self.logger.debug("Successfully parsed JSON using fallback extraction (array)")
                         except json.JSONDecodeError:
-                            pass
+                            self.logger.warning(f"Fallback extraction failed for JSON array")
+        
+        if json_blocks:
+            self.logger.info(f"Extracted {len(json_blocks)} JSON block(s) from response")
+        else:
+            self.logger.warning(f"No valid JSON blocks found in response (length: {len(text)} chars)")
+            # Log first 500 chars for debugging
+            self.logger.debug(f"Response preview: {text[:500]}...")
         
         return json_blocks
 
@@ -939,11 +999,11 @@ class MultiPartPostProcessor:
         # Build chapter info with PointId mappings
         chapters_info = []  # List of dicts: {chapter_name, chapter_index, start_pointid}
         
-        # If only one PointId is provided, auto-generate PointIds for subsequent chapters
-        base_pointid = None
-        if len(chapter_pointids) == 1 and len(chapters) > 1:
-            base_pointid = chapter_pointids[0]
-            self.logger.info(f"Only one PointId provided ({base_pointid}), will auto-generate PointIds for remaining chapters")
+        # Get the last PointId from file to use as base for auto-increment
+        last_pointid_from_file = None
+        if chapter_pointids:
+            last_pointid_from_file = chapter_pointids[-1]
+            self.logger.info(f"Last PointId from file: {last_pointid_from_file} (will be used as base for auto-increment if needed)")
         
         for chapter_idx, chapter in enumerate(chapters):
             if not isinstance(chapter, dict):
@@ -968,22 +1028,21 @@ class MultiPartPostProcessor:
                     else:
                         start_pointid_str = f"001001{start_point_index:04d}"
                     self.logger.warning(f"  Using fallback PointId: {start_pointid_str}")
-            elif base_pointid:
-                # Auto-generate PointId based on base PointId
-                # Format: BBBCCCPPPP (Book: 3 digits, Chapter: 3 digits, Index: 4 digits)
+            elif last_pointid_from_file:
+                # Auto-increment from last PointId in file
+                # Use the whole number as base and increment it
                 try:
-                    base_book = int(base_pointid[0:3])
-                    base_chapter = int(base_pointid[3:6])
-                    base_index = int(base_pointid[6:10])
-                    
-                    # Increment chapter number for each subsequent chapter
-                    # Offset is chapter_idx (since first chapter uses base_pointid from file)
-                    chapter_offset = chapter_idx  # chapter_idx=0 uses base, chapter_idx=1 uses base+1, etc.
-                    new_chapter = base_chapter + chapter_offset
-                    start_pointid_str = f"{base_book:03d}{new_chapter:03d}{base_index:04d}"
-                    self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Auto-generated PointId = {start_pointid_str} (base: {base_pointid}, chapter: {base_chapter} + {chapter_offset} = {new_chapter})")
-                except (ValueError, IndexError) as e:
-                    self.logger.error(f"Failed to parse base PointId {base_pointid}: {e}")
+                    # Convert last PointId to integer and increment
+                    base_pointid_int = int(last_pointid_from_file)
+                    # Calculate how many chapters after the last mapped chapter
+                    chapters_after_mapped = chapter_idx - len(chapter_pointids) + 1
+                    # Increment the whole number
+                    new_pointid_int = base_pointid_int + chapters_after_mapped
+                    # Convert back to 10-digit string
+                    start_pointid_str = f"{new_pointid_int:010d}"
+                    self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Auto-incremented PointId = {start_pointid_str} (base: {last_pointid_from_file}, increment: +{chapters_after_mapped})")
+                except (ValueError, OverflowError) as e:
+                    self.logger.error(f"Failed to increment PointId {last_pointid_from_file}: {e}")
                     # Fallback
                     if book_id and chapter_id:
                         start_pointid_str = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
