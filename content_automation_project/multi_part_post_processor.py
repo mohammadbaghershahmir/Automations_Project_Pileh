@@ -939,6 +939,12 @@ class MultiPartPostProcessor:
         # Build chapter info with PointId mappings
         chapters_info = []  # List of dicts: {chapter_name, chapter_index, start_pointid}
         
+        # If only one PointId is provided, auto-generate PointIds for subsequent chapters
+        base_pointid = None
+        if len(chapter_pointids) == 1 and len(chapters) > 1:
+            base_pointid = chapter_pointids[0]
+            self.logger.info(f"Only one PointId provided ({base_pointid}), will auto-generate PointIds for remaining chapters")
+        
         for chapter_idx, chapter in enumerate(chapters):
             if not isinstance(chapter, dict):
                 continue
@@ -947,8 +953,9 @@ class MultiPartPostProcessor:
             if not chapter_name:
                 chapter_name = f"Chapter_{chapter_idx + 1}"
             
-            # Get PointId for this chapter directly from TXT file
+            # Get PointId for this chapter
             if chapter_idx < len(chapter_pointids):
+                # Use PointId directly from TXT file
                 start_pointid_str = chapter_pointids[chapter_idx]
                 self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Using PointId from mapping = {start_pointid_str}")
                 
@@ -956,6 +963,28 @@ class MultiPartPostProcessor:
                 if not (len(start_pointid_str) == 10 and start_pointid_str.isdigit()):
                     self.logger.error(f"Invalid PointId format for chapter {chapter_idx + 1}: {start_pointid_str}")
                     # Fallback: construct from book_id/chapter_id/start_point_index
+                    if book_id and chapter_id:
+                        start_pointid_str = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
+                    else:
+                        start_pointid_str = f"001001{start_point_index:04d}"
+                    self.logger.warning(f"  Using fallback PointId: {start_pointid_str}")
+            elif base_pointid:
+                # Auto-generate PointId based on base PointId
+                # Format: BBBCCCPPPP (Book: 3 digits, Chapter: 3 digits, Index: 4 digits)
+                try:
+                    base_book = int(base_pointid[0:3])
+                    base_chapter = int(base_pointid[3:6])
+                    base_index = int(base_pointid[6:10])
+                    
+                    # Increment chapter number for each subsequent chapter
+                    # Offset is chapter_idx (since first chapter uses base_pointid from file)
+                    chapter_offset = chapter_idx  # chapter_idx=0 uses base, chapter_idx=1 uses base+1, etc.
+                    new_chapter = base_chapter + chapter_offset
+                    start_pointid_str = f"{base_book:03d}{new_chapter:03d}{base_index:04d}"
+                    self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Auto-generated PointId = {start_pointid_str} (base: {base_pointid}, chapter: {base_chapter} + {chapter_offset} = {new_chapter})")
+                except (ValueError, IndexError) as e:
+                    self.logger.error(f"Failed to parse base PointId {base_pointid}: {e}")
+                    # Fallback
                     if book_id and chapter_id:
                         start_pointid_str = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
                     else:
