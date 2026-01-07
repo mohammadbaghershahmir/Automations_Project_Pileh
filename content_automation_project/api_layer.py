@@ -52,12 +52,13 @@ class APIConfig:
     
     # Available DeepSeek text processing models
     DEEPSEEK_TEXT_MODELS = [
-    "deepseek-chat",           # مدل پایه
-    "deepseek-chat-v3",         # اگر موجود باشد
-    "deepseek-chat-v2.5",       # اگر موجود باشد
-    "deepseek-coder",           # برای کدنویسی
-    "deepseek-reasoner",        # برای استدلال
-    "deepseek-reasoner-v2", 
+        "deepseek-chat",           # مدل پایه - DeepSeek-V3
+        "deepseek-chat-v3",        # نسخه V3
+        "deepseek-chat-v2.5",      # نسخه V2.5
+        "deepseek-coder",          # برای کدنویسی
+        "deepseek-coder-v2",       # نسخه V2 برای کدنویسی
+        "deepseek-reasoner",       # برای استدلال - DeepSeek-R1
+        "deepseek-reasoner-v2",    # نسخه V2 برای استدلال
     ]
     
     # All available text models (combined)

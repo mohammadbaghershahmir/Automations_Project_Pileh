@@ -604,7 +604,7 @@ class ContentAutomationGUI:
         self.model_var.trace('w', lambda *args: self._on_model_var_changed())
         
         ctk.CTkLabel(model_select_frame, 
-                    text="Available models: deepseek-chat, deepseek-coder, deepseek-reasoner (Document Processing uses DeepSeek API)", 
+                    text=f"Available DeepSeek models: {', '.join(APIConfig.DEEPSEEK_TEXT_MODELS)} (Document Processing uses DeepSeek API)", 
                     font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_output_section(self, parent):
