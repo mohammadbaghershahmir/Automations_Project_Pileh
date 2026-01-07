@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from api_layer import APIConfig, APIKeyManager, GeminiAPIClient
+from unified_api_client import UnifiedAPIClient
 from pdf_processor import PDFProcessor
 from prompt_manager import PromptManager
 from multi_part_processor import MultiPartProcessor
@@ -65,8 +66,31 @@ class ContentAutomationGUI:
         # Initialize components
         self.pdf_processor = PDFProcessor()
         self.prompt_manager = PromptManager()
-        self.api_key_manager = APIKeyManager()
-        self.api_client = GeminiAPIClient(self.api_key_manager)
+        
+        # Initialize API key managers for Google and DeepSeek
+        self.google_api_key_manager = APIKeyManager()
+        self.deepseek_api_key_manager = APIKeyManager()
+        
+        # Initialize API key file path variables (will be set in setup_api_section if not exists)
+        # These are created here to ensure they exist before UI setup
+        
+        # Load API keys if files exist (auto-load on startup)
+        if os.path.exists("api_keys.csv"):
+            if not hasattr(self, 'api_key_file_var'):
+                self.api_key_file_var = ctk.StringVar()
+            self.api_key_file_var.set("api_keys.csv")
+            self.google_api_key_manager.load_from_csv("api_keys.csv")
+        if os.path.exists("deepseek_api_keys.csv"):
+            if not hasattr(self, 'deepseek_api_key_file_var'):
+                self.deepseek_api_key_file_var = ctk.StringVar()
+            self.deepseek_api_key_file_var.set("deepseek_api_keys.csv")
+            self.deepseek_api_key_manager.load_from_csv("deepseek_api_keys.csv")
+        
+        # Initialize unified API client
+        self.api_client = UnifiedAPIClient(
+            google_api_key_manager=self.google_api_key_manager,
+            deepseek_api_key_manager=self.deepseek_api_key_manager
+        )
         self.multi_part_processor = MultiPartProcessor(self.api_client)
         self.multi_part_post_processor = MultiPartPostProcessor(self.api_client)
         self.stage_e_processor = StageEProcessor(self.api_client)
@@ -104,7 +128,8 @@ class ContentAutomationGUI:
         
         # Initialize default settings variables (shared across all views)
         # These will be used as default values for all stages
-        self.model_var = ctk.StringVar(value="gemini-2.5-pro")
+        # Document Processing uses DeepSeek, so default to DeepSeek model
+        self.model_var = ctk.StringVar(value="deepseek-chat")
         self.output_folder_var = ctk.StringVar()
         
         # Setup UI
@@ -257,36 +282,67 @@ class ContentAutomationGUI:
                                 font=ctk.CTkFont(size=18, weight="bold"))
         api_label.pack(pady=(15, 10))
         
-        # API Key CSV file selection
-        key_frame = ctk.CTkFrame(api_frame)
-        key_frame.pack(fill="x", padx=15, pady=5)
+        # Google API Key CSV file selection
+        google_key_frame = ctk.CTkFrame(api_frame)
+        google_key_frame.pack(fill="x", padx=15, pady=5)
         
-        ctk.CTkLabel(key_frame, text="API Key CSV File:", 
+        ctk.CTkLabel(google_key_frame, text="Google API Key CSV File:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
         # Only create StringVar if it doesn't exist (for main view)
         if not hasattr(self, 'api_key_file_var'):
             self.api_key_file_var = ctk.StringVar()
-        api_key_entry = ctk.CTkEntry(key_frame, textvariable=self.api_key_file_var, width=400)
-        api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+        google_api_key_entry = ctk.CTkEntry(google_key_frame, textvariable=self.api_key_file_var, width=400)
+        google_api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
         
-        ctk.CTkButton(key_frame, text="Browse", command=self.browse_api_key_file, 
+        ctk.CTkButton(google_key_frame, text="Browse", command=self.browse_api_key_file, 
                      width=80).pack(side="right", padx=(5, 10), pady=(0, 5))
         
-        ctk.CTkLabel(key_frame, text="CSV format: account;project;api_key (API keys will be used in rotation)", 
-                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
+        ctk.CTkLabel(google_key_frame, text="CSV format: account;project;api_key (Used for Pre-OCR Topic & OCR Extraction)", 
+                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
         
-        # API keys status - only create for main view
+        # Google API keys status - only create for main view
         if not hasattr(self, 'api_keys_status_label') or parent == self.main_stages_1_4_frame:
             if not hasattr(self, 'api_keys_status_label'):
-                self.api_keys_status_label = ctk.CTkLabel(key_frame, text="No API keys loaded", 
+                self.api_keys_status_label = ctk.CTkLabel(google_key_frame, text="No Google API keys loaded", 
                                                           font=ctk.CTkFont(size=10), text_color="gray")
                 self.api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
         else:
             # For tabview, create a separate label that syncs with main
-            api_keys_status_label_tab = ctk.CTkLabel(key_frame, text="No API keys loaded", 
+            api_keys_status_label_tab = ctk.CTkLabel(google_key_frame, text="No Google API keys loaded", 
                                                       font=ctk.CTkFont(size=10), text_color="gray")
             api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # DeepSeek API Key CSV file selection
+        deepseek_key_frame = ctk.CTkFrame(api_frame)
+        deepseek_key_frame.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(deepseek_key_frame, text="DeepSeek API Key CSV File:", 
+                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create StringVar if it doesn't exist (for main view)
+        if not hasattr(self, 'deepseek_api_key_file_var'):
+            self.deepseek_api_key_file_var = ctk.StringVar()
+        deepseek_api_key_entry = ctk.CTkEntry(deepseek_key_frame, textvariable=self.deepseek_api_key_file_var, width=400)
+        deepseek_api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+        
+        ctk.CTkButton(deepseek_key_frame, text="Browse", command=self.browse_deepseek_api_key_file, 
+                     width=80).pack(side="right", padx=(5, 10), pady=(0, 5))
+        
+        ctk.CTkLabel(deepseek_key_frame, text="CSV format: account;project;api_key (Used for Document Processing & Stages E-Z)", 
+                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # DeepSeek API keys status - only create for main view
+        if not hasattr(self, 'deepseek_api_keys_status_label') or parent == self.main_stages_1_4_frame:
+            if not hasattr(self, 'deepseek_api_keys_status_label'):
+                self.deepseek_api_keys_status_label = ctk.CTkLabel(deepseek_key_frame, text="No DeepSeek API keys loaded", 
+                                                          font=ctk.CTkFont(size=10), text_color="gray")
+                self.deepseek_api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        else:
+            # For tabview, create a separate label that syncs with main
+            deepseek_api_keys_status_label_tab = ctk.CTkLabel(deepseek_key_frame, text="No DeepSeek API keys loaded", 
+                                                      font=ctk.CTkFont(size=10), text_color="gray")
+            deepseek_api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_pre_ocr_topic_ui(self, parent):
         """Setup UI for Pre-OCR Topic Extraction"""
@@ -523,7 +579,7 @@ class ContentAutomationGUI:
             self.on_prompt_selected(default_value)
     
     def setup_model_section(self, parent):
-        """Setup model selection section"""
+        """Setup model selection section for Document Processing (uses DeepSeek API)"""
         model_frame = ctk.CTkFrame(parent)
         model_frame.pack(fill="x", pady=(0, 20))
         
@@ -534,11 +590,12 @@ class ContentAutomationGUI:
         model_select_frame = ctk.CTkFrame(model_frame)
         model_select_frame.pack(fill="x", padx=15, pady=(0, 15))
         
-        ctk.CTkLabel(model_select_frame, text="Select Gemini Model:", 
+        ctk.CTkLabel(model_select_frame, text="Select DeepSeek Model:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
         # Use shared model_var (initialized in __init__)
-        self.model_combo = ctk.CTkComboBox(model_select_frame, values=APIConfig.TEXT_MODELS, 
+        # Document Processing uses DeepSeek API, so show DeepSeek models
+        self.model_combo = ctk.CTkComboBox(model_select_frame, values=APIConfig.DEEPSEEK_TEXT_MODELS, 
                                           variable=self.model_var, width=400,
                                           command=self.on_model_changed)
         self.model_combo.pack(anchor="w", padx=10, pady=(0, 10))
@@ -547,7 +604,7 @@ class ContentAutomationGUI:
         self.model_var.trace('w', lambda *args: self._on_model_var_changed())
         
         ctk.CTkLabel(model_select_frame, 
-                    text="Available models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash, etc.", 
+                    text="Available models: deepseek-chat, deepseek-coder, deepseek-reasoner (Document Processing uses DeepSeek API)", 
                     font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_output_section(self, parent):
@@ -752,26 +809,50 @@ class ContentAutomationGUI:
         self.update_status("Ready. Please configure API keys and select a PDF file.")
     
     def browse_api_key_file(self):
-        """Browse for API key CSV file"""
+        """Browse for Google API key CSV file"""
         filename = filedialog.askopenfilename(
-            title="Select API Key CSV File",
+            title="Select Google API Key CSV File",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
         if filename:
             self.api_key_file_var.set(filename)
-            if self.api_key_manager.load_from_csv(filename):
-                num_keys = len(self.api_key_manager.api_keys)
+            # Load Google API keys
+            if self.google_api_key_manager.load_from_csv(filename):
+                num_keys = len(self.google_api_key_manager.api_keys)
                 self.api_keys_status_label.configure(
-                    text=f"Loaded {num_keys} API key(s) - Will be used in rotation",
+                    text=f"Loaded {num_keys} Google API key(s) - Will be used in rotation",
                     text_color="green"
                 )
-                self.update_status(f"Loaded {num_keys} API key(s) from: {os.path.basename(filename)}")
+                self.update_status(f"Loaded {num_keys} Google API key(s) from: {os.path.basename(filename)}")
             else:
                 self.api_keys_status_label.configure(
-                    text="X Failed to load API keys",
+                    text="X Failed to load Google API keys",
                     text_color="red"
                 )
-                messagebox.showerror("Error", "Failed to load API keys from file")
+                messagebox.showerror("Error", "Failed to load Google API keys from file")
+    
+    def browse_deepseek_api_key_file(self):
+        """Browse for DeepSeek API key CSV file"""
+        filename = filedialog.askopenfilename(
+            title="Select DeepSeek API Key CSV File",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if filename:
+            self.deepseek_api_key_file_var.set(filename)
+            # Load DeepSeek API keys
+            if self.deepseek_api_key_manager.load_from_csv(filename):
+                num_keys = len(self.deepseek_api_key_manager.api_keys)
+                self.deepseek_api_keys_status_label.configure(
+                    text=f"Loaded {num_keys} DeepSeek API key(s) - Will be used in rotation",
+                    text_color="green"
+                )
+                self.update_status(f"Loaded {num_keys} DeepSeek API key(s) from: {os.path.basename(filename)}")
+            else:
+                self.deepseek_api_keys_status_label.configure(
+                    text="X Failed to load DeepSeek API keys",
+                    text_color="red"
+                )
+                messagebox.showerror("Error", "Failed to load DeepSeek API keys from file")
     
     
     def browse_multiple_pre_ocr_pdfs(self):
@@ -1676,14 +1757,17 @@ class ContentAutomationGUI:
                     self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
                 
                 # Validate API keys
-                if not self.api_key_manager.api_keys:
+                if not self.google_api_key_manager.api_keys:
                     if not self.api_key_file_var.get():
                         self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys"))
                         return
                     else:
-                        if not self.api_key_manager.load_from_csv(self.api_key_file_var.get()):
+                        if not self.google_api_key_manager.load_from_csv(self.api_key_file_var.get()):
                             self.root.after(0, lambda: messagebox.showerror("Error", "Failed to load API keys"))
                             return
+                
+                # Set stage for Pre-OCR Topic Extraction (uses Google API)
+                self.api_client.set_stage("pre_ocr_topic")
                 
                 model_name = self.pre_ocr_model_var.get()
                 total_files = len(self.pre_ocr_selected_files)
@@ -1712,6 +1796,9 @@ class ContentAutomationGUI:
                     self.root.after(0, lambda p=progress: self.pre_ocr_progress_bar.set(p))
                     
                     try:
+                        # Set stage for Pre-OCR Topic Extraction (uses Google API)
+                        self.api_client.set_stage("pre_ocr_topic")
+                        
                         # Progress callback for this file
                         def progress_callback(msg: str):
                             self.root.after(0, lambda m=msg: self.pre_ocr_status_label.configure(text=m))
@@ -1805,9 +1892,9 @@ class ContentAutomationGUI:
                             messagebox.showerror("Error", "Failed to load API keys from CSV file")
                             return
                 
-                # Get selected model (use default from main view)
-                model_name = self.get_default_model()
-                self.logger.info(f"[process_pdf] Using model: {model_name}")
+                # Get selected model from Document Processing (DeepSeek API)
+                model_name = self.model_var.get() if hasattr(self, 'model_var') else "deepseek-chat"
+                self.logger.info(f"[process_pdf] Using model: {model_name} (DeepSeek API)")
                 
                 # Get current API key info (for logging)
                 current_key_info = self.api_key_manager.get_current_key_info()
@@ -3108,10 +3195,13 @@ class ContentAutomationGUI:
                 delay_seconds = 5
                 self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
             
-            # Validate API keys
-            if not self.api_key_manager.api_keys:
-                self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys first"))
+            # Validate API keys (for Stage 2, uses DeepSeek)
+            if not self.deepseek_api_key_manager.api_keys:
+                self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
                 return
+            
+            # Set stage for Stage 2 (uses DeepSeek API)
+            self.api_client.set_stage("stage_2")
             
             # PointId handling
             pointid_mapping_txt = None
@@ -4260,9 +4350,12 @@ class ContentAutomationGUI:
                     return
                 
                 # Validate API keys
-                if not self.api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load API keys first")
+                if not self.deepseek_api_key_manager.api_keys:
+                    messagebox.showerror("Error", "Please load DeepSeek API keys first")
                     return
+                
+                # Set stage for Stage E (uses DeepSeek API)
+                self.api_client.set_stage("stage_e")
                 
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_e_status_label.configure(text=msg))
@@ -4383,9 +4476,12 @@ class ContentAutomationGUI:
                 self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
             
             # Validate API keys
-            if not self.api_key_manager.api_keys:
-                self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys first"))
+            if not self.deepseek_api_key_manager.api_keys:
+                self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
                 return
+            
+            # Set stage for Stage E (uses DeepSeek API)
+            self.api_client.set_stage("stage_e")
             
             # Get model
             model_name = self.get_default_model()
@@ -4597,8 +4693,8 @@ class ContentAutomationGUI:
                 pdf_path = self.ocr_extraction_pdf_var.get().strip()
                 topic_file_path = self.ocr_extraction_topic_var.get().strip()
                 prompt = self.ocr_extraction_prompt_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                model_name = self.get_default_model()
+                # Use OCR Extraction model (Google API models)
+                model_name = self.ocr_extraction_model_var.get() if hasattr(self, 'ocr_extraction_model_var') else "gemini-2.5-pro"
                 
                 if not pdf_path or not os.path.exists(pdf_path):
                     self.ocr_extraction_status_label.configure(text="Error: Please select a valid PDF file", text_color="red")
@@ -4616,10 +4712,13 @@ class ContentAutomationGUI:
                     return
                 
                 # Validate API keys
-                if not self.api_key_manager.api_keys:
+                if not self.google_api_key_manager.api_keys:
                     self.ocr_extraction_status_label.configure(text="Error: Please load API keys first", text_color="red")
                     messagebox.showerror("Error", "Please load API keys first")
                     return
+                
+                # Set stage for OCR Extraction (uses Google API)
+                self.api_client.set_stage("ocr_extraction")
                 
                 # Load topic file to get book_id and chapter_id (for reference, not used in processing yet)
                 try:
@@ -4962,11 +5061,15 @@ class ContentAutomationGUI:
                     self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
                 
                 # Validate API keys
-                if not self.api_key_manager.api_keys:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys first"))
+                if not self.google_api_key_manager.api_keys:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
                     return
                 
-                model_name = self.get_default_model()
+                # Set stage for OCR Extraction (uses Google API)
+                self.api_client.set_stage("ocr_extraction")
+                
+                # Use OCR Extraction model (Google API models)
+                model_name = self.ocr_extraction_model_var.get() if hasattr(self, 'ocr_extraction_model_var') else "gemini-2.5-pro"
                 total_pairs = len(self.ocr_extraction_selected_pairs)
                 completed = 0
                 failed = 0

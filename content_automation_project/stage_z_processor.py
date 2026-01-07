@@ -42,12 +42,16 @@ class StageZProcessor(BaseStageProcessor):
             progress_callback: Optional callback for progress updates
             
         Returns:
-            Path to output file (z{book}{chapter}.rtf) or None on error
+            Path to output file (z{book}{chapter}+{chapter_name}.rtf) or None on error
         """
         def _progress(msg: str):
             if progress_callback:
                 progress_callback(msg)
             self.logger.info(msg)
+        
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_z")
         
         _progress("Starting Stage Z processing...")
         
@@ -143,14 +147,76 @@ class StageZProcessor(BaseStageProcessor):
         book_id = metadata.get("book_id", 105)
         chapter_id = metadata.get("chapter_id", 3)
         
-        # Save output as .rtf file
-        output_filename = f"z{book_id:03d}{chapter_id:03d}.rtf"
-        output_path = os.path.join(output_dir, output_filename)
+        # Extract chapter name from Stage A metadata or filename
+        chapter_name = ""
+        chapter_name = (
+            metadata.get("chapter", "") or
+            metadata.get("Chapter", "") or
+            metadata.get("chapter_name", "") or
+            metadata.get("Chapter_Name", "") or
+            ""
+        )
+        
+        # If not found in metadata, try to get from first record
+        if not chapter_name and stage_a_without_imp:
+            chapter_name = stage_a_without_imp[0].get("chapter", "")
+        
+        # If still not found, try to extract from Stage A filename (a{book}{chapter}+{chapter_name}.json)
+        if not chapter_name:
+            import re
+            stage_a_basename = os.path.basename(stage_a_path)
+            stage_a_name_without_ext = os.path.splitext(stage_a_basename)[0]
+            # Try to extract chapter name from filename pattern: a{book}{chapter}+{chapter_name}
+            match = re.match(r'^a\d{6}\+(.+)$', stage_a_name_without_ext)
+            if match:
+                chapter_name = match.group(1)
+        
+        # Clean chapter name for filename (remove invalid characters)
+        if chapter_name:
+            import re
+            # Replace spaces and invalid filename characters with underscore
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', '_', chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(' ', '_')
+            # Remove multiple underscores
+            chapter_name_clean = re.sub(r'_+', '_', chapter_name_clean)
+            # Remove leading/trailing underscores
+            chapter_name_clean = chapter_name_clean.strip('_')
+        else:
+            chapter_name_clean = ""
+        
+        if chapter_name_clean:
+            _progress(f"Detected Chapter Name: {chapter_name}")
+        else:
+            _progress("No chapter name found, will use timestamp in filename")
+        
+        # Generate output filename: z{book}{chapter}+{chapter_name}.rtf (matching Stage X/Y pattern)
+        # If chapter name is empty, use timestamp to avoid overwriting
+        if chapter_name_clean:
+            base_filename = f"z{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.rtf"
+        else:
+            # Fallback if no chapter name: use timestamp to avoid overwriting
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"z{book_id:03d}{chapter_id:03d}+{timestamp}.rtf"
+            self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
+        
+        output_path = os.path.join(output_dir, base_filename)
+        
+        # Check if file already exists and add counter if needed
+        if os.path.exists(output_path) and chapter_name_clean:
+            # If file exists and we have chapter name, add counter
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"z{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.rtf"
+                output_path = os.path.join(output_dir, base_filename)
+                counter += 1
+            if counter > 1:
+                self.logger.info(f"File already exists, using counter: {counter - 1}")
         
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(richtext_content)
-            _progress(f"Stage Z completed: {output_filename}")
+            _progress(f"Stage Z completed: {base_filename}")
             return output_path
         except Exception as e:
             self.logger.error(f"Failed to save RichText file: {e}")

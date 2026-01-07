@@ -91,6 +91,11 @@ class MultiPartProcessor:
         except Exception as e:
             self.logger.warning(f"Failed to get PDF page count: {e}")
 
+        # Set stage if using UnifiedAPIClient (for API routing)
+        # This is for Document Processing, which uses DeepSeek API
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("document_processing")
+        
         # Initialize model
         if not self.api_client.initialize_text_client(model_name):
             self.logger.error("Failed to initialize text client")
@@ -466,13 +471,19 @@ class MultiPartProcessor:
         
         total_pages = pdf_proc.count_pages(pdf_path)
         
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("ocr_extraction")
+        
         # Initialize model
         if not self.api_client.initialize_text_client(model_name):
             self.logger.error("Failed to initialize text client")
             return None
         
         # Initialize output JSON file immediately (incremental writing)
-        output_filename = "OCR Extraction.json"
+        # Generate unique filename with PDF name: OCR Extraction_{pdf_name}.json
+        pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+        output_filename = self._generate_unique_ocr_filename(pdf_basename)
         final_json_path = self.output_dir / output_filename
         
         # Create initial structure with empty subchapters
@@ -531,7 +542,7 @@ class MultiPartProcessor:
             # Replace {TOPIC_NAME} with list of Topics for this Subchapter
             # Format: "Topic1, Topic2, Topic3, ..." or empty string if no topics
             if topics:
-            topics_str = ", ".join(topics)
+                topics_str = ", ".join(topics)
             else:
                 topics_str = ""  # Empty string if no topics
             subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME}", topics_str)
@@ -575,12 +586,12 @@ class MultiPartProcessor:
                 # Extract JSON from response immediately
                 try:
                     subchapter_json = self.base_processor.extract_json_from_response(response_text)
-                if not subchapter_json:
+                    if not subchapter_json:
                         subchapter_json = self.base_processor.load_txt_as_json_from_text(response_text)
-                if not subchapter_json:
+                    if not subchapter_json:
                         subchapter_json = self._extract_json_from_persian_text(response_text)
-                
-                if not subchapter_json:
+                    
+                    if not subchapter_json:
                         self.logger.warning(f"Failed to extract JSON from response for subchapter '{subchapter_name}'")
                         # Store raw response as fallback
                         subchapter_json = {
@@ -590,7 +601,7 @@ class MultiPartProcessor:
                         }
                     
                     # Extract subchapter from JSON
-                extracted_subchapter = self._get_subchapter_from_json(subchapter_json, subchapter_name)
+                    extracted_subchapter = self._get_subchapter_from_json(subchapter_json, subchapter_name)
                     if not extracted_subchapter:
                         # If subchapter not found, use JSON as-is
                         if isinstance(subchapter_json, dict):
@@ -604,6 +615,31 @@ class MultiPartProcessor:
                     
                     # Add to list for tracking
                     all_subchapters.append(extracted_subchapter)
+                    
+                    # Extract chapter name from model response (priority: model response > topic file metadata)
+                    if isinstance(extracted_subchapter, dict):
+                        # Try to extract chapter from subchapter structure
+                        chapter_from_response = (
+                            extracted_subchapter.get("chapter", "") or
+                            extracted_subchapter.get("Chapter", "") or
+                            ""
+                        )
+                        
+                        # If not found in subchapter, try to extract from chapters structure in JSON
+                        if not chapter_from_response and isinstance(subchapter_json, dict):
+                            if "chapters" in subchapter_json:
+                                chapters_list = subchapter_json.get("chapters", [])
+                                if chapters_list and len(chapters_list) > 0:
+                                    chapter_from_response = (
+                                        chapters_list[0].get("chapter", "") or
+                                        chapters_list[0].get("Chapter", "") or
+                                        ""
+                                    )
+                        
+                        # If chapter found in response, update it
+                        if chapter_from_response and chapter_from_response.strip():
+                            chapter_name = chapter_from_response.strip()
+                            self.logger.info(f"Extracted chapter name from model response: {chapter_name}")
                     
                     # Immediately add to JSON file (incremental write)
                     try:
@@ -621,67 +657,92 @@ class MultiPartProcessor:
                                 if isinstance(extracted_subchapter["topics"], list):
                                     current_data["metadata"]["total_topics"] += len(extracted_subchapter["topics"])
                             
+                            # Update chapter name if extracted from model response
+                            if chapter_name and chapter_name.strip():
+                                current_data["metadata"]["chapter"] = chapter_name
+                                current_data["chapters"][0]["chapter"] = chapter_name
+                            
                             # Write back immediately
                             with open(final_json_path, "w", encoding="utf-8") as f:
                                 json.dump(current_data, f, ensure_ascii=False, indent=2)
                             
                             self.logger.info(f"✓ Added subchapter '{subchapter_name}' to JSON file immediately")
-                else:
+                        else:
                             self.logger.warning(f"Unexpected JSON structure in output file")
                     except Exception as e:
                         self.logger.error(f"Failed to write subchapter '{subchapter_name}' to file: {e}", exc_info=True)
                         # Continue processing other subchapters
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing subchapter '{subchapter_name}': {str(e)}")
+                    # Create fallback subchapter
+                    extracted_subchapter = {
+                        "subchapter": subchapter_name,
+                        "raw_response": response_text,
+                        "extraction_failed": True,
+                        "error": str(e)
+                    }
+                    all_subchapters.append(extracted_subchapter)
                     
-            except Exception as e:
-                    self.logger.error(f"Error extracting JSON from response for subchapter '{subchapter_name}': {e}", exc_info=True)
-                    # Store raw response as fallback
+                    # Immediately add to JSON file (incremental write) - for error case too
                     try:
+                        # Read current file
                         with open(final_json_path, "r", encoding="utf-8") as f:
                             current_data = json.load(f)
                         
-                        fallback_subchapter = {
-                            "subchapter": subchapter_name,
-                            "raw_response": response_text[:1000],  # First 1000 chars
-                            "extraction_error": str(e)
-                        }
-                        
+                        # Add new subchapter
                         if "chapters" in current_data and len(current_data["chapters"]) > 0:
-                            current_data["chapters"][0]["subchapters"].append(fallback_subchapter)
+                            current_data["chapters"][0]["subchapters"].append(extracted_subchapter)
+                            
+                            # Update metadata
                             current_data["metadata"]["total_subchapters"] = len(current_data["chapters"][0]["subchapters"])
                             
+                            # Write back immediately
                             with open(final_json_path, "w", encoding="utf-8") as f:
                                 json.dump(current_data, f, ensure_ascii=False, indent=2)
                             
-                            self.logger.warning(f"Added fallback entry for subchapter '{subchapter_name}'")
+                            self.logger.info(f"✓ Added subchapter '{subchapter_name}' (with error) to JSON file immediately")
+                        else:
+                            self.logger.warning(f"Unexpected JSON structure in output file")
                     except Exception as e2:
-                        self.logger.error(f"Failed to add fallback entry: {e2}")
+                        self.logger.error(f"Failed to write subchapter '{subchapter_name}' to file: {e2}", exc_info=True)
+                        # Continue processing other subchapters
                     
             except Exception as e:
                 self.logger.error(f"Error processing subchapter {subchapter_name}: {e}", exc_info=True)
                 continue
         
-        # Final update: Try to extract chapter name from first subchapter if not found
-        if not chapter_name and all_subchapters:
+        # Final update: Try to extract chapter name from subchapters if not found yet
+        # This is a fallback - priority is model response, then topic file metadata
+        if not chapter_name or not chapter_name.strip():
             try:
-                first_subchapter = all_subchapters[0]
-                if isinstance(first_subchapter, dict):
-                    # Check for chapter in subchapter structure
-                    if "chapter" in first_subchapter:
-                        extracted_chapter = first_subchapter.get("chapter", "")
-                                    if extracted_chapter:
-                                        chapter_name = extracted_chapter
-                            # Update file with chapter name
-                            try:
-                                with open(final_json_path, "r", encoding="utf-8") as f:
-                                    current_data = json.load(f)
-                                current_data["metadata"]["chapter"] = chapter_name
-                                if "chapters" in current_data and len(current_data["chapters"]) > 0:
-                                    current_data["chapters"][0]["chapter"] = chapter_name
-                                with open(final_json_path, "w", encoding="utf-8") as f:
-                                    json.dump(current_data, f, ensure_ascii=False, indent=2)
-                                self.logger.info(f"Updated chapter name in file: {chapter_name}")
-                except Exception as e:
-                                self.logger.warning(f"Could not update chapter name in file: {e}")
+                # Try to extract from all subchapters
+                for subchapter in all_subchapters:
+                    if isinstance(subchapter, dict):
+                        # Check for chapter in subchapter structure
+                        extracted_chapter = (
+                            subchapter.get("chapter", "") or
+                            subchapter.get("Chapter", "") or
+                            ""
+                        )
+                        if extracted_chapter and extracted_chapter.strip():
+                            chapter_name = extracted_chapter.strip()
+                            self.logger.info(f"Extracted chapter name from subchapter (fallback): {chapter_name}")
+                            break
+                
+                # Update file with chapter name if found
+                if chapter_name and chapter_name.strip():
+                    try:
+                        with open(final_json_path, "r", encoding="utf-8") as f:
+                            current_data = json.load(f)
+                        current_data["metadata"]["chapter"] = chapter_name
+                        if "chapters" in current_data and len(current_data["chapters"]) > 0:
+                            current_data["chapters"][0]["chapter"] = chapter_name
+                        with open(final_json_path, "w", encoding="utf-8") as f:
+                            json.dump(current_data, f, ensure_ascii=False, indent=2)
+                        self.logger.info(f"Updated chapter name in file (fallback): {chapter_name}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not update chapter name in file: {e}")
             except Exception as e:
                 self.logger.debug(f"Could not extract chapter name: {e}")
         
@@ -689,15 +750,15 @@ class MultiPartProcessor:
         try:
             with open(final_json_path, "r", encoding="utf-8") as f:
                 current_data = json.load(f)
-        
+            
             # Recalculate total_topics from all subchapters
-        total_topics = 0
+            total_topics = 0
             if "chapters" in current_data and len(current_data["chapters"]) > 0:
                 for sub in current_data["chapters"][0].get("subchapters", []):
-            if isinstance(sub, dict) and "topics" in sub:
-                if isinstance(sub["topics"], list):
-                    total_topics += len(sub["topics"])
-        
+                    if isinstance(sub, dict) and "topics" in sub:
+                        if isinstance(sub["topics"], list):
+                            total_topics += len(sub["topics"])
+            
             current_data["metadata"]["total_topics"] = total_topics
             current_data["metadata"]["total_subchapters"] = len(all_subchapters)
             current_data["metadata"]["processed_at"] = datetime.now().isoformat()
@@ -886,6 +947,28 @@ class MultiPartProcessor:
         
         # If it's a list, return None (we expect dict structure)
         return None
+    
+    def _generate_unique_ocr_filename(self, pdf_name: str) -> str:
+        """
+        Generate unique OCR extraction filename with PDF name: OCR Extraction_{pdf_name}.json
+        Example: OCR Extraction_Bolognia 5th Edition 2024-Chapter30.json
+        
+        Args:
+            pdf_name: PDF filename without extension (sanitized)
+            
+        Returns:
+            Filename with PDF name appended
+        """
+        import re
+        # Sanitize PDF name: remove/replace invalid filename characters
+        sanitized_pdf_name = re.sub(r'[<>:"/\\|?*]', '_', pdf_name)
+        sanitized_pdf_name = sanitized_pdf_name.strip()
+        # Limit length to avoid very long filenames
+        if len(sanitized_pdf_name) > 100:
+            sanitized_pdf_name = sanitized_pdf_name[:100]
+        
+        filename = f"OCR Extraction_{sanitized_pdf_name}.json"
+        return filename
 
 
 

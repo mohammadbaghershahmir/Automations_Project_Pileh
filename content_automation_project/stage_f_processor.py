@@ -150,6 +150,10 @@ class StageFProcessor(BaseStageProcessor):
                 progress_callback(msg)
             self.logger.info(msg)
         
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_f")
+        
         _progress("Starting Stage F processing...")
         
         # Load Stage E JSON
@@ -348,8 +352,12 @@ class StageFProcessor(BaseStageProcessor):
         if not output_dir:
             output_dir = os.path.dirname(stage_e_path) or os.getcwd()
         
-        # Generate output filename
-        output_filename = "f.json"
+        # Generate unique output filename based on Stage E filename
+        stage_e_basename = os.path.basename(stage_e_path)
+        stage_e_name_without_ext = os.path.splitext(stage_e_basename)[0]
+        # Create unique filename: f_{stage_e_name}.json
+        # Example: e105001.json -> f_e105001.json
+        output_filename = f"f_{stage_e_name_without_ext}.json"
         output_path = os.path.join(output_dir, output_filename)
         
         # Prepare metadata

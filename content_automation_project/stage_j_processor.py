@@ -52,6 +52,10 @@ class StageJProcessor(BaseStageProcessor):
                 progress_callback(msg)
             self.logger.info(msg)
         
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_j")
+        
         _progress("Starting Stage J processing...")
         
         # Load Stage E JSON

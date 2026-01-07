@@ -43,12 +43,17 @@ class StageEProcessor(BaseStageProcessor):
             progress_callback: Optional callback for progress updates
             
         Returns:
-            Path to output file (e{book}{chapter}.json) or None on error
+            Path to output file (e{book}{chapter}_{base_name}.json) or None on error
+            Example: e105003_Lesson_file_1_1.json
         """
         def _progress(msg: str):
             if progress_callback:
                 progress_callback(msg)
             self.logger.info(msg)
+        
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_e")
         
         _progress("Starting Stage E processing...")
         
@@ -121,8 +126,9 @@ class StageEProcessor(BaseStageProcessor):
         base_dir = os.path.dirname(stage4_path) or os.getcwd()
         base_name, _ = os.path.splitext(os.path.basename(stage4_path))
         
-        # Generate output filename
-        output_filename = self.generate_filename("e", book_id, chapter_id)
+        # Generate output filename with base_name to ensure uniqueness per chapter
+        # Format: e{book}{chapter}_{base_name}.json (e.g., e105003_Lesson_file_1_1.json)
+        output_filename = f"e{book_id:03d}{chapter_id:03d}_{base_name}.json"
         output_path = os.path.join(base_dir, output_filename)
         
         # Initialize output JSON file immediately (incremental writing)

@@ -37,7 +37,8 @@ class StageXProcessor(BaseStageProcessor):
         changes_model: str,
         
         output_dir: Optional[str] = None,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[Callable[[str], None]] = None,
+        pdf_extracted_path: Optional[str] = None  # Optional: use pre-extracted PDF JSON
     ) -> Optional[str]:
         """
         Process Stage X: Detect changes between old book and current data.
@@ -56,12 +57,16 @@ class StageXProcessor(BaseStageProcessor):
             progress_callback: Optional callback for progress updates
             
         Returns:
-            Path to output file (x{book}{chapter}.json) or None on error
+            Path to output file (x{book}{chapter}+{chapter_name}.json) or None on error
         """
         def _progress(msg: str):
             if progress_callback:
                 progress_callback(msg)
             self.logger.info(msg)
+        
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_x")
         
         _progress("Starting Stage X processing...")
         
@@ -81,22 +86,26 @@ class StageXProcessor(BaseStageProcessor):
         chapter_id = metadata.get("chapter_id", 3)
         
         # ========== PART 1: Extract PDF ==========
-        _progress("Part 1: Extracting text from old book PDF...")
-        
-        # Process PDF in batches, save each batch as TXT, then convert to JSON
-        pdf_extracted_path = self._extract_pdf_with_txt_saving(
-            pdf_path=old_book_pdf_path,
-            prompt=pdf_extraction_prompt,
-            model_name=pdf_extraction_model,
-            output_dir=output_dir,
-            progress_callback=progress_callback
-        )
-        
-        if not pdf_extracted_path or not os.path.exists(pdf_extracted_path):
-            self.logger.error("Part 1: PDF extraction failed")
-            return None
-        
-        _progress(f"Part 1 completed: {os.path.basename(pdf_extracted_path)}")
+        # Use pre-extracted path if provided, otherwise extract
+        if pdf_extracted_path and os.path.exists(pdf_extracted_path):
+            _progress(f"Part 1: Using pre-extracted PDF: {os.path.basename(pdf_extracted_path)}")
+        else:
+            _progress("Part 1: Extracting text from old book PDF...")
+            
+            # Process PDF in batches, save each batch as TXT, then convert to JSON
+            pdf_extracted_path = self._extract_pdf_with_txt_saving(
+                pdf_path=old_book_pdf_path,
+                prompt=pdf_extraction_prompt,
+                model_name=pdf_extraction_model,
+                output_dir=output_dir,
+                progress_callback=progress_callback
+            )
+            
+            if not pdf_extracted_path or not os.path.exists(pdf_extracted_path):
+                self.logger.error("Part 1: PDF extraction failed")
+                return None
+            
+            _progress(f"Part 1 completed: {os.path.basename(pdf_extracted_path)}")
         
         # ========== PART 2: Detect Changes ==========
         _progress("Part 2: Detecting changes...")
@@ -271,9 +280,72 @@ class StageXProcessor(BaseStageProcessor):
         
         _progress(f"Total validated changes: {len(validated_changes)}")
         
-        # Save output (fix save_json_file call)
-        output_filename = self.generate_filename("x", book_id, chapter_id, output_dir)
-        output_path = os.path.join(output_dir, output_filename)
+        # Extract chapter name from Stage A metadata or filename
+        chapter_name = ""
+        stage_a_metadata = self.get_metadata_from_json(stage_a_data)
+        chapter_name = (
+            stage_a_metadata.get("chapter", "") or
+            stage_a_metadata.get("Chapter", "") or
+            stage_a_metadata.get("chapter_name", "") or
+            stage_a_metadata.get("Chapter_Name", "") or
+            ""
+        )
+        
+        # If not found in metadata, try to get from first record
+        if not chapter_name and stage_a_records:
+            chapter_name = stage_a_records[0].get("chapter", "")
+        
+        # If still not found, try to extract from Stage A filename (a{book}{chapter}+{chapter_name}.json)
+        if not chapter_name:
+            import re
+            stage_a_basename = os.path.basename(stage_a_path)
+            stage_a_name_without_ext = os.path.splitext(stage_a_basename)[0]
+            # Try to extract chapter name from filename pattern: a{book}{chapter}+{chapter_name}
+            match = re.match(r'^a\d{6}\+(.+)$', stage_a_name_without_ext)
+            if match:
+                chapter_name = match.group(1)
+        
+        # Clean chapter name for filename (remove invalid characters)
+        if chapter_name:
+            import re
+            # Replace spaces and invalid filename characters with underscore
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', '_', chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(' ', '_')
+            # Remove multiple underscores
+            chapter_name_clean = re.sub(r'_+', '_', chapter_name_clean)
+            # Remove leading/trailing underscores
+            chapter_name_clean = chapter_name_clean.strip('_')
+        else:
+            chapter_name_clean = ""
+        
+        if chapter_name_clean:
+            _progress(f"Detected Chapter Name: {chapter_name}")
+        else:
+            _progress("No chapter name found, will use timestamp in filename")
+        
+        # Generate output filename: x{book}{chapter}+{chapter_name}.json (matching Stage H/V/L pattern)
+        # If chapter name is empty, use timestamp to avoid overwriting
+        if chapter_name_clean:
+            base_filename = f"x{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
+        else:
+            # Fallback if no chapter name: use timestamp to avoid overwriting
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"x{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+            self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
+        
+        output_path = os.path.join(output_dir, base_filename)
+        
+        # Check if file already exists and add counter if needed
+        if os.path.exists(output_path) and chapter_name_clean:
+            # If file exists and we have chapter name, add counter
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"x{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.json"
+                output_path = os.path.join(output_dir, base_filename)
+                counter += 1
+            if counter > 1:
+                self.logger.info(f"File already exists, using counter: {counter - 1}")
         
         output_metadata = {
             "book_id": book_id,

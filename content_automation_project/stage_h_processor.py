@@ -47,6 +47,10 @@ class StageHProcessor(BaseStageProcessor):
                 progress_callback(msg)
             self.logger.info(msg)
         
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_h")
+        
         _progress("Starting Stage H processing...")
         
         # Load Stage J JSON (without Imp column)
@@ -94,6 +98,39 @@ class StageHProcessor(BaseStageProcessor):
             return None
         
         _progress(f"Detected Book ID: {book_id}, Chapter ID: {chapter_id}")
+        
+        # Extract chapter name from Stage J metadata
+        chapter_name = ""
+        stage_j_metadata = self.get_metadata_from_json(stage_j_data)
+        chapter_name = (
+            stage_j_metadata.get("chapter", "") or
+            stage_j_metadata.get("Chapter", "") or
+            stage_j_metadata.get("chapter_name", "") or
+            stage_j_metadata.get("Chapter_Name", "") or
+            ""
+        )
+        
+        # If not found in metadata, try to get from first record
+        if not chapter_name and stage_j_records:
+            chapter_name = stage_j_records[0].get("chapter", "")
+        
+        # Clean chapter name for filename (remove invalid characters)
+        if chapter_name:
+            import re
+            # Replace spaces and invalid filename characters with underscore
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', '_', chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(' ', '_')
+            # Remove multiple underscores
+            chapter_name_clean = re.sub(r'_+', '_', chapter_name_clean)
+            # Remove leading/trailing underscores
+            chapter_name_clean = chapter_name_clean.strip('_')
+        else:
+            chapter_name_clean = ""
+        
+        if chapter_name_clean:
+            _progress(f"Detected Chapter Name: {chapter_name}")
+        else:
+            _progress("No chapter name found, using empty string")
         
         # Load Stage F JSON
         _progress("Loading Stage F JSON...")
@@ -301,7 +338,7 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
         
         for record in stage_j_records:
             point_id = str(record.get("PointId", ""))
-            flashcard_data = pointid_to_flashcard_global.get(point_id, {})
+            flashcard_data = pointid_to_flashcard.get(point_id, {})
             
             flashcard_record = {
                 "PointId": point_id,
@@ -326,9 +363,9 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
             if flashcard_data.get("Qtext") or flashcard_data.get("Correct"):
                 matched_count += 1
             
-            all_flashcard_records.append(flashcard_record)
+            flashcard_records.append(flashcard_record)
         
-        _progress(f"Generated {len(all_flashcard_records)} flashcard records")
+        _progress(f"Generated {len(flashcard_records)} flashcard records")
         _progress(f"Matched {matched_count} records with flashcard data from model")
         if matched_count == 0:
             self.logger.warning("No records matched! Check PointId format in model output vs Stage J")
@@ -337,8 +374,29 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
         if not output_dir:
             output_dir = os.path.dirname(stage_j_path) or os.getcwd()
         
-        # Generate output filename: ac{book}{chapter}.json
-        output_path = self.generate_filename("ac", book_id, chapter_id, output_dir)
+        # Generate output filename: ac{book}{chapter}+namechapter.json
+        # If chapter name is empty, use timestamp to avoid overwriting
+        if chapter_name_clean:
+            base_filename = f"ac{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
+        else:
+            # Fallback if no chapter name: use timestamp to avoid overwriting
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"ac{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+            self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
+        
+        output_path = os.path.join(output_dir, base_filename)
+        
+        # Check if file already exists and add counter if needed
+        if os.path.exists(output_path) and chapter_name_clean:
+            # If file exists and we have chapter name, add counter
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"ac{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.json"
+                output_path = os.path.join(output_dir, base_filename)
+                counter += 1
+            if counter > 1:
+                self.logger.info(f"File already exists, using counter: {counter - 1}")
         
         # Prepare metadata
         output_metadata = {
@@ -348,16 +406,16 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
             "source_stage_f": os.path.basename(stage_f_path),
             "model_used": model_name,
             "stage_h_txt_file": os.path.basename(txt_path),
-            "total_records": len(all_flashcard_records),
+            "total_records": len(flashcard_records),
             "records_with_flashcards": matched_count,
             "num_parts": num_parts,
-            "part_size": part_size,
+            "part_size": PART_SIZE,
             "division_method": "dynamic_by_part_size"
         }
         
         # Save JSON
         _progress(f"Saving Stage H output to: {output_path}")
-        success = self.save_json_file(all_flashcard_records, output_path, output_metadata, "H")
+        success = self.save_json_file(flashcard_records, output_path, output_metadata, "H")
         
         if success:
             _progress(f"Stage H completed successfully: {output_path}")

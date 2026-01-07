@@ -31,7 +31,8 @@ class StageYProcessor(BaseStageProcessor):
         deletion_detection_prompt: str,  # Prompt for deletion detection
         deletion_detection_model: str,  # Model for deletion detection
         output_dir: Optional[str] = None,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[Callable[[str], None]] = None,
+        step1_output_path: Optional[str] = None  # Optional: use pre-extracted Step 1 output
     ) -> Optional[str]:
         """
         Process Stage Y: Detect deleted content.
@@ -50,12 +51,16 @@ class StageYProcessor(BaseStageProcessor):
             progress_callback: Optional callback for progress updates
             
         Returns:
-            Path to output file (y{book}{chapter}.json) or None on error
+            Path to output file (y{book}{chapter}+{chapter_name}.json) or None on error
         """
         def _progress(msg: str):
             if progress_callback:
                 progress_callback(msg)
             self.logger.info(msg)
+        
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_y")
         
         _progress("Starting Stage Y processing...")
         
@@ -75,25 +80,30 @@ class StageYProcessor(BaseStageProcessor):
         chapter_id = metadata.get("chapter_id", 3)
         
         # ========== STEP 1: Extract PDF from Old Reference (2 parts) ==========
-        _progress("=" * 60)
-        _progress("STEP 1: Extracting PDF from old reference (2 parts)...")
-        _progress("=" * 60)
-        
-        step1_output = self._step1_extract_pdf(
-            pdf_path=old_book_pdf_path,
-            prompt=ocr_extraction_prompt,
-            model_name=ocr_extraction_model,
-            output_dir=output_dir,
-            book_id=book_id,
-            chapter_id=chapter_id,
-            progress_callback=progress_callback
-        )
-        
-        if not step1_output:
-            self.logger.error("Step 1 failed")
-            return None
-        
-        _progress(f"Step 1 completed. Output saved to: {step1_output}")
+        # Use pre-extracted Step 1 output if provided, otherwise extract
+        if step1_output_path and os.path.exists(step1_output_path):
+            _progress(f"STEP 1: Using pre-extracted PDF: {os.path.basename(step1_output_path)}")
+            step1_output = step1_output_path
+        else:
+            _progress("=" * 60)
+            _progress("STEP 1: Extracting PDF from old reference (2 parts)...")
+            _progress("=" * 60)
+            
+            step1_output = self._step1_extract_pdf(
+                pdf_path=old_book_pdf_path,
+                prompt=ocr_extraction_prompt,
+                model_name=ocr_extraction_model,
+                output_dir=output_dir,
+                book_id=book_id,
+                chapter_id=chapter_id,
+                progress_callback=progress_callback
+            )
+            
+            if not step1_output:
+                self.logger.error("Step 1 failed")
+                return None
+            
+            _progress(f"Step 1 completed. Output saved to: {step1_output}")
         
         # ========== STEP 2: Detect Deletions ==========
         _progress("=" * 60)
@@ -427,9 +437,73 @@ class StageYProcessor(BaseStageProcessor):
         
         _progress(f"Total validated deletions: {len(validated_deletions)}")
         
-        # Save output
-        output_filename = self.generate_filename("y", book_id, chapter_id, output_dir)
-        output_path = os.path.join(output_dir, output_filename)
+        # Extract chapter name from OCR Extraction JSON metadata or filename
+        chapter_name = ""
+        ocr_extraction_metadata = self.get_metadata_from_json(ocr_extraction_data)
+        chapter_name = (
+            ocr_extraction_metadata.get("chapter", "") or
+            ocr_extraction_metadata.get("Chapter", "") or
+            ocr_extraction_metadata.get("chapter_name", "") or
+            ocr_extraction_metadata.get("Chapter_Name", "") or
+            ""
+        )
+        
+        # If not found in metadata, try to get from first record
+        if not chapter_name and ocr_extraction_records:
+            chapter_name = ocr_extraction_records[0].get("chapter", "")
+        
+        # If still not found, try to extract from OCR Extraction filename
+        if not chapter_name:
+            import re
+            ocr_basename = os.path.basename(ocr_extraction_json_path)
+            ocr_name_without_ext = os.path.splitext(ocr_basename)[0]
+            # Try to extract chapter name from filename (various patterns)
+            # Pattern: {prefix}{book}{chapter}+{chapter_name} or {prefix}{book}{chapter}
+            match = re.match(r'^[a-z]?\d{6}\+(.+)$', ocr_name_without_ext)
+            if match:
+                chapter_name = match.group(1)
+        
+        # Clean chapter name for filename (remove invalid characters)
+        if chapter_name:
+            import re
+            # Replace spaces and invalid filename characters with underscore
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', '_', chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(' ', '_')
+            # Remove multiple underscores
+            chapter_name_clean = re.sub(r'_+', '_', chapter_name_clean)
+            # Remove leading/trailing underscores
+            chapter_name_clean = chapter_name_clean.strip('_')
+        else:
+            chapter_name_clean = ""
+        
+        if chapter_name_clean:
+            _progress(f"Detected Chapter Name: {chapter_name}")
+        else:
+            _progress("No chapter name found, will use timestamp in filename")
+        
+        # Generate output filename: y{book}{chapter}+{chapter_name}.json (matching Stage X pattern)
+        # If chapter name is empty, use timestamp to avoid overwriting
+        if chapter_name_clean:
+            base_filename = f"y{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
+        else:
+            # Fallback if no chapter name: use timestamp to avoid overwriting
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"y{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+            self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
+        
+        output_path = os.path.join(output_dir, base_filename)
+        
+        # Check if file already exists and add counter if needed
+        if os.path.exists(output_path) and chapter_name_clean:
+            # If file exists and we have chapter name, add counter
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"y{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.json"
+                output_path = os.path.join(output_dir, base_filename)
+                counter += 1
+            if counter > 1:
+                self.logger.info(f"File already exists, using counter: {counter - 1}")
         
         output_metadata = {
             "book_id": book_id,

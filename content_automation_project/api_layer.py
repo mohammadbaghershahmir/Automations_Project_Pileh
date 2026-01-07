@@ -50,6 +50,19 @@ class APIConfig:
         "gemini-1.5-flash"
     ]
     
+    # Available DeepSeek text processing models
+    DEEPSEEK_TEXT_MODELS = [
+    "deepseek-chat",           # مدل پایه
+    "deepseek-chat-v3",         # اگر موجود باشد
+    "deepseek-chat-v2.5",       # اگر موجود باشد
+    "deepseek-coder",           # برای کدنویسی
+    "deepseek-reasoner",        # برای استدلال
+    "deepseek-reasoner-v2", 
+    ]
+    
+    # All available text models (combined)
+    ALL_TEXT_MODELS = TEXT_MODELS + DEEPSEEK_TEXT_MODELS
+    
     # Available Gemini TTS voices
     TTS_VOICES = [
         "Kore", "Orus", "Autonoe", "Umbriel", "Erinome", "Laomedeia",
@@ -71,6 +84,7 @@ class APIConfig:
     # gemini-1.5-pro: up to 8192 tokens
     # gemini-1.5-flash: up to 8192 tokens
     DEFAULT_MAX_TOKENS = 16384  # Maximum for gemini-2.5 models
+    DEFAULT_DEEPSEEK_MAX_TOKENS = 8192  # Maximum for DeepSeek API (hard limit)
 
 
 class APIKeyManager:

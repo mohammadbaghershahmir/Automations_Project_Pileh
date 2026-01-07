@@ -78,11 +78,11 @@ class PreOCRTopicProcessor(BaseStageProcessor):
         
         _progress(f"Using Book ID: {book_id}, Chapter ID: {chapter_id}")
         
-        # Extract text from PDF
-        _progress("Extracting text from PDF...")
+        # Extract text from PDF with complete metadata (formatting, structure, etc.)
+        _progress("Extracting text from PDF with complete metadata...")
         from pdf_processor import PDFProcessor
         pdf_proc = PDFProcessor()
-        extracted_text = pdf_proc.extract_text(pdf_path)
+        extracted_text = pdf_proc.extract_text_with_formatting(pdf_path)
         
         if not extracted_text:
             self.logger.error("Failed to extract text from PDF")
@@ -90,35 +90,14 @@ class PreOCRTopicProcessor(BaseStageProcessor):
             return None
         
         char_count = len(extracted_text)
-        _progress(f"Extracted {char_count:,} characters from PDF")
-        
-        # Save extracted text to TXT file
-        base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-        txt_filename = f"{base_name}_extracted_text.txt"
-        txt_path = os.path.join(output_dir, txt_filename)
-        
-        try:
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write(extracted_text)
-            _progress(f"Saved extracted text to: {os.path.basename(txt_filename)}")
-            self.logger.info(f"Extracted text saved to: {txt_path}")
-        except Exception as e:
-            self.logger.warning(f"Failed to save extracted text: {e}")
-            txt_path = None
+        _progress(f"Extracted {char_count:,} characters from PDF with complete metadata")
         
         # Process PDF text to extract topics using LLM
         _progress("Processing PDF text to extract topics with LLM...")
         
-        # Ensure text_client is using the correct model
-        if (not hasattr(self.api_client, '_current_model_name') or 
-            self.api_client._current_model_name != model_name):
-            if not self.api_client.initialize_text_client(model_name):
-                self.logger.error("Failed to initialize text client")
-                return None
-        elif not self.api_client.text_client:
-            if not self.api_client.initialize_text_client(model_name):
-                self.logger.error("Failed to initialize text client")
-                return None
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("pre_ocr_topic")
         
         # Prepare prompt with extracted text
         full_prompt = f"""{prompt}
@@ -128,70 +107,30 @@ Please analyze the PDF content and extract the topics structure. Return a JSON f
 --- PDF Content ---
 {extracted_text}"""
         
-        # Call model
-        max_retries = 3
-        response_text = None
-        for attempt in range(max_retries):
-            try:
-                # Ensure text_client is using the correct model before each call
-                if (not hasattr(self.api_client, '_current_model_name') or 
-                    self.api_client._current_model_name != model_name):
-                    import google.generativeai as genai
-                    key = self.api_client.key_manager.get_next_key()
-                    if not key:
-                        self.logger.error("No API key available")
-                        return None
-                    genai.configure(api_key=key)
-                    self.api_client.text_client = genai.GenerativeModel(model_name)
-                    self.api_client._current_model_name = model_name
-                    self.logger.info(f"Recreated text_client with model: {model_name}")
-                
-                # Determine maximum tokens based on model
-                import google.generativeai as genai
-                if '2.5' in model_name or '2.0' in model_name:
-                    model_max_tokens = 32768
-                elif '1.5' in model_name:
-                    model_max_tokens = 8192
-                else:
-                    model_max_tokens = 32768
-                
-                generation_config = genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=model_max_tokens,
-                )
-                
-                response = self.api_client.text_client.generate_content(
-                    full_prompt,
-                    generation_config=generation_config,
-                    stream=False
-                )
-                
-                response_text = response.text if hasattr(response, 'text') and response.text else None
-                if response_text:
-                    _progress(f"Received response ({len(response_text)} characters)")
-                    break
-            except Exception as e:
-                self.logger.warning(f"Attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    _progress(f"Retrying... (attempt {attempt + 2}/{max_retries})")
-                else:
-                    self.logger.error("All attempts failed")
+        # Use api_client.process_text which handles routing automatically
+        # Determine maximum tokens based on model
+        if '2.5' in model_name or '2.0' in model_name:
+            model_max_tokens = 32768
+        elif '1.5' in model_name:
+            model_max_tokens = 8192
+        else:
+            model_max_tokens = 32768
+        
+        # Call model using process_text (handles API routing automatically)
+        response_text = self.api_client.process_text(
+            text=full_prompt,
+            system_prompt=None,
+            model_name=model_name,
+            temperature=0.7,
+            max_tokens=model_max_tokens
+        )
         
         if not response_text:
             self.logger.error("No response from model")
             _progress("Error: No response from model")
             return None
         
-        # Save raw response to TXT file
-        response_txt_filename = f"{base_name}_pre_ocr_topic.txt"
-        response_txt_path = os.path.join(output_dir, response_txt_filename)
-        try:
-            with open(response_txt_path, 'w', encoding='utf-8') as f:
-                f.write("=== PRE-OCR TOPIC EXTRACTION RESPONSE ===\n\n")
-                f.write(response_text)
-            _progress(f"Saved raw response to: {os.path.basename(response_txt_filename)}")
-        except Exception as e:
-            self.logger.warning(f"Failed to save response TXT file: {e}")
+        _progress(f"Received response ({len(response_text)} characters)")
         
         # Extract JSON from response
         _progress("Extracting JSON from response...")
@@ -199,9 +138,6 @@ Please analyze the PDF content and extract the topics structure. Return a JSON f
         if not topics_data:
             _progress("Trying to extract JSON from text using fallback...")
             topics_data = self.load_txt_as_json_from_text(response_text)
-        if not topics_data:
-            _progress("Trying to load JSON from TXT file...")
-            topics_data = self.load_txt_as_json(response_txt_path)
         
         if not topics_data:
             self.logger.error("Failed to extract JSON from model response")
@@ -221,8 +157,9 @@ Please analyze the PDF content and extract the topics structure. Return a JSON f
         
         _progress(f"Extracted {len(topics_list)} topics")
         
-        # Save output JSON
-        output_filename = self.generate_filename("t", book_id, chapter_id, output_dir)
+        # Save output JSON with unique filename (includes PDF name to prevent overwriting)
+        pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+        output_filename = self.generate_unique_filename("t", book_id, chapter_id, pdf_basename, output_dir)
         output_path = os.path.join(output_dir, output_filename)
         
         output_metadata = {
@@ -233,8 +170,7 @@ Please analyze the PDF content and extract the topics structure. Return a JSON f
             "chapter_id": chapter_id,
             "model": model_name,
             "source_pdf": os.path.basename(pdf_path),
-            "total_topics": len(topics_list),
-            "txt_file": os.path.basename(response_txt_path)
+            "total_topics": len(topics_list)
         }
         
         # Output structure matching the JSON format
@@ -260,4 +196,32 @@ Please analyze the PDF content and extract the topics structure. Return a JSON f
         """Get current timestamp"""
         from datetime import datetime
         return datetime.now().isoformat()
-
+    
+    def generate_unique_filename(self, prefix: str, book: int, chapter: int, 
+                                 pdf_name: str, base_dir: Optional[str] = None) -> str:
+        """
+        Generate unique filename with PDF name: prefix + book + chapter + pdf_name
+        Example: t105003_Bolognia 5th Edition 2024 (1)-29-6-22.json
+        
+        Args:
+            prefix: File prefix (e.g., "t")
+            book: Book ID (3 digits)
+            chapter: Chapter ID (3 digits)
+            pdf_name: PDF filename without extension (sanitized)
+            base_dir: Optional base directory
+            
+        Returns:
+            Full file path with PDF name appended
+        """
+        import re
+        # Sanitize PDF name: remove/replace invalid filename characters
+        sanitized_pdf_name = re.sub(r'[<>:"/\\|?*]', '_', pdf_name)
+        sanitized_pdf_name = sanitized_pdf_name.strip()
+        # Limit length to avoid very long filenames
+        if len(sanitized_pdf_name) > 100:
+            sanitized_pdf_name = sanitized_pdf_name[:100]
+        
+        filename = f"{prefix}{book:03d}{chapter:03d}_{sanitized_pdf_name}.json"
+        if base_dir:
+            return os.path.join(base_dir, filename)
+        return filename

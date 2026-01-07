@@ -56,6 +56,10 @@ class StageVProcessor(BaseStageProcessor):
                 progress_callback(msg)
             self.logger.info(msg)
         
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_v")
+        
         _progress("Starting Stage V processing...")
         
         # Extract book and chapter from Stage J file
@@ -344,8 +348,62 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.error("Failed to combine Step 2 outputs")
             return None
         
-        # Save final output (b{book}{chapter}.json)
-        output_path = self.generate_filename("b", book_id, chapter_id, output_dir or os.path.dirname(stage_j_path) or os.getcwd())
+        # Extract chapter name from OCR Extraction JSON
+        chapter_name = ""
+        if ocr_data:
+            ocr_metadata = ocr_data.get("metadata", {})
+            chapter_name = (
+                ocr_metadata.get("chapter", "") or
+                ocr_metadata.get("Chapter", "") or
+                ocr_metadata.get("chapter_name", "") or
+                ocr_metadata.get("Chapter_Name", "") or
+                ""
+            )
+            # If not found in metadata, try to get from chapters structure
+            if not chapter_name and chapters:
+                chapter_name = chapters[0].get("chapter", "")
+        
+        # Clean chapter name for filename (remove invalid characters)
+        if chapter_name:
+            import re
+            # Replace spaces and invalid filename characters with underscore
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', '_', chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(' ', '_')
+            # Remove multiple underscores
+            chapter_name_clean = re.sub(r'_+', '_', chapter_name_clean)
+            # Remove leading/trailing underscores
+            chapter_name_clean = chapter_name_clean.strip('_')
+        else:
+            chapter_name_clean = ""
+        
+        if chapter_name_clean:
+            _progress(f"Detected Chapter Name: {chapter_name}")
+        else:
+            _progress("No chapter name found, using empty string")
+        
+        # Save final output (b{book}{chapter}+namechapter.json)
+        output_dir_final = output_dir or os.path.dirname(stage_j_path) or os.getcwd()
+        if chapter_name_clean:
+            base_filename = f"b{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
+        else:
+            # Fallback if no chapter name: use timestamp to avoid overwriting
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"b{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+            self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
+        
+        output_path = os.path.join(output_dir_final, base_filename)
+        
+        # Check if file already exists and add counter if needed
+        if os.path.exists(output_path) and chapter_name_clean:
+            # If file exists and we have chapter name, add counter
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"b{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.json"
+                output_path = os.path.join(output_dir_final, base_filename)
+                counter += 1
+            if counter > 1:
+                self.logger.info(f"File already exists, using counter: {counter - 1}")
         
         output_metadata = {
             "book_id": book_id,

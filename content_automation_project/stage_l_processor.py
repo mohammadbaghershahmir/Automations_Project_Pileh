@@ -32,21 +32,25 @@ class StageLProcessor(BaseStageProcessor):
         Process Stage L: Generate chapter overview using Stage J, Stage V, and a prompt.
 
         Args:
-            stage_j_path: Path to Stage J JSON file (a{book}{chapter}.json)
-            stage_v_path: Path to Stage V JSON file (b{book}{chapter}.json)
+            stage_j_path: Path to Stage J JSON file (a{book}{chapter}+{chapter_name}.json)
+            stage_v_path: Path to Stage V JSON file (b{book}{chapter}+{chapter_name}.json)
             prompt: Chapter overview prompt from user
             model_name: Gemini model name
             output_dir: Output directory (defaults to stage_j_path directory)
             progress_callback: Optional callback for progress updates
 
         Returns:
-            Path to output file (o{book}{chapter}.json) or None on error
+            Path to output file (o{book}{chapter}+{chapter_name}.json) or None on error
         """
 
         def _progress(msg: str):
             if progress_callback:
                 progress_callback(msg)
             self.logger.info(msg)
+
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("stage_l")
 
         _progress("Starting Stage L processing...")
 
@@ -202,8 +206,90 @@ IMPORTANT:
 
         _progress(f"Extracted {len(overview_records)} overview record(s) from model")
 
-        # Output filename: o{book}{chapter}.json
-        output_path = self.generate_filename("o", book_id, chapter_id, output_dir)
+        # Extract chapter name from Stage J metadata or Stage V metadata
+        chapter_name = ""
+        stage_j_metadata = self.get_metadata_from_json(stage_j_data)
+        chapter_name = (
+            stage_j_metadata.get("chapter", "") or
+            stage_j_metadata.get("Chapter", "") or
+            stage_j_metadata.get("chapter_name", "") or
+            stage_j_metadata.get("Chapter_Name", "") or
+            ""
+        )
+
+        # If not found in Stage J metadata, try Stage V metadata
+        if not chapter_name:
+            stage_v_metadata = self.get_metadata_from_json(stage_v_data)
+            chapter_name = (
+                stage_v_metadata.get("chapter", "") or
+                stage_v_metadata.get("Chapter", "") or
+                stage_v_metadata.get("chapter_name", "") or
+                stage_v_metadata.get("Chapter_Name", "") or
+                ""
+            )
+
+        # If still not found, try to get from first record
+        if not chapter_name and stage_j_records:
+            chapter_name = stage_j_records[0].get("chapter", "")
+
+        # If still not found, try to extract from Stage J filename (a{book}{chapter}+{chapter_name}.json)
+        if not chapter_name:
+            import re
+            stage_j_basename = os.path.basename(stage_j_path)
+            stage_j_name_without_ext = os.path.splitext(stage_j_basename)[0]
+            # Try to extract chapter name from filename pattern: a{book}{chapter}+{chapter_name}
+            match = re.match(r'^a\d{6}\+(.+)$', stage_j_name_without_ext)
+            if match:
+                chapter_name = match.group(1)
+            else:
+                # Try Stage V filename pattern: b{book}{chapter}+{chapter_name}.json
+                stage_v_basename = os.path.basename(stage_v_path)
+                stage_v_name_without_ext = os.path.splitext(stage_v_basename)[0]
+                match = re.match(r'^b\d{6}\+(.+)$', stage_v_name_without_ext)
+                if match:
+                    chapter_name = match.group(1)
+
+        # Clean chapter name for filename (remove invalid characters)
+        if chapter_name:
+            import re
+            # Replace spaces and invalid filename characters with underscore
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', '_', chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(' ', '_')
+            # Remove multiple underscores
+            chapter_name_clean = re.sub(r'_+', '_', chapter_name_clean)
+            # Remove leading/trailing underscores
+            chapter_name_clean = chapter_name_clean.strip('_')
+        else:
+            chapter_name_clean = ""
+
+        if chapter_name_clean:
+            _progress(f"Detected Chapter Name: {chapter_name}")
+        else:
+            _progress("No chapter name found, will use timestamp in filename")
+
+        # Generate output filename: o{book}{chapter}+{chapter_name}.json (matching Stage H/V pattern)
+        # If chapter name is empty, use timestamp to avoid overwriting
+        if chapter_name_clean:
+            base_filename = f"o{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
+        else:
+            # Fallback if no chapter name: use timestamp to avoid overwriting
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"o{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+            self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
+
+        output_path = os.path.join(output_dir, base_filename)
+
+        # Check if file already exists and add counter if needed
+        if os.path.exists(output_path) and chapter_name_clean:
+            # If file exists and we have chapter name, add counter
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"o{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.json"
+                output_path = os.path.join(output_dir, base_filename)
+                counter += 1
+            if counter > 1:
+                self.logger.info(f"File already exists, using counter: {counter - 1}")
 
         # Metadata
         output_metadata = {

@@ -15,6 +15,9 @@ Pillow>=9.3.0
 # Word document generation
 python-docx>=1.1.0
 
+# HTTP requests for DeepSeek API
+requests>=2.31.0
+
 # Standard libraries (included with Python, listed for reference)
 # csv - built-in
 # asyncio - built-in
