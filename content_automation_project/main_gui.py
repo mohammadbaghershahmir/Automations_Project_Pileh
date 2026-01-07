@@ -2337,10 +2337,11 @@ class ContentAutomationGUI:
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
         # Default to the model selected in the first page
+        # Document Processing uses DeepSeek API, so show DeepSeek models
         self.second_stage_model_var = ctk.StringVar(value=self.model_var.get())
         self.second_stage_model_combo = ctk.CTkComboBox(
             inner_model_frame,
-            values=APIConfig.TEXT_MODELS,
+            values=APIConfig.DEEPSEEK_TEXT_MODELS,
             variable=self.second_stage_model_var,
             width=400,
         )
@@ -2348,7 +2349,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             inner_model_frame,
-            text="You can use a lighter model (e.g., gemini-2.5-flash) for faster processing in the second stage.",
+            text="Document Processing uses DeepSeek API. Select a DeepSeek model for second-stage processing.",
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 5))
@@ -2419,10 +2420,11 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(side="left", padx=(10, 5), pady=(5, 5))
         
+        # Document Processing uses DeepSeek API, so show DeepSeek models
         self.auto_stage3_model_var = ctk.StringVar(value=self.model_var.get())
         self.auto_stage3_model_combo = ctk.CTkComboBox(
             s3_model_row,
-            values=APIConfig.TEXT_MODELS,
+            values=APIConfig.DEEPSEEK_TEXT_MODELS,
             variable=self.auto_stage3_model_var,
             width=280,
         )
@@ -2438,10 +2440,11 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(side="left", padx=(10, 5), pady=(5, 5))
         
+        # Document Processing uses DeepSeek API, so show DeepSeek models
         self.auto_stage4_model_var = ctk.StringVar(value=self.model_var.get())
         self.auto_stage4_model_combo = ctk.CTkComboBox(
             s4_model_row,
-            values=APIConfig.TEXT_MODELS,
+            values=APIConfig.DEEPSEEK_TEXT_MODELS,
             variable=self.auto_stage4_model_var,
             width=280,
         )
@@ -2834,12 +2837,13 @@ class ContentAutomationGUI:
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
         # Only create if doesn't exist
+        # Document Processing uses DeepSeek API, so show DeepSeek models
         if not hasattr(self, 'second_stage_model_var'):
-            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro")
+            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "deepseek-chat")
         if not hasattr(self, 'second_stage_model_combo'):
             self.second_stage_model_combo = ctk.CTkComboBox(
                 inner_model_frame,
-                values=APIConfig.TEXT_MODELS,
+                values=APIConfig.DEEPSEEK_TEXT_MODELS,
                 variable=self.second_stage_model_var,
                 width=400,
             )
