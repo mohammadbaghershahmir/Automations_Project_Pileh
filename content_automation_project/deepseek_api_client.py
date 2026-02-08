@@ -9,7 +9,7 @@ import json
 import time
 import requests
 from typing import Optional, Dict, List, Any, Callable
-from api_layer import APIKeyManager
+from api_layer import APIKeyManager, APIConfig
 
 
 class DeepSeekAPIClient:
@@ -35,7 +35,7 @@ class DeepSeekAPIClient:
         self._rate_limit_error_count = 0
         self._max_rate_limit_errors = 5
         
-    def initialize_text_client(self, model_name: str = "deepseek-chat", 
+    def initialize_text_client(self, model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL, 
                               api_key: Optional[str] = None) -> bool:
         """
         Initialize text processing client (for compatibility with GeminiAPIClient interface)
@@ -64,7 +64,7 @@ class DeepSeekAPIClient:
     def process_text(self,
                     text: str,
                     system_prompt: Optional[str] = None,
-                    model_name: str = "deepseek-chat",
+                    model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                     temperature: float = 0.7,
                     max_tokens: int = 8192,
                     api_key: Optional[str] = None) -> Optional[str]:
@@ -193,7 +193,7 @@ class DeepSeekAPIClient:
     def process_pdf_with_prompt(self,
                                 pdf_path: str,
                                 prompt: str,
-                                model_name: str = "deepseek-chat",
+                                model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                                 temperature: float = 0.7,
                                 max_tokens: int = 8192,
                                 api_key: Optional[str] = None,
@@ -264,7 +264,7 @@ class DeepSeekAPIClient:
     def process_pdf_with_prompt_batch(self,
                                       pdf_path: str,
                                       prompt: str,
-                                      model_name: str = "deepseek-chat",
+                                      model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                                       temperature: float = 0.7,
                                       max_tokens: int = 8192,
                                       pages_per_batch: int = 10,

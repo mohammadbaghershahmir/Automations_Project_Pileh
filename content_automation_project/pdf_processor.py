@@ -677,5 +677,3 @@ class PDFProcessor:
             self.logger.error(f"Error getting PDF info: {str(e)}")
         
         return info
-
-

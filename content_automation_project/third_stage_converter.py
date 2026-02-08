@@ -187,6 +187,17 @@ class ThirdStageConverter:
             self.logger.warning(f"Direct JSON parse failed: {e}. Trying fallback extraction...")
             self.logger.debug(f"JSON string length: {len(json_str)}, first 200 chars: {json_str[:200]}")
             
+            # Repair unterminated string (truncated model output) then retry
+            if "Unterminated string" in str(e) or "Unterminated" in str(e):
+                repaired = self._repair_unterminated_string(json_str, e)
+                if repaired:
+                    try:
+                        parsed = json.loads(repaired)
+                        self.logger.info("Successfully parsed JSON after repairing unterminated string")
+                        return parsed
+                    except json.JSONDecodeError:
+                        pass
+            
             # Try to extract JSON object/array
             start_obj = json_str.find("{")
             start_arr = json_str.find("[")
@@ -238,6 +249,65 @@ class ThirdStageConverter:
 
         self.logger.error("All JSON extraction methods failed")
         return None
+
+    def _repair_unterminated_string(self, text: str, error: json.JSONDecodeError) -> Optional[str]:
+        """
+        Repair JSON that failed with Unterminated string (e.g. truncated model output).
+        Truncates at the error position, then closes any open brackets/braces in reverse order.
+        """
+        pos = getattr(error, "pos", None)
+        if pos is None or pos <= 0:
+            match = re.search(r"\(char\s+(\d+)\)", str(error))
+            if match:
+                pos = int(match.group(1))
+            else:
+                return None
+        if pos >= len(text):
+            pos = len(text)
+        prefix = text[:pos]
+        if not prefix.strip():
+            return None
+        # Track open delimiters in order (respecting strings) so we close in reverse order
+        stack = []
+        i = 0
+        in_string = False
+        escape_next = False
+        n = len(prefix)
+        while i < n:
+            c = prefix[i]
+            if escape_next:
+                escape_next = False
+                i += 1
+                continue
+            if c == "\\" and in_string:
+                escape_next = True
+                i += 1
+                continue
+            if c == '"':
+                in_string = not in_string
+                i += 1
+                continue
+            if in_string:
+                i += 1
+                continue
+            if c == "[":
+                stack.append("]")
+            elif c == "{":
+                stack.append("}")
+            elif c == "]":
+                if stack and stack[-1] == "]":
+                    stack.pop()
+            elif c == "}":
+                if stack and stack[-1] == "}":
+                    stack.pop()
+            i += 1
+        closing = "".join(reversed(stack))
+        repaired = prefix + closing
+        try:
+            json.loads(repaired)
+            return repaired
+        except json.JSONDecodeError:
+            return None
 
     def _extract_balanced_json(self, text: str, max_pos: int) -> Optional[str]:
         """Try to extract balanced JSON up to a certain position."""
@@ -659,12 +729,18 @@ class ThirdStageConverter:
         # Start processing - support both English and Persian structures
         # English: {"chapter": "...", "content": [...]}
         # Persian: {"فصل": "...", "children": [...]} or just {"children": [...]}
-        chapter = json_data.get("chapter") or json_data.get("فصل", "")
-        content = json_data.get("content") or json_data.get("children", [])
+        # Also: raw array from _combine_json_blocks when no chapter structure (list of content items)
+        if isinstance(json_data, list):
+            chapter = ""
+            content = json_data
+            self.logger.info(f"Top-level structure is array with {len(content)} items; treating as content list")
+        else:
+            chapter = json_data.get("chapter") or json_data.get("فصل", "")
+            content = json_data.get("content") or json_data.get("children", [])
 
-        # If content is empty but we have children at root level, use that
-        if not content and "children" in json_data:
-            content = json_data["children"]
+            # If content is empty but we have children at root level, use that
+            if not content and "children" in json_data:
+                content = json_data["children"]
 
         if not isinstance(content, list):
             self.logger.warning("Content/children is not a list, trying to process as single object")

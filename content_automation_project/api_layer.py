@@ -77,6 +77,7 @@ class APIConfig:
     # Default settings
     DEFAULT_TTS_MODEL = "gemini-2.5-flash-preview-tts"
     DEFAULT_TEXT_MODEL = "gemini-2.5-flash"
+    DEFAULT_DEEPSEEK_MODEL = "deepseek-reasoner"  # Default DeepSeek model
     DEFAULT_VOICE = "Kore"
     DEFAULT_TEMPERATURE = 0.7
     # Maximum tokens for different models:

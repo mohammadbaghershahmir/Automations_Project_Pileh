@@ -37,6 +37,7 @@ from stage_y_processor import StageYProcessor
 from stage_z_processor import StageZProcessor
 from pre_ocr_topic_processor import PreOCRTopicProcessor
 from automated_pipeline_orchestrator import AutomatedPipelineOrchestrator
+from reference_change_rag import get_reference_changes_with_client
 
 
 class ContentAutomationGUI:
@@ -129,7 +130,8 @@ class ContentAutomationGUI:
         # Initialize default settings variables (shared across all views)
         # These will be used as default values for all stages
         # Document Processing uses DeepSeek, so default to DeepSeek model
-        self.model_var = ctk.StringVar(value="deepseek-chat")
+        from api_layer import APIConfig
+        self.model_var = ctk.StringVar(value=APIConfig.DEFAULT_DEEPSEEK_MODEL)
         self.output_folder_var = ctk.StringVar()
         
         # Setup UI
@@ -217,6 +219,10 @@ class ContentAutomationGUI:
         # Tab 12: JSON to CSV Converter
         self.tab_json_to_csv = self.main_tabview.add("JSON to CSV Converter")
         self.setup_json_to_csv_ui(self.tab_json_to_csv)
+        
+        # Tab 13: Reference Change (RAG)
+        self.tab_reference_change_rag = self.main_tabview.add("Reference Change (RAG)")
+        self.setup_reference_change_rag_ui(self.tab_reference_change_rag)
         
         # Ensure Pre-OCR Topic Extraction is the default/selected tab
         self.main_tabview.set("Pre-OCR Topic Extraction")
@@ -1893,7 +1899,8 @@ class ContentAutomationGUI:
                             return
                 
                 # Get selected model from Document Processing (DeepSeek API)
-                model_name = self.model_var.get() if hasattr(self, 'model_var') else "deepseek-chat"
+                from api_layer import APIConfig
+                model_name = self.model_var.get() if hasattr(self, 'model_var') else APIConfig.DEFAULT_DEEPSEEK_MODEL
                 self.logger.info(f"[process_pdf] Using model: {model_name} (DeepSeek API)")
                 
                 # Get current API key info (for logging)
@@ -11674,6 +11681,273 @@ class ContentAutomationGUI:
         # Initialize results list
         if not hasattr(self, 'json_to_csv_results_list'):
             self.json_to_csv_results_list = []
+    
+    def setup_reference_change_rag_ui(self, parent):
+        """Setup UI for Reference Change (RAG): two PDFs -> structured change list."""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        title = ctk.CTkLabel(
+            main_frame,
+            text="Reference Change (RAG)",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title.pack(pady=(0, 20))
+        
+        desc = ctk.CTkLabel(
+            main_frame,
+            text="Use two OCR/text files (old & new reference), compare via LLM with your prompt, and get a structured list of changes: added, removed, merged, split, unchanged. Prompt must contain {OLD_TEXT} and {NEW_TEXT}.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Old reference OCR/Text file
+        old_file_frame = ctk.CTkFrame(main_frame)
+        old_file_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(old_file_frame, text="Old Reference OCR/Text file:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        old_entry_frame = ctk.CTkFrame(old_file_frame)
+        old_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
+        if not hasattr(self, 'ref_change_rag_old_file_var'):
+            self.ref_change_rag_old_file_var = ctk.StringVar(value="")
+        ctk.CTkEntry(old_entry_frame, textvariable=self.ref_change_rag_old_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(old_entry_frame, text="Browse", command=self._ref_change_rag_browse_old_file, width=80).pack(side="left", pady=5)
+        
+        # New reference OCR/Text file
+        new_file_frame = ctk.CTkFrame(main_frame)
+        new_file_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(new_file_frame, text="New Reference OCR/Text file:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        new_entry_frame = ctk.CTkFrame(new_file_frame)
+        new_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
+        if not hasattr(self, 'ref_change_rag_new_file_var'):
+            self.ref_change_rag_new_file_var = ctk.StringVar(value="")
+        ctk.CTkEntry(new_entry_frame, textvariable=self.ref_change_rag_new_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(new_entry_frame, text="Browse", command=self._ref_change_rag_browse_new_file, width=80).pack(side="left", pady=5)
+        
+        # Prompt (user-provided)
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        prompt_header = ctk.CTkFrame(prompt_frame)
+        prompt_header.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(prompt_header, text="Prompt (must include {OLD_TEXT} and {NEW_TEXT}):", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(prompt_header, text="Load default prompt", command=self._ref_change_rag_load_default_prompt, width=140).pack(side="left", pady=2)
+        if not hasattr(self, 'ref_change_rag_prompt_text'):
+            self.ref_change_rag_prompt_text = ctk.CTkTextbox(prompt_frame, height=140, font=self.farsi_text_font)
+        self.ref_change_rag_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        if not self.ref_change_rag_prompt_text.get("1.0", tk.END).strip():
+            default_prompt = self.prompt_manager.get_prompt("Reference Change List Prompt") or ""
+            if default_prompt:
+                self.ref_change_rag_prompt_text.delete("1.0", tk.END)
+                self.ref_change_rag_prompt_text.insert("1.0", default_prompt)
+        
+        # Use RAG checkbox (chunk + embed + retrieve + LLM per pair for long texts)
+        if not hasattr(self, 'ref_change_rag_use_rag_var'):
+            self.ref_change_rag_use_rag_var = ctk.BooleanVar(value=True)
+        rag_check = ctk.CTkCheckBox(
+            main_frame,
+            text="Use RAG (chunk, embed, retrieve, LLM per pair — best for long texts; needs sentence-transformers)",
+            variable=self.ref_change_rag_use_rag_var,
+            font=ctk.CTkFont(size=12),
+        )
+        rag_check.pack(anchor="w", padx=10, pady=(5, 10))
+        # Run button and status
+        run_frame = ctk.CTkFrame(main_frame)
+        run_frame.pack(fill="x", pady=20)
+        if not hasattr(self, 'ref_change_rag_run_btn'):
+            self.ref_change_rag_run_btn = ctk.CTkButton(
+                run_frame,
+                text="Run Reference Change Detection",
+                command=self._run_reference_change_rag,
+                width=220,
+                height=40,
+                font=ctk.CTkFont(size=14, weight="bold"),
+                fg_color="green",
+                hover_color="darkgreen"
+            )
+        self.ref_change_rag_run_btn.pack(side="left", padx=10, pady=10)
+        if not hasattr(self, 'ref_change_rag_progress_bar'):
+            self.ref_change_rag_progress_bar = ctk.CTkProgressBar(run_frame, width=300)
+        self.ref_change_rag_progress_bar.pack(side="left", padx=10, pady=10)
+        self.ref_change_rag_progress_bar.set(0)
+        if not hasattr(self, 'ref_change_rag_status_label'):
+            self.ref_change_rag_status_label = ctk.CTkLabel(run_frame, text="Ready", font=ctk.CTkFont(size=12), text_color="gray")
+        self.ref_change_rag_status_label.pack(side="left", padx=5, pady=10)
+        
+        # Output JSON path (optional save)
+        out_frame = ctk.CTkFrame(main_frame)
+        out_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(out_frame, text="Save result JSON (optional):", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        out_entry_frame = ctk.CTkFrame(out_frame)
+        out_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
+        if not hasattr(self, 'ref_change_rag_output_path_var'):
+            self.ref_change_rag_output_path_var = ctk.StringVar(value="")
+        ctk.CTkEntry(out_entry_frame, textvariable=self.ref_change_rag_output_path_var, width=400).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(out_entry_frame, text="Browse", command=self._ref_change_rag_browse_output, width=80).pack(side="left", pady=5)
+        
+        # Result summary (read-only textbox)
+        result_frame = ctk.CTkFrame(main_frame)
+        result_frame.pack(fill="both", expand=True, pady=10)
+        ctk.CTkLabel(result_frame, text="Result (JSON):", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
+        if not hasattr(self, 'ref_change_rag_result_text'):
+            self.ref_change_rag_result_text = ctk.CTkTextbox(result_frame, height=200, font=ctk.CTkFont(family="Tahoma", size=11))
+        self.ref_change_rag_result_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.ref_change_rag_result_text.insert("1.0", "Result will appear here after run.")
+        self.ref_change_rag_result_text.configure(state="disabled")
+    
+    def _ref_change_rag_browse_old_file(self):
+        """Browse for old reference OCR/Text file."""
+        path = filedialog.askopenfilename(
+            title="Select Old Reference OCR/Text file",
+            filetypes=[("Text/JSON", "*.txt;*.json"), ("Text", "*.txt"), ("JSON", "*.json"), ("All files", "*.*")]
+        )
+        if path and hasattr(self, 'ref_change_rag_old_file_var'):
+            self.ref_change_rag_old_file_var.set(path)
+    
+    def _ref_change_rag_browse_new_file(self):
+        """Browse for new reference OCR/Text file."""
+        path = filedialog.askopenfilename(
+            title="Select New Reference OCR/Text file",
+            filetypes=[("Text/JSON", "*.txt;*.json"), ("Text", "*.txt"), ("JSON", "*.json"), ("All files", "*.*")]
+        )
+        if path and hasattr(self, 'ref_change_rag_new_file_var'):
+            self.ref_change_rag_new_file_var.set(path)
+    
+    def _ref_change_rag_load_default_prompt(self):
+        """Load default Reference Change List prompt from prompts.json into the prompt textbox."""
+        default = self.prompt_manager.get_prompt("Reference Change List Prompt") or ""
+        if default and hasattr(self, 'ref_change_rag_prompt_text'):
+            self.ref_change_rag_prompt_text.delete("1.0", tk.END)
+            self.ref_change_rag_prompt_text.insert("1.0", default)
+    
+    def _ref_change_rag_read_text_file(self, path: str) -> str:
+        """Read OCR/text file as string. For .json, optionally use 'text' or 'content' key if present."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = f.read()
+        except Exception as e:
+            logging.getLogger(__name__).warning("Failed to read file %s: %s", path, e)
+            return ""
+        if not path.lower().endswith(".json"):
+            return raw
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                if "text" in data and isinstance(data["text"], str):
+                    return data["text"]
+                if "content" in data and isinstance(data["content"], str):
+                    return data["content"]
+            return raw
+        except json.JSONDecodeError:
+            return raw
+    
+    def _ref_change_rag_browse_output(self):
+        """Browse for output JSON path."""
+        path = filedialog.asksaveasfilename(title="Save Changes JSON As", defaultextension=".json", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        if path and hasattr(self, 'ref_change_rag_output_path_var'):
+            self.ref_change_rag_output_path_var.set(path)
+    
+    def _run_reference_change_rag(self):
+        """Run reference change detection in background thread (reads OCR/text files and user prompt)."""
+        old_path = self.ref_change_rag_old_file_var.get().strip() if hasattr(self, 'ref_change_rag_old_file_var') else ""
+        new_path = self.ref_change_rag_new_file_var.get().strip() if hasattr(self, 'ref_change_rag_new_file_var') else ""
+        if not old_path or not new_path:
+            messagebox.showwarning("Missing input", "Please select both Old Reference OCR/Text file and New Reference OCR/Text file.")
+            return
+        if not os.path.isfile(old_path):
+            messagebox.showerror("Error", f"Old file not found: {old_path}")
+            return
+        if not os.path.isfile(new_path):
+            messagebox.showerror("Error", f"New file not found: {new_path}")
+            return
+        prompt_str = self.ref_change_rag_prompt_text.get("1.0", tk.END).strip() if hasattr(self, 'ref_change_rag_prompt_text') else ""
+        if not prompt_str or "{OLD_TEXT}" not in prompt_str or "{NEW_TEXT}" not in prompt_str:
+            messagebox.showwarning("Missing prompt", "Please enter a prompt that contains {OLD_TEXT} and {NEW_TEXT}, or click 'Load default prompt'.")
+            return
+        
+        def run():
+            try:
+                self.ref_change_rag_progress_bar.set(0.1)
+                self.ref_change_rag_status_label.configure(text="Reading OCR/text files...")
+                self.root.update_idletasks()
+                old_content = self._ref_change_rag_read_text_file(old_path)
+                new_content = self._ref_change_rag_read_text_file(new_path)
+                if not old_content:
+                    self.ref_change_rag_status_label.configure(text="Failed to read old file.")
+                    self.ref_change_rag_progress_bar.set(0)
+                    return
+                if not new_content:
+                    self.ref_change_rag_status_label.configure(text="Failed to read new file.")
+                    self.ref_change_rag_progress_bar.set(0)
+                    return
+                self.ref_change_rag_progress_bar.set(0.2)
+                self.ref_change_rag_status_label.configure(text="Calling LLM...")
+                self.root.update_idletasks()
+                self.api_client.set_stage("reference_change_rag")
+                if not self.api_client.initialize_text_client():
+                    self.ref_change_rag_status_label.configure(text="Failed to init API client.")
+                    self.ref_change_rag_progress_bar.set(0)
+                    return
+                self.ref_change_rag_progress_bar.set(0.5)
+                use_rag = self.ref_change_rag_use_rag_var.get() if hasattr(self, 'ref_change_rag_use_rag_var') else True
+                result = get_reference_changes_with_client(
+                    "",
+                    "",
+                    self.api_client,
+                    prompt_manager=self.prompt_manager,
+                    prompt_name="Reference Change List Prompt",
+                    prompt_template_override=prompt_str,
+                    old_text_override=old_content,
+                    new_text_override=new_content,
+                    use_rag=use_rag,
+                )
+                self.ref_change_rag_progress_bar.set(1.0)
+                if result is None:
+                    self.ref_change_rag_status_label.configure(text="Failed: no result from LLM.")
+                    self.ref_change_rag_result_text.configure(state="normal")
+                    self.ref_change_rag_result_text.delete("1.0", tk.END)
+                    self.ref_change_rag_result_text.insert("1.0", "Error: no structured result returned.")
+                    self.ref_change_rag_result_text.configure(state="disabled")
+                    return
+                self.ref_change_rag_status_label.configure(text="Done.")
+                out_path = self.ref_change_rag_output_path_var.get().strip() if hasattr(self, 'ref_change_rag_output_path_var') else ""
+                if out_path:
+                    with open(out_path, "w", encoding="utf-8") as f:
+                        json.dump(result, f, ensure_ascii=False, indent=2)
+                    self.ref_change_rag_status_label.configure(text=f"Done. Saved to {os.path.basename(out_path)}")
+                self.ref_change_rag_result_text.configure(state="normal")
+                self.ref_change_rag_result_text.delete("1.0", tk.END)
+                self.ref_change_rag_result_text.insert("1.0", json.dumps(result, ensure_ascii=False, indent=2))
+                self.ref_change_rag_result_text.configure(state="disabled")
+            except Exception as e:
+                logging.getLogger(__name__).exception("Reference change RAG failed")
+                self.ref_change_rag_status_label.configure(text=f"Error: {str(e)}")
+                self.ref_change_rag_progress_bar.set(0)
+                self.ref_change_rag_result_text.configure(state="normal")
+                self.ref_change_rag_result_text.delete("1.0", tk.END)
+                self.ref_change_rag_result_text.insert("1.0", f"Error: {str(e)}")
+                self.ref_change_rag_result_text.configure(state="disabled")
+            finally:
+                self.ref_change_rag_progress_bar.set(0)
+                self.root.after(0, lambda: self.ref_change_rag_run_btn.configure(state="normal"))
+        
+        self.ref_change_rag_run_btn.configure(state="disabled")
+        thread = threading.Thread(target=run)
+        thread.daemon = True
+        thread.start()
     
     def _add_stage_z_stage_a_file_to_ui(self, file_path: str):
         """Add a Stage A file to the UI list"""
