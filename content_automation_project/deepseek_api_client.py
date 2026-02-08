@@ -369,9 +369,6 @@ class DeepSeekAPIClient:
     def process_pdf_with_prompt(self,
                                 pdf_path: str,
                                 prompt: str,
-<<<<<<< HEAD
-                                model_name: str = "deepseek-reasoner",
-=======
                                 model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                                 temperature: float = 0.7,
                                 max_tokens: int = 8192,
