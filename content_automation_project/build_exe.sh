@@ -11,9 +11,9 @@ if ! command -v pyinstaller &> /dev/null; then
     pip install pyinstaller
 fi
 
-# Clean previous builds
+# Clean previous builds (keep build_exe.spec)
 echo "Cleaning previous builds..."
-rm -rf build dist __pycache__ *.spec
+rm -rf build dist
 
 # Build executable
 echo "Building executable..."
@@ -36,6 +36,11 @@ else
     echo "=========================================="
     echo "Check the error messages above."
 fi
+
+
+
+
+
 
 
 

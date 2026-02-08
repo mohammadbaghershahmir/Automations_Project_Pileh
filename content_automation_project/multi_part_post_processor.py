@@ -349,25 +349,26 @@ class MultiPartPostProcessor:
         
         for i, block in enumerate(json_blocks, 1):
             if isinstance(block, dict):
-                # Check if it has chapter and content structure
-                if "chapter" in block and "content" in block:
-                    block_chapter = block.get("chapter")
+                content = block.get("content") if "content" in block else block.get("children")
+                has_chapter = "chapter" in block or "فصل" in block
+                if has_chapter and content is not None:
+                    block_chapter = block.get("chapter") or block.get("فصل", "")
                     if combined_chapter is None:
                         combined_chapter = block_chapter
                         self.logger.debug(f"Block {i}: Using chapter '{combined_chapter}'")
                     elif combined_chapter != block_chapter:
                         self.logger.warning(f"Block {i}: Different chapter '{block_chapter}' (expected '{combined_chapter}'). Keeping both.")
                     
-                    content = block.get("content", [])
                     if isinstance(content, list):
                         combined_content.extend(content)
                         self.logger.debug(f"Block {i}: Added {len(content)} content items (total: {len(combined_content)})")
+                    elif isinstance(content, dict):
+                        combined_content.append(content)
+                        self.logger.debug(f"Block {i}: Added 1 content object (content was dict, total: {len(combined_content)})")
                 else:
-                    # Different structure, add as-is
                     combined_content.append(block)
                     self.logger.debug(f"Block {i}: Added as-is (different structure)")
             else:
-                # Not a dict, add as-is
                 combined_content.append(block)
                 self.logger.debug(f"Block {i}: Added as-is (not a dict)")
         
@@ -379,7 +380,6 @@ class MultiPartPostProcessor:
             }
             self.logger.info(f"Final structure: chapter '{combined_chapter}' with {len(combined_content)} content items")
         else:
-            # If no chapter structure, return as array or object
             if len(combined_content) == 1:
                 result = combined_content[0]
                 self.logger.info("Final structure: single object (no chapter structure)")
@@ -389,112 +389,171 @@ class MultiPartPostProcessor:
         
         return result
 
+    def _find_balanced_json_end(self, text: str, start: int, open_char: str, close_char: str) -> int:
+        """
+        Find the index of the matching closing bracket/brace, respecting strings and nesting.
+        open_char is '{' or '[', close_char is '}' or ']'.
+        Returns -1 if not found.
+        """
+        depth = 0
+        i = start
+        in_string = False
+        escape_next = False
+        quote_char = None
+        n = len(text)
+        while i < n:
+            c = text[i]
+            if escape_next:
+                escape_next = False
+                i += 1
+                continue
+            if c == '\\' and in_string:
+                escape_next = True
+                i += 1
+                continue
+            if c in ('"', "'") and not escape_next:
+                if not in_string:
+                    in_string = True
+                    quote_char = c
+                elif c == quote_char:
+                    in_string = False
+                i += 1
+                continue
+            if in_string:
+                i += 1
+                continue
+            if c == open_char:
+                depth += 1
+            elif c == close_char:
+                depth -= 1
+                if depth == 0:
+                    return i
+            i += 1
+        return -1
+
     def _extract_json_blocks_from_text(self, text: str) -> List[Dict[str, Any]]:
         """
         Extract JSON blocks from a single text response.
-        Handles markdown code blocks, escaped JSON strings, and direct JSON.
-        
+        Handles: whole-text JSON, markdown code blocks (```json / ```), raw JSON by braces,
+        escaped JSON strings, and fallback (ThirdStageConverter).
+
         Returns:
-            List of JSON objects extracted from the text
+            List of JSON objects (dicts) extracted from the text
         """
         if not text:
             return []
-        
-        json_blocks = []
-        
-        # Strategy 1: Try to extract from markdown code blocks
-        # First try: ```json ... ```
-        json_block_patterns = [
-            r'```json\s*(.*?)\s*```',  # ```json ... ```
-            r'```\s*(.*?)\s*```',       # ``` ... ```
-        ]
-        
-        matches = []
-        for pattern in json_block_patterns:
-            found_matches = re.findall(pattern, text, re.DOTALL)
-            if found_matches:
-                matches = found_matches
-                self.logger.debug(f"Found {len(matches)} JSON block(s) using pattern: {pattern}")
-                break
-        
-        # Strategy 2: If no code blocks found, try to extract JSON directly from text
-        if not matches:
-            # Try to find JSON object/array in the text
-            start_obj = text.find('{')
-            start_arr = text.find('[')
-            if start_obj != -1 or start_arr != -1:
-                start = start_obj if (start_obj != -1 and (start_arr == -1 or start_obj < start_arr)) else start_arr
-                # Find matching closing bracket
-                if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
-                    end = text.rfind('}')
-                    if end > start:
-                        candidate = text[start:end + 1]
-                        matches = [candidate]
-                        self.logger.debug("Found JSON object in text (no code blocks)")
-                elif start_arr != -1:
-                    end = text.rfind(']')
-                    if end > start:
-                        candidate = text[start:end + 1]
-                        matches = [candidate]
-                        self.logger.debug("Found JSON array in text (no code blocks)")
-        
-        # Strategy 3: If text is an escaped JSON string (like in raw_responses), try to unescape it
-        if not matches:
+        text = text.replace('\ufeff', '').strip()
+        if not text:
+            return []
+
+        # Strategy 0: Escaped JSON string (e.g. from raw_responses)
+        try:
+            if text.startswith('"') and text.endswith('"'):
+                unescaped = json.loads(text)
+                if isinstance(unescaped, str):
+                    return self._extract_json_blocks_from_text(unescaped)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        json_blocks: List[Dict[str, Any]] = []
+        matches: List[str] = []
+
+        # Strategy 1: Whole text is a single JSON object or array (raw model output, no markdown)
+        stripped = text.strip()
+        if stripped.startswith('{') or stripped.startswith('['):
             try:
-                # Check if it's a JSON-encoded string
-                if text.startswith('"') and text.endswith('"'):
-                    unescaped = json.loads(text)
-                    if isinstance(unescaped, str):
-                        # Recursively try to extract from unescaped string
-                        return self._extract_json_blocks_from_text(unescaped)
-            except:
+                obj = json.loads(stripped)
+                if isinstance(obj, dict):
+                    json_blocks.append(obj)
+                    self.logger.debug("Extracted single JSON object from whole response (no markdown)")
+                    return json_blocks
+                if isinstance(obj, list):
+                    for item in obj:
+                        if isinstance(item, dict):
+                            json_blocks.append(item)
+                    if json_blocks:
+                        self.logger.debug("Extracted %d JSON object(s) from whole response array", len(json_blocks))
+                        return json_blocks
+            except json.JSONDecodeError:
                 pass
-        
-        # Parse each match
-        for match in matches:
-            json_str = match.strip()
+
+        # Strategy 2: Markdown code blocks (case-insensitive ```json and plain ```)
+        code_block_patterns = [
+            r'```\s*[jJ][sS][oO][nN]\s*\n?(.*?)```',
+            r'```\s*(.*?)```',
+        ]
+        for pattern in code_block_patterns:
+            found = re.findall(pattern, text, re.DOTALL)
+            if found:
+                matches = [m.strip() for m in found if m and m.strip()]
+                break
+
+        # Strategy 3: No code blocks — extract by balanced braces
+        if not matches:
+            pos = 0
+            while pos < len(text):
+                start_obj = text.find('{', pos)
+                start_arr = text.find('[', pos)
+                if start_obj == -1 and start_arr == -1:
+                    break
+                start = start_obj if (start_arr == -1 or (start_obj != -1 and start_obj < start_arr)) else start_arr
+                open_c, close_c = ('{', '}') if text[start] == '{' else ('[', ']')
+                end = self._find_balanced_json_end(text, start, open_c, close_c)
+                if end != -1:
+                    candidate = text[start:end + 1].strip()
+                    if candidate:
+                        matches.append(candidate)
+                    pos = end + 1
+                else:
+                    pos = start + 1
+
+        for raw in matches:
+            json_str = raw.strip()
             if not json_str:
                 continue
-            
-            # Try to parse JSON
             try:
-                json_obj = json.loads(json_str)
-                json_blocks.append(json_obj)
-                self.logger.debug(f"Successfully parsed JSON block (type: {type(json_obj).__name__})")
-            except json.JSONDecodeError as e:
-                self.logger.warning(f"JSON parse failed: {e}. Trying fallback extraction...")
-                # Try fallback extraction - find largest valid JSON object/array
-                start_obj = json_str.find("{")
-                start_arr = json_str.find("[")
-                
-                if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
-                    end_obj = json_str.rfind("}")
-                    if end_obj > start_obj:
+                obj = json.loads(json_str)
+                if isinstance(obj, dict):
+                    json_blocks.append(obj)
+                elif isinstance(obj, list):
+                    for item in obj:
+                        if isinstance(item, dict):
+                            json_blocks.append(item)
+            except json.JSONDecodeError:
+                start_obj = json_str.find('{')
+                start_arr = json_str.find('[')
+                if start_obj != -1 or start_arr != -1:
+                    start = start_obj if (start_arr == -1 or (start_obj != -1 and start_obj < start_arr)) else start_arr
+                    open_c, close_c = ('{', '}') if json_str[start] == '{' else ('[', ']')
+                    end = self._find_balanced_json_end(json_str, start, open_c, close_c)
+                    if end != -1:
                         try:
-                            candidate = json_str[start_obj:end_obj + 1]
-                            json_obj = json.loads(candidate)
-                            json_blocks.append(json_obj)
-                            self.logger.debug("Successfully parsed JSON using fallback extraction (object)")
+                            obj = json.loads(json_str[start:end + 1])
+                            if isinstance(obj, dict):
+                                json_blocks.append(obj)
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    if isinstance(item, dict):
+                                        json_blocks.append(item)
                         except json.JSONDecodeError:
-                            self.logger.warning(f"Fallback extraction failed for JSON object")
-                elif start_arr != -1:
-                    end_arr = json_str.rfind("]")
-                    if end_arr > start_arr:
-                        try:
-                            candidate = json_str[start_arr:end_arr + 1]
-                            json_obj = json.loads(candidate)
-                            json_blocks.append(json_obj)
-                            self.logger.debug("Successfully parsed JSON using fallback extraction (array)")
-                        except json.JSONDecodeError:
-                            self.logger.warning(f"Fallback extraction failed for JSON array")
-        
-        if json_blocks:
-            self.logger.info(f"Extracted {len(json_blocks)} JSON block(s) from response")
-        else:
-            self.logger.warning(f"No valid JSON blocks found in response (length: {len(text)} chars)")
-            # Log first 500 chars for debugging
-            self.logger.debug(f"Response preview: {text[:500]}...")
-        
+                            pass
+
+        # Strategy 4: Fallback — ThirdStageConverter (repair, largest valid JSON)
+        if not json_blocks:
+            try:
+                from third_stage_converter import ThirdStageConverter
+                converter = ThirdStageConverter()
+                parsed = converter._extract_json_from_response(text)
+                if parsed is not None:
+                    if isinstance(parsed, dict):
+                        json_blocks.append(parsed)
+                    elif isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, dict):
+                                json_blocks.append(item)
+            except Exception as e:
+                self.logger.debug(f"ThirdStageConverter fallback failed: {e}")
+
         return json_blocks
 
     def _combine_json_blocks(self, json_blocks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -513,25 +572,29 @@ class MultiPartPostProcessor:
         
         self.logger.info(f"Combining {len(json_blocks)} JSON block(s) into final structure...")
         
-        # If all blocks have the same structure (chapter + content), combine content arrays
+        # If all blocks have the same structure (chapter + content/children), combine content arrays
         combined_content = []
         combined_chapter = None
         
         for i, block in enumerate(json_blocks, 1):
             if isinstance(block, dict):
-                # Check if it has chapter and content structure
-                if "chapter" in block and "content" in block:
-                    block_chapter = block.get("chapter")
+                # Content may be under "content" or "children" (model may return either)
+                content = block.get("content") if "content" in block else block.get("children")
+                has_chapter = "chapter" in block or "فصل" in block
+                if has_chapter and content is not None:
+                    block_chapter = block.get("chapter") or block.get("فصل", "")
                     if combined_chapter is None:
                         combined_chapter = block_chapter
                         self.logger.debug(f"Block {i}: Using chapter '{combined_chapter}'")
                     elif combined_chapter != block_chapter:
                         self.logger.warning(f"Block {i}: Different chapter '{block_chapter}' (expected '{combined_chapter}'). Keeping both.")
                     
-                    content = block.get("content", [])
                     if isinstance(content, list):
                         combined_content.extend(content)
                         self.logger.debug(f"Block {i}: Added {len(content)} content items (total: {len(combined_content)})")
+                    elif isinstance(content, dict):
+                        combined_content.append(content)
+                        self.logger.debug(f"Block {i}: Added 1 content object (content was dict, total: {len(combined_content)})")
                 else:
                     # Different structure, add as-is
                     combined_content.append(block)
@@ -1275,18 +1338,23 @@ class MultiPartPostProcessor:
             self.logger.info(f"  JSON payload size: {json_size:,} bytes ({json_size/1024:.2f} KB)")
             self.logger.info(f"  Sending topic JSON to model (full subchapter context with {len(full_subchapter_topics)} topics)...")
             
-            # Process with model
-            self.logger.info(f"  Calling model API...")
-            response_text = self.api_client.process_text(
-                text=topic_json_text,
-                system_prompt=topic_prompt,
-                model_name=model_name,
-            )
-            
-            if not response_text:
-                self.logger.error(f"  ✗ No response received for topic: {chapter_name_for_topic} > {subchapter_name} > {topic_name}")
-                # Store empty response to track that this topic was processed
-                response_text = ""
+            # Process with model (retry up to 3 times if response is empty)
+            max_attempts = 3
+            response_text = None
+            for attempt in range(1, max_attempts + 1):
+                self.logger.info(f"  Calling model API... (attempt {attempt}/{max_attempts})")
+                response_text = self.api_client.process_text(
+                    text=topic_json_text,
+                    system_prompt=topic_prompt,
+                    model_name=model_name,
+                )
+                if response_text and response_text.strip():
+                    break
+                if attempt < max_attempts:
+                    self.logger.warning(f"  Empty response for topic '{topic_name}', retrying ({attempt}/{max_attempts})...")
+                else:
+                    self.logger.error(f"  ✗ No response received for topic after {max_attempts} attempts: {chapter_name_for_topic} > {subchapter_name} > {topic_name}")
+                    response_text = ""
             
             response_size = len(response_text.encode('utf-8')) if response_text else 0
             self.logger.info(f"  ✓ Topic '{topic_name}' processed successfully")
@@ -1308,7 +1376,7 @@ class MultiPartPostProcessor:
                 with open(output_path, "r", encoding="utf-8") as f:
                     current_data = json.load(f)
                 
-                # Add raw response entry
+                # Add raw response entry; also parse response_text to "response" (handles raw JSON and markdown ```json)
                 raw_response_entry = {
                     "topic_index": topic_idx,
                     "subchapter": subchapter_name,
@@ -1317,6 +1385,20 @@ class MultiPartPostProcessor:
                     "response_size_bytes": response_size,
                     "processed_at": datetime.now().isoformat()
                 }
+                try:
+                    blocks = self._extract_json_blocks_from_text(response_text or "")
+                    if len(blocks) == 1:
+                        raw_response_entry["response"] = blocks[0]
+                    elif len(blocks) > 1:
+                        raw_response_entry["response"] = blocks
+                    else:
+                        stripped = (response_text or "").strip()
+                        if stripped.startswith("{") or stripped.startswith("["):
+                            raw_response_entry["response"] = json.loads(stripped)
+                        else:
+                            raw_response_entry["response"] = None
+                except (json.JSONDecodeError, TypeError, Exception):
+                    raw_response_entry["response"] = None
                 current_data["raw_responses"].append(raw_response_entry)
                 
                 # Update metadata
@@ -1368,6 +1450,50 @@ class MultiPartPostProcessor:
         
         self.logger.info(f"Total JSON blocks extracted: {len(all_json_blocks)}")
         self.logger.info("=" * 80)
+        
+        # Fallback: if extraction yielded no blocks, try building from saved raw_responses (envelope format)
+        if not all_json_blocks and output_path and os.path.isfile(output_path):
+            try:
+                with open(output_path, "r", encoding="utf-8") as f:
+                    saved_data = json.load(f)
+                raw_list = saved_data.get("raw_responses") or []
+                meta = saved_data.get("metadata") or {}
+                chapter_from_meta = meta.get("chapter", "")
+                if raw_list:
+                    self.logger.info("No blocks from in-memory extraction; building from file raw_responses...")
+                    all_json_blocks = []
+                    response_topic_info = []
+                    blocks_per_topic = []
+                    for r in raw_list:
+                        if not isinstance(r, dict):
+                            continue
+                        topic_info = {
+                            "chapter": chapter_from_meta or r.get("chapter", ""),
+                            "subchapter": r.get("subchapter", ""),
+                            "topic": r.get("topic", ""),
+                        }
+                        response_topic_info.append(topic_info)
+                        # Prefer parsed "response" object when present
+                        parsed_response = r.get("response")
+                        if isinstance(parsed_response, dict):
+                            all_json_blocks.append(parsed_response)
+                            blocks_per_topic.append((topic_info, 1))
+                        elif isinstance(parsed_response, list):
+                            dict_items = [item for item in parsed_response if isinstance(item, dict)]
+                            all_json_blocks.extend(dict_items)
+                            blocks_per_topic.append((topic_info, len(dict_items)))
+                        else:
+                            text = r.get("response_text") or ""
+                            blocks = self._extract_json_blocks_from_text(text)
+                            if blocks:
+                                all_json_blocks.extend(blocks)
+                                blocks_per_topic.append((topic_info, len(blocks)))
+                            else:
+                                blocks_per_topic.append((topic_info, 0))
+                    if all_json_blocks:
+                        self.logger.info(f"Recovered {len(all_json_blocks)} JSON block(s) from raw_responses")
+            except Exception as e:
+                self.logger.debug(f"Fallback from raw_responses failed: {e}")
         
         if not all_json_blocks:
             self.logger.error("No JSON blocks extracted from any response")
@@ -1503,17 +1629,23 @@ class MultiPartPostProcessor:
             self.logger.info(f"Extracted {len(flat_rows)} points from Document Processing")
         except Exception as e:
             self.logger.error(f"Failed to flatten JSON to points: {e}")
-            # Try to use json_data directly if it's already a list
-            if isinstance(json_data, list):
-                flat_rows = json_data
-            elif isinstance(json_data, dict) and "content" in json_data:
-                # Try to flatten content
+            flat_rows = []
+        
+        # Fallback: if combined structure yielded no points, flatten each block individually
+        if not flat_rows and all_json_blocks:
+            self.logger.info("No points from combined structure; flattening each block individually...")
+            for idx, block in enumerate(all_json_blocks):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("content") is None and block.get("chapter") is None:
+                    continue
                 try:
-                    flat_rows = converter._flatten_to_points(json_data)
-                except:
-                    flat_rows = []
-            else:
-                flat_rows = []
+                    block_rows = converter._flatten_to_points(block)
+                    if block_rows:
+                        flat_rows.extend(block_rows)
+                        self.logger.info(f"  Block {idx + 1}: extracted {len(block_rows)} points (total: {len(flat_rows)})")
+                except Exception as e:
+                    self.logger.debug(f"  Block {idx + 1}: flatten failed: {e}")
         
         if not flat_rows:
             self.logger.warning("No points extracted from Document Processing output")
@@ -1674,6 +1806,7 @@ class MultiPartPostProcessor:
         self.logger.info("=" * 80)
         
         # Final update: Add processed points to existing file (incremental write)
+        next_free_index = start_point_index + len(flat_rows)
         try:
             # Read current file
             with open(output_path, "r", encoding="utf-8") as f:
@@ -1682,9 +1815,11 @@ class MultiPartPostProcessor:
             # Update with processed points
             current_data["points"] = flat_rows
             current_data["metadata"]["total_points"] = len(flat_rows)
-            current_data["metadata"]["next_free_index"] = current_index
+            current_data["metadata"]["next_free_index"] = next_free_index
             current_data["metadata"]["processed_at"] = datetime.now().isoformat()
-            current_data["metadata"]["processing_status"] = "completed"
+            # Align with ideal output: remove transient fields
+            for key in ("processing_status", "topics_processed", "total_topics"):
+                current_data["metadata"].pop(key, None)
             
             # Remove raw_responses from final file (no longer needed after conversion)
             if "raw_responses" in current_data:

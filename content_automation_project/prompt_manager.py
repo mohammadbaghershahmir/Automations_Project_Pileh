@@ -5,9 +5,20 @@ Manages predefined prompts and custom prompt handling
 
 import json
 import os
+import sys
 import logging
 from typing import Dict, List, Optional
 from pathlib import Path
+
+
+def _get_default_prompts_path() -> str:
+    """Return path to prompts.json (works when run normally or as PyInstaller frozen exe)."""
+    if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+        # Running as PyInstaller onefile/bundle: prompts.json is next to exe in bundle
+        return os.path.join(sys._MEIPASS, "prompts.json")
+    # Normal run: project root = parent of this module's directory
+    project_root = Path(__file__).resolve().parents[1]
+    return str(project_root / "prompts.json")
 
 
 class PromptManager:
@@ -21,12 +32,10 @@ class PromptManager:
             prompts_file: Optional path to JSON file containing predefined prompts
         """
         self.logger = logging.getLogger(__name__)
-        # Default to project‑root prompts.json (one level above this module)
         if prompts_file is not None:
             self.prompts_file = prompts_file
         else:
-            project_root = Path(__file__).resolve().parents[1]
-            self.prompts_file = str(project_root / "prompts.json")
+            self.prompts_file = _get_default_prompts_path()
         self.predefined_prompts: Dict[str, str] = {}
         self.load_predefined_prompts()
     
