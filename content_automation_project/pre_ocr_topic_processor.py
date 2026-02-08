@@ -132,12 +132,12 @@ Please analyze the PDF content and extract the topics structure. Return a JSON f
         
         _progress(f"Received response ({len(response_text)} characters)")
         
-        # Extract JSON from response
+        # Extract JSON from response (using Google/Gemini method - original method)
         _progress("Extracting JSON from response...")
-        topics_data = self.extract_json_from_response(response_text)
+        topics_data = self.extract_json_from_response_google(response_text)
         if not topics_data:
             _progress("Trying to extract JSON from text using fallback...")
-            topics_data = self.load_txt_as_json_from_text(response_text)
+            topics_data = self.load_txt_as_json_from_text_google(response_text)
         
         if not topics_data:
             self.logger.error("Failed to extract JSON from model response")

@@ -85,7 +85,7 @@ class APIConfig:
     # gemini-1.5-pro: up to 8192 tokens
     # gemini-1.5-flash: up to 8192 tokens
     DEFAULT_MAX_TOKENS = 16384  # Maximum for gemini-2.5 models
-    DEFAULT_DEEPSEEK_MAX_TOKENS = 8192  # Maximum for DeepSeek API (hard limit)
+    DEFAULT_DEEPSEEK_MAX_TOKENS = 4096  # Maximum for DeepSeek API (hard limit)
 
 
 class APIKeyManager:

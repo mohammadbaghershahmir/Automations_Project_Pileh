@@ -230,12 +230,18 @@ class StageEProcessor(BaseStageProcessor):
                     
                     # Try to extract JSON directly from response
                     _progress("Extracting JSON from model response...")
+                    self.logger.info(f"Response text length: {len(response_text)} chars")
+                    self.logger.debug(f"Response text preview: {response_text[:200]}")
                     filepic_data = self.extract_json_from_response(response_text)
+                    self.logger.info(f"Extracted filepic_data type: {type(filepic_data)}, value: {filepic_data}")
                     if not filepic_data:
+                        self.logger.warning("First extraction failed, trying load_txt_as_json_from_text...")
                         filepic_data = self.load_txt_as_json_from_text(response_text)
+                        self.logger.info(f"Second extraction result type: {type(filepic_data)}, value: {filepic_data}")
                     
                     if filepic_data:
                         _progress(f"Successfully extracted JSON (attempt {attempt})")
+                        self.logger.info(f"Successfully extracted JSON: {type(filepic_data)} with keys: {filepic_data.keys() if isinstance(filepic_data, dict) else 'N/A'}")
                         break
                     else:
                         _progress(f"JSON extraction failed (attempt {attempt}), retrying...")
@@ -280,19 +286,27 @@ class StageEProcessor(BaseStageProcessor):
                 self.logger.error(f"Failed to write raw response for subchapter '{persian_subchapter_name}' to file: {e}", exc_info=True)
             
             # Handle different JSON structures
+            self.logger.info(f"Processing filepic_data for subchapter '{persian_subchapter_name}': type={type(filepic_data)}")
             if isinstance(filepic_data, list):
                 subchapter_filepic_records = filepic_data
+                self.logger.info(f"filepic_data is a list with {len(subchapter_filepic_records)} items")
             elif isinstance(filepic_data, dict):
+                self.logger.info(f"filepic_data is a dict with keys: {list(filepic_data.keys())}")
                 # Try common keys: data, rows, payload
                 subchapter_filepic_records = filepic_data.get("data", filepic_data.get("rows", filepic_data.get("payload", [])))
+                self.logger.info(f"Extracted records from dict: {len(subchapter_filepic_records) if isinstance(subchapter_filepic_records, list) else 'not a list'} items")
                 if not subchapter_filepic_records:
                     # Try to extract from nested structure - get first list value
-                    for value in filepic_data.values():
+                    self.logger.info("No records found in common keys, trying to find first list value...")
+                    for key, value in filepic_data.items():
+                        self.logger.debug(f"  Checking key '{key}': type={type(value)}")
                         if isinstance(value, list):
                             subchapter_filepic_records = value
+                            self.logger.info(f"  Found list in key '{key}' with {len(value)} items")
                             break
                     if not subchapter_filepic_records:
                         subchapter_filepic_records = []
+                        self.logger.warning("No list found in any dict value")
             else:
                 self.logger.warning(f"Unexpected JSON structure from model for subchapter '{persian_subchapter_name}': {type(filepic_data)}")
                 subchapter_filepic_records = []

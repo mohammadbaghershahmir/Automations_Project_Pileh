@@ -604,7 +604,7 @@ class ThirdStageConverter:
             def clean_label(text: str) -> str:
                 if not isinstance(text, str):
                     return ""
-                prefixes = ["فصل:", "زیرفصل:", "مبحث:", "عنوان:", "زیرعنوان:"]
+                prefixes = ["فصل:", "زیرفصل:", "مبحث:", "عنوان:", "زیرعنوان:", "تاپیک:", "Topic:"]
                 for pref in prefixes:
                     if text.startswith(pref):
                         return text[len(pref):].strip()

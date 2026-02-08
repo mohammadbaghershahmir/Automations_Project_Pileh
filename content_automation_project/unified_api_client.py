@@ -95,7 +95,14 @@ class UnifiedAPIClient:
                               api_key: Optional[str] = None) -> bool:
         """Initialize text client for current stage"""
         client = self.get_client_for_stage()
-        return client.initialize_text_client(model_name, api_key)
+        stage = self._current_stage or "unknown"
+        self.logger.info(f"[UnifiedAPIClient] Initializing {model_name} for stage: {stage}")
+        result = client.initialize_text_client(model_name, api_key)
+        if result:
+            self.logger.info(f"[UnifiedAPIClient] Successfully initialized {model_name} for stage: {stage}")
+        else:
+            self.logger.error(f"[UnifiedAPIClient] Failed to initialize {model_name} for stage: {stage}")
+        return result
     
     def process_text(self,
                     text: str,
@@ -106,11 +113,15 @@ class UnifiedAPIClient:
                     api_key: Optional[str] = None) -> Optional[str]:
         """Process text using appropriate API for current stage"""
         client = self.get_client_for_stage()
+        stage = self._current_stage or "unknown"
         # Cap max_tokens for DeepSeek API
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient):
             # This is DeepSeek client, cap max_tokens
             max_tokens = min(max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
+            self.logger.info(f"[UnifiedAPIClient] Processing text with DeepSeek model: {model_name} (stage: {stage})")
+        else:
+            self.logger.info(f"[UnifiedAPIClient] Processing text with Google model: {model_name} (stage: {stage})")
         return client.process_text(text, system_prompt, model_name, temperature, max_tokens, api_key)
     
     def process_pdf_with_prompt(self,

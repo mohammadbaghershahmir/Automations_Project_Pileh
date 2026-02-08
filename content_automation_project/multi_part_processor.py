@@ -95,11 +95,17 @@ class MultiPartProcessor:
         # This is for Document Processing, which uses DeepSeek API
         if hasattr(self.api_client, 'set_stage'):
             self.api_client.set_stage("document_processing")
+            self.logger.info(f"[Document Processing] Stage set to: document_processing")
+        
+        # Log model name for Document Processing
+        self.logger.info(f"[Document Processing] Using model: {model_name}")
         
         # Initialize model
         if not self.api_client.initialize_text_client(model_name):
-            self.logger.error("Failed to initialize text client")
+            self.logger.error(f"[Document Processing] Failed to initialize text client with model: {model_name}")
             return None
+        
+        self.logger.info(f"[Document Processing] Model {model_name} initialized successfully")
 
         # Extract text from PDF instead of uploading file
         if progress_callback:
@@ -122,7 +128,9 @@ class MultiPartProcessor:
 
         # Process extracted text
         if progress_callback:
-            progress_callback("Processing PDF text with model...")
+            progress_callback(f"Processing PDF text with model {model_name}...")
+        
+        self.logger.info(f"[Document Processing] Starting text processing with model: {model_name}")
         
         # Use base prompt with extracted text
         full_response = self._process_part_with_text(
@@ -149,13 +157,13 @@ class MultiPartProcessor:
         if progress_callback:
             progress_callback("Extracting JSON from response...")
         
-        # First try: extract from response text
-        json_data = self.base_processor.extract_json_from_response(full_response)
+        # First try: extract from response text (using Google/Gemini method - original method)
+        json_data = self.base_processor.extract_json_from_response_google(full_response)
         if not json_data:
             if progress_callback:
                 progress_callback("Trying to extract JSON from text using fallback...")
             # Second try: extract from text using converter
-            json_data = self.base_processor.load_txt_as_json_from_text(full_response)
+            json_data = self.base_processor.load_txt_as_json_from_text_google(full_response)
         if not json_data:
             if progress_callback:
                 progress_callback("Trying to load JSON from TXT file...")
@@ -358,7 +366,7 @@ class MultiPartProcessor:
                 # Default to maximum for safety
                 model_max_tokens = 32768
             
-            self.logger.info(f"Model: {model_name}, Max tokens for model: {model_max_tokens}")
+            self.logger.info(f"[Document Processing] Model: {model_name}, Max tokens for model: {model_max_tokens}")
             
             generation_config = genai.types.GenerationConfig(
                 temperature=temperature,
@@ -367,6 +375,8 @@ class MultiPartProcessor:
 
             # Combine prompt with extracted text
             full_content = f"{prompt}\n\n--- PDF Content ---\n{extracted_text}"
+            
+            self.logger.info(f"[Document Processing] Sending request to model: {model_name} (pages {start_page}-{end_page})")
             
             response = self.api_client.text_client.generate_content(
                 full_content,
@@ -583,11 +593,11 @@ class MultiPartProcessor:
                 
                 self.logger.info(f"Received response for subchapter '{subchapter_name}' ({len(response_text)} characters)")
                 
-                # Extract JSON from response immediately
+                # Extract JSON from response immediately (using Google/Gemini method - original method)
                 try:
-                    subchapter_json = self.base_processor.extract_json_from_response(response_text)
+                    subchapter_json = self.base_processor.extract_json_from_response_google(response_text)
                     if not subchapter_json:
-                        subchapter_json = self.base_processor.load_txt_as_json_from_text(response_text)
+                        subchapter_json = self.base_processor.load_txt_as_json_from_text_google(response_text)
                     if not subchapter_json:
                         subchapter_json = self._extract_json_from_persian_text(response_text)
                     

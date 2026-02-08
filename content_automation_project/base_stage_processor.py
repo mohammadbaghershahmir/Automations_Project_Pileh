@@ -6,6 +6,7 @@ Provides common functionality for JSON handling, file operations, and PointId ma
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 from third_stage_converter import ThirdStageConverter
@@ -26,10 +27,129 @@ class BaseStageProcessor:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.converter = ThirdStageConverter()
     
+    def extract_json_blocks_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Extract JSON blocks from a single text response (same as document processing).
+        Handles markdown code blocks, escaped JSON strings, and direct JSON.
+        This is the same conversion method used in document processing.
+        
+        Args:
+            text: Raw response text from model
+            
+        Returns:
+            List of JSON objects extracted from the text
+        """
+        if not text:
+            return []
+        
+        json_blocks = []
+        
+        # Strategy 1: Try to extract from markdown code blocks
+        # First try: ```json ... ```
+        json_block_patterns = [
+            r'```json\s*(.*?)\s*```',  # ```json ... ```
+            r'```\s*(.*?)\s*```',       # ``` ... ```
+        ]
+        
+        matches = []
+        for pattern in json_block_patterns:
+            found_matches = re.findall(pattern, text, re.DOTALL)
+            if found_matches:
+                matches = found_matches
+                self.logger.info(f"Found {len(matches)} JSON block(s) using pattern: {pattern}")
+                self.logger.debug(f"First match content: {repr(matches[0][:200]) if matches else 'N/A'}")
+                break
+        
+        # Strategy 2: If no code blocks found, try to extract JSON directly from text
+        if not matches:
+            # Try to find JSON object/array in the text
+            start_obj = text.find('{')
+            start_arr = text.find('[')
+            if start_obj != -1 or start_arr != -1:
+                start = start_obj if (start_obj != -1 and (start_arr == -1 or start_obj < start_arr)) else start_arr
+                # Find matching closing bracket
+                if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+                    end = text.rfind('}')
+                    if end > start:
+                        candidate = text[start:end + 1]
+                        matches = [candidate]
+                        self.logger.debug("Found JSON object in text (no code blocks)")
+                elif start_arr != -1:
+                    end = text.rfind(']')
+                    if end > start:
+                        candidate = text[start:end + 1]
+                        matches = [candidate]
+                        self.logger.debug("Found JSON array in text (no code blocks)")
+        
+        # Strategy 3: If text is an escaped JSON string (like in raw_responses), try to unescape it
+        if not matches:
+            try:
+                # Check if it's a JSON-encoded string
+                if text.startswith('"') and text.endswith('"'):
+                    unescaped = json.loads(text)
+                    if isinstance(unescaped, str):
+                        # Recursively try to extract from unescaped string
+                        return self.extract_json_blocks_from_text(unescaped)
+            except:
+                pass
+        
+        # Parse each match
+        for match in matches:
+            json_str = match.strip()
+            if not json_str:
+                continue
+            
+            # Try to parse JSON
+            try:
+                json_obj = json.loads(json_str)
+                json_blocks.append(json_obj)
+                self.logger.info(f"Successfully parsed JSON block (type: {type(json_obj).__name__})")
+                if isinstance(json_obj, dict):
+                    self.logger.info(f"  JSON object keys: {list(json_obj.keys())}")
+                elif isinstance(json_obj, list):
+                    self.logger.info(f"  JSON array length: {len(json_obj)}")
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"JSON parse failed: {e}. Trying fallback extraction...")
+                # Try fallback extraction - find largest valid JSON object/array
+                start_obj = json_str.find("{")
+                start_arr = json_str.find("[")
+                
+                if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+                    end_obj = json_str.rfind("}")
+                    if end_obj > start_obj:
+                        try:
+                            candidate = json_str[start_obj:end_obj + 1]
+                            json_obj = json.loads(candidate)
+                            json_blocks.append(json_obj)
+                            self.logger.debug("Successfully parsed JSON using fallback extraction (object)")
+                        except json.JSONDecodeError:
+                            self.logger.warning(f"Fallback extraction failed for JSON object")
+                elif start_arr != -1:
+                    end_arr = json_str.rfind("]")
+                    if end_arr > start_arr:
+                        try:
+                            candidate = json_str[start_arr:end_arr + 1]
+                            json_obj = json.loads(candidate)
+                            json_blocks.append(json_obj)
+                            self.logger.debug("Successfully parsed JSON using fallback extraction (array)")
+                        except json.JSONDecodeError:
+                            self.logger.warning(f"Fallback extraction failed for JSON array")
+        
+        if json_blocks:
+            self.logger.info(f"Extracted {len(json_blocks)} JSON block(s) from response")
+        else:
+            self.logger.warning("No JSON blocks found in response")
+        
+        return json_blocks
+    
     def extract_json_from_response(self, response_text: str) -> Optional[Dict | List]:
         """
-        Extract JSON from model response.
-        Uses ThirdStageConverter for robust extraction.
+        Extract JSON from model response (for DeepSeek stages E-Y).
+        Uses the same conversion method as document processing (extract_json_blocks_from_text).
+        Returns first JSON block if multiple blocks found, or None if no blocks found.
+        
+        This method is for DeepSeek stages (E, F, J, H, V, M, L, X, Y, Z).
+        For Google/Gemini stages (pre_ocr_topic, ocr_extraction), use extract_json_from_response_google().
         
         Args:
             response_text: Raw response text from model
@@ -41,10 +161,46 @@ class BaseStageProcessor:
             self.logger.warning("Empty response text provided")
             return None
         
+        # Use the same extraction method as document processing (ONLY this method, no fallback)
+        json_blocks = self.extract_json_blocks_from_text(response_text)
+        
+        if json_blocks:
+            # Return first block (or combine if multiple blocks)
+            if len(json_blocks) == 1:
+                self.logger.info("Successfully extracted JSON from response using document processing method (1 block)")
+                return json_blocks[0]
+            else:
+                # Multiple blocks - return first block
+                self.logger.info(f"Extracted {len(json_blocks)} JSON blocks from response using document processing method, returning first block")
+                return json_blocks[0]
+        
+        # No JSON blocks found - return None (no fallback to old method)
+        self.logger.warning("Failed to extract JSON from response using document processing method")
+        return None
+    
+    def extract_json_from_response_google(self, response_text: str) -> Optional[Dict | List]:
+        """
+        Extract JSON from Google/Gemini model response (original method).
+        Uses ThirdStageConverter for robust extraction (original method).
+        
+        This method is for Google/Gemini stages (pre_ocr_topic, ocr_extraction).
+        DeepSeek stages (E-Y) should use extract_json_from_response() instead.
+        
+        Args:
+            response_text: Raw response text from model
+            
+        Returns:
+            Parsed JSON dictionary, list, or None on error
+        """
+        if not response_text or not response_text.strip():
+            self.logger.warning("Empty response text provided")
+            return None
+        
+        # Use original ThirdStageConverter method (for Google/Gemini)
         try:
             json_obj = self.converter._extract_json_from_response(response_text)
             if json_obj is not None:
-                self.logger.info("Successfully extracted JSON from response")
+                self.logger.info("Successfully extracted JSON from response using Google/Gemini method")
                 return json_obj
             else:
                 self.logger.warning("Failed to extract JSON from response")
@@ -279,8 +435,11 @@ class BaseStageProcessor:
     
     def load_txt_as_json_from_text(self, text: str) -> Optional[Dict | List]:
         """
-        Extract JSON directly from text (without file).
-        Uses ThirdStageConverter for robust extraction.
+        Extract JSON directly from text (without file) - for DeepSeek stages E-Y.
+        Uses the same conversion method as document processing (extract_json_blocks_from_text).
+        
+        This method is for DeepSeek stages (E, F, J, H, V, M, L, X, Y, Z).
+        For Google/Gemini stages (pre_ocr_topic, ocr_extraction), use load_txt_as_json_from_text_google().
         
         Args:
             text: Text content containing JSON
@@ -291,10 +450,45 @@ class BaseStageProcessor:
         if not text or not text.strip():
             return None
         
+        # Use the same extraction method as document processing (ONLY this method, no fallback)
+        json_blocks = self.extract_json_blocks_from_text(text)
+        
+        if json_blocks:
+            # Return first block (or combine if multiple blocks)
+            if len(json_blocks) == 1:
+                self.logger.info(f"Successfully extracted JSON from text using document processing method ({len(text)} chars, 1 block)")
+                return json_blocks[0]
+            else:
+                # Multiple blocks - return first block
+                self.logger.info(f"Extracted {len(json_blocks)} JSON blocks from text using document processing method, returning first block")
+                return json_blocks[0]
+        
+        # No JSON blocks found - return None (no fallback to old method)
+        self.logger.warning(f"Failed to extract JSON from text using document processing method ({len(text)} chars)")
+        return None
+    
+    def load_txt_as_json_from_text_google(self, text: str) -> Optional[Dict | List]:
+        """
+        Extract JSON directly from text (without file) - Google/Gemini method.
+        Uses ThirdStageConverter for robust extraction (original method).
+        
+        This method is for Google/Gemini stages (pre_ocr_topic, ocr_extraction).
+        DeepSeek stages (E-Y) should use load_txt_as_json_from_text() instead.
+        
+        Args:
+            text: Text content containing JSON
+            
+        Returns:
+            Parsed JSON dictionary, list, or None on error
+        """
+        if not text or not text.strip():
+            return None
+        
+        # Use original ThirdStageConverter method (for Google/Gemini)
         try:
             json_obj = self.converter._extract_json_from_response(text)
             if json_obj:
-                self.logger.info(f"Successfully extracted JSON from text ({len(text)} chars)")
+                self.logger.info(f"Successfully extracted JSON from text using Google/Gemini method ({len(text)} chars)")
             return json_obj
         except Exception as e:
             self.logger.error(f"Error extracting JSON from text: {e}")

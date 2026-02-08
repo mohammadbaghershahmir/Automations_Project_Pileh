@@ -53,13 +53,45 @@ class MultiPartPostProcessor:
         pointids = []
         try:
             self.logger.info(f"Reading PointId mapping file: {txt_path}")
-            with open(txt_path, 'r', encoding='utf-8') as f:
+            if not os.path.exists(txt_path):
+                self.logger.error(f"PointId mapping file does not exist: {txt_path}")
+                return []
+            
+            # Try different encodings
+            encodings_to_try = ['utf-8', 'utf-8-sig', 'utf-16', 'latin-1', 'cp1256']
+            file_content = None
+            used_encoding = None
+            
+            for encoding in encodings_to_try:
+                try:
+                    with open(txt_path, 'r', encoding=encoding) as f:
+                        file_content = f.read()
+                        used_encoding = encoding
+                        self.logger.info(f"Successfully read file with encoding: {encoding}")
+                        break
+                except UnicodeDecodeError:
+                    continue
+            
+            if file_content is None:
+                self.logger.error(f"Failed to read file with any encoding: {txt_path}")
+                return []
+            
+            self.logger.info(f"File size: {len(file_content)} bytes, Encoding: {used_encoding}")
+            self.logger.info(f"File content preview (first 500 chars): {repr(file_content[:500])}")
+            
+            with open(txt_path, 'r', encoding=used_encoding) as f:
+                total_lines = 0
                 for line_num, line in enumerate(f, 1):
+                    total_lines += 1
                     original_line = line
                     line = line.strip()
+                    
+                    # Log every line for debugging
+                    self.logger.info(f"Line {line_num}: Raw content = {repr(original_line)}, Stripped = {repr(line)}, Length = {len(line)}")
+                    
                     # Skip empty lines and comments
                     if not line or line.startswith('#'):
-                        self.logger.debug(f"Line {line_num}: Skipped (empty or comment): '{original_line.rstrip()}'")
+                        self.logger.info(f"Line {line_num}: Skipped (empty or comment): '{original_line.rstrip()}'")
                         continue
                     
                     # Try to extract numbers from the line
@@ -70,6 +102,7 @@ class MultiPartPostProcessor:
                     else:
                         # Extract all numbers from the line using regex
                         numbers = re.findall(r'\d+', line)
+                        self.logger.info(f"Line {line_num}: Found numbers using regex: {numbers}")
                         if numbers:
                             # Use the first number found
                             first_number = numbers[0]
@@ -89,11 +122,14 @@ class MultiPartPostProcessor:
                                 pointids.append(truncated)
                                 self.logger.warning(f"Line {line_num}: Extracted number '{first_number}' (length: {len(first_number)}), truncated to 10 digits: {truncated}")
                         else:
-                            self.logger.warning(f"Line {line_num}: No numbers found in line: '{line}'")
+                            self.logger.warning(f"Line {line_num}: No numbers found in line: '{line}' (repr: {repr(line)})")
             
+            self.logger.info(f"Total lines read: {total_lines}")
             self.logger.info(f"Loaded {len(pointids)} PointId mappings from {txt_path}")
             if pointids:
                 self.logger.info(f"PointId list: {pointids}")
+            else:
+                self.logger.warning(f"No PointIds were extracted from file {txt_path}. Please check the file format.")
             return pointids
         except FileNotFoundError:
             self.logger.error(f"PointId mapping file not found: {txt_path}")
@@ -967,12 +1003,27 @@ class MultiPartPostProcessor:
         
         # Load PointId mapping if provided
         chapter_pointids = []
+        self.logger.info(f"PointId mapping file parameter: {pointid_mapping_txt}")
+        self.logger.info(f"PointId mapping file exists check: {pointid_mapping_txt and os.path.exists(pointid_mapping_txt) if pointid_mapping_txt else False}")
+        if pointid_mapping_txt:
+            self.logger.info(f"PointId mapping file path: '{pointid_mapping_txt}'")
+            self.logger.info(f"PointId mapping file absolute path: '{os.path.abspath(pointid_mapping_txt) if pointid_mapping_txt else None}'")
+            self.logger.info(f"PointId mapping file exists: {os.path.exists(pointid_mapping_txt) if pointid_mapping_txt else False}")
+        
         if pointid_mapping_txt and os.path.exists(pointid_mapping_txt):
+            self.logger.info(f"Loading PointId mapping from file: {pointid_mapping_txt}")
             chapter_pointids = self.load_chapter_pointid_mapping(pointid_mapping_txt)
             if chapter_pointids:
-                self.logger.info(f"Using PointId mapping from {pointid_mapping_txt}: {len(chapter_pointids)} chapters")
+                self.logger.info(f"Using PointId mapping from {pointid_mapping_txt}: {len(chapter_pointids)} entries")
+                self.logger.info(f"PointId list from file: {chapter_pointids}")
             else:
                 self.logger.warning(f"PointId mapping file is empty or invalid, falling back to start_point_index")
+        else:
+            if pointid_mapping_txt:
+                self.logger.warning(f"PointId mapping file not found: {pointid_mapping_txt}")
+                self.logger.warning(f"Absolute path checked: {os.path.abspath(pointid_mapping_txt)}")
+            else:
+                self.logger.info("No PointId mapping file provided")
         
         # Load OCR Extraction JSON
         self.logger.info(f"Loading OCR Extraction JSON: {ocr_json_path}")
@@ -999,6 +1050,12 @@ class MultiPartPostProcessor:
         # Build chapter info with PointId mappings
         chapters_info = []  # List of dicts: {chapter_name, chapter_index, start_pointid}
         
+        self.logger.info("=" * 80)
+        self.logger.info("BUILDING CHAPTER INFO WITH POINTID MAPPINGS")
+        self.logger.info("=" * 80)
+        self.logger.info(f"Number of chapters in OCR JSON: {len(chapters)}")
+        self.logger.info(f"Number of PointIds from TXT file: {len(chapter_pointids)}")
+        
         # Get the last PointId from file to use as base for auto-increment
         last_pointid_from_file = None
         if chapter_pointids:
@@ -1013,21 +1070,24 @@ class MultiPartPostProcessor:
             if not chapter_name:
                 chapter_name = f"Chapter_{chapter_idx + 1}"
             
-            # Get PointId for this chapter
+            # Get PointId for this chapter - DIRECTLY use index from TXT file
+            # Each line in TXT file corresponds to one chapter in order
             if chapter_idx < len(chapter_pointids):
-                # Use PointId directly from TXT file
+                # Use PointId directly from TXT file (one-to-one mapping by index)
                 start_pointid_str = chapter_pointids[chapter_idx]
-                self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Using PointId from mapping = {start_pointid_str}")
+                self.logger.info(f"Chapter {chapter_idx + 1} ('{chapter_name}'): Using PointId from TXT file (line {chapter_idx + 1}) = {start_pointid_str}")
                 
                 # Validate PointId format (must be 10 digits)
                 if not (len(start_pointid_str) == 10 and start_pointid_str.isdigit()):
-                    self.logger.error(f"Invalid PointId format for chapter {chapter_idx + 1}: {start_pointid_str}")
+                    self.logger.error(f"Invalid PointId format for chapter {chapter_idx + 1}: {start_pointid_str} (length: {len(start_pointid_str)}, isdigit: {start_pointid_str.isdigit()})")
                     # Fallback: construct from book_id/chapter_id/start_point_index
                     if book_id and chapter_id:
                         start_pointid_str = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
                     else:
                         start_pointid_str = f"001001{start_point_index:04d}"
                     self.logger.warning(f"  Using fallback PointId: {start_pointid_str}")
+                else:
+                    self.logger.info(f"  ✓ Valid PointId format: {start_pointid_str}")
             elif last_pointid_from_file:
                 # Auto-increment from last PointId in file
                 # Use the whole number as base and increment it
@@ -1408,7 +1468,24 @@ class MultiPartPostProcessor:
         chapter_mapping = {normalize_name(ch_info["chapter_name"]): ch_info for ch_info in chapters_info}
         
         # Track points count for each subchapter
+        # Also track chapter index based on order in OCR JSON
         points_per_subchapter_list = []  # List of (subchapter_info, num_points) tuples
+        subchapter_to_chapter_index = {}  # Map subchapter to chapter index from OCR JSON
+        
+        # Build mapping: subchapter -> chapter_index based on OCR JSON order
+        current_chapter_idx_for_mapping = 0
+        for chapter_idx, chapter in enumerate(chapters):
+            if not isinstance(chapter, dict):
+                continue
+            subchapters = chapter.get("subchapters", [])
+            for subchapter in subchapters:
+                if not isinstance(subchapter, dict):
+                    continue
+                subchapter_name_from_ocr = subchapter.get("subchapter", "")
+                if subchapter_name_from_ocr:
+                    subchapter_to_chapter_index[subchapter_name_from_ocr] = chapter_idx
+        
+        self.logger.info(f"Built subchapter to chapter index mapping: {subchapter_to_chapter_index}")
         
         for subchapter_name, subchapter_data in blocks_by_subchapter.items():
             subchapter_blocks = subchapter_data["blocks"]
@@ -1418,10 +1495,23 @@ class MultiPartPostProcessor:
             first_topic_info = topics_info[0] if topics_info else {}
             chapter_name_for_subchapter = first_topic_info.get("chapter", "")
             
-            # If chapter name is empty or doesn't match any chapter in chapters_info, try to find it
-            if not chapter_name_for_subchapter or normalize_name(chapter_name_for_subchapter) not in chapter_mapping:
-                # Try to find chapter by matching subchapter order with chapter order
-                # This is a fallback if chapter name is missing or doesn't match
+            # Try to find chapter index from OCR JSON mapping first (most reliable)
+            chapter_idx_from_ocr = subchapter_to_chapter_index.get(subchapter_name)
+            if chapter_idx_from_ocr is not None and chapter_idx_from_ocr < len(chapters_info):
+                # Use chapter from OCR JSON based on index
+                chapter_info_from_ocr = chapters_info[chapter_idx_from_ocr]
+                chapter_name_for_subchapter = chapter_info_from_ocr["chapter_name"]
+                self.logger.info(
+                    f"Subchapter '{subchapter_name}': Found chapter index {chapter_idx_from_ocr} from OCR JSON, "
+                    f"using chapter '{chapter_name_for_subchapter}' with PointId {chapter_info_from_ocr['start_pointid']}"
+                )
+            elif chapter_name_for_subchapter and normalize_name(chapter_name_for_subchapter) in chapter_mapping:
+                # Chapter name matches, use it
+                self.logger.info(
+                    f"Subchapter '{subchapter_name}': Chapter name '{chapter_name_for_subchapter}' found in mapping"
+                )
+            else:
+                # Fallback: try to find chapter by matching subchapter order with chapter order
                 if chapters_info:
                     # Use the chapter that contains this subchapter based on order
                     # This is not perfect but better than using chapter_name_from_input
@@ -1542,6 +1632,15 @@ class MultiPartPostProcessor:
         # Note: normalize_name is already defined above
         chapter_mapping = {normalize_name(ch_info["chapter_name"]): ch_info for ch_info in chapters_info}
         
+        # Log chapter mapping for debugging
+        self.logger.info("=" * 80)
+        self.logger.info("CHAPTER MAPPING FROM TXT FILE")
+        self.logger.info("=" * 80)
+        for ch_info in chapters_info:
+            normalized = normalize_name(ch_info["chapter_name"])
+            self.logger.info(f"Chapter '{ch_info['chapter_name']}' (normalized: '{normalized}') -> PointId: {ch_info['start_pointid']}")
+        self.logger.info(f"Total chapters in mapping: {len(chapter_mapping)}")
+        
         # Also create index-based mapping as fallback
         chapter_index_mapping = {ch_info["chapter_index"]: ch_info for ch_info in chapters_info}
         
@@ -1552,63 +1651,73 @@ class MultiPartPostProcessor:
         current_chapter_idx = None
         point_idx = 0
         
+        # Track current_index for metadata (extracted from last PointId)
+        current_index = start_point_index  # Default fallback
+        
         # Assign subchapter info based on tracked points per subchapter (maintains order)
+        # Track which chapter index we're currently processing based on subchapter order
+        current_chapter_index_tracked = None
+        
         for subchapter_info_stored, num_points in points_per_subchapter_list:
             subchapter_name = subchapter_info_stored["subchapter"]
             chapter_name_from_stored = subchapter_info_stored["chapter"]
             
-            # Check if we moved to a new chapter
-            normalized_stored = normalize_name(chapter_name_from_stored)
-            if current_chapter_name != chapter_name_from_stored:
-                # Try to find matching chapter info by normalized name
-                matching_chapter_info = None
-                if normalized_stored in chapter_mapping:
-                    matching_chapter_info = chapter_mapping[normalized_stored]
-                    self.logger.info(
-                        f"Switched to chapter '{chapter_name_from_stored}' (normalized: '{normalized_stored}'): "
-                        f"Using PointId starting from {matching_chapter_info['start_pointid']}"
+            # Get chapter index from OCR JSON mapping - use it directly to get pointid from txt file
+            chapter_idx_from_ocr = subchapter_to_chapter_index.get(subchapter_name)
+            matching_chapter_info = None
+            
+            # Directly use chapter index from OCR JSON to get pointid from txt file (simple approach)
+            if chapter_idx_from_ocr is not None and chapter_idx_from_ocr < len(chapters_info):
+                # Use chapter from OCR JSON based on index - directly from txt file
+                matching_chapter_info = chapters_info[chapter_idx_from_ocr]
+                self.logger.info(
+                    f"Subchapter '{subchapter_name}': Using chapter index {chapter_idx_from_ocr} from OCR JSON, "
+                    f"PointId from txt file (line {chapter_idx_from_ocr + 1}) = {matching_chapter_info['start_pointid']}"
+                )
+            else:
+                # Fallback: if chapter index not found, use first available or default
+                if chapters_info:
+                    matching_chapter_info = chapters_info[0]
+                    self.logger.warning(
+                        f"Subchapter '{subchapter_name}': Chapter index not found, using first chapter PointId: {matching_chapter_info['start_pointid']}"
                     )
                 else:
-                    # Try to find by matching any chapter name (case-insensitive, whitespace-insensitive)
-                    for ch_info in chapters_info:
-                        if normalize_name(ch_info["chapter_name"]) == normalized_stored:
-                            matching_chapter_info = ch_info
-                            self.logger.info(
-                                f"Switched to chapter '{chapter_name_from_stored}' (found by fuzzy match): "
-                                f"Using PointId starting from {matching_chapter_info['start_pointid']}"
-                            )
-                            break
+                    # Ultimate fallback
+                    if book_id and chapter_id:
+                        fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
+                    else:
+                        fallback_pointid = f"001001{start_point_index:04d}"
+                    self.logger.warning(f"No chapter mapping available, using fallback: {fallback_pointid}")
+            
+            # Check if we moved to a new chapter
+            if current_chapter_name != chapter_name_from_stored or current_chapter_index_tracked != chapter_idx_from_ocr:
                 
                 if matching_chapter_info:
                     current_chapter_info = matching_chapter_info
                     current_chapter_name = chapter_name_from_stored
                     current_chapter_idx = current_chapter_info["chapter_index"]
+                    current_chapter_index_tracked = chapter_idx_from_ocr
                     # IMPORTANT: Convert PointId string to integer for incrementing
                     current_pointid_value = int(current_chapter_info["start_pointid"])
+                    # Extract index (last 4 digits) from PointId for current_index
+                    current_index = int(current_chapter_info["start_pointid"][6:10])
                     self.logger.info(
-                        f"  ✓ Reset PointId to {current_chapter_info['start_pointid']} for chapter '{chapter_name_from_stored}'"
+                        f"  ✓ Reset PointId to {current_chapter_info['start_pointid']} for chapter '{chapter_name_from_stored}' (index: {current_chapter_info['chapter_index']})"
+                    )
+                    self.logger.info(
+                        f"  ✓ Extracted index from PointId: {current_index}"
                     )
                 else:
-                    # Fallback: use first chapter info or default
-                    if chapters_info:
-                        current_chapter_info = chapters_info[0]
-                        current_chapter_name = current_chapter_info["chapter_name"]
-                        current_chapter_idx = current_chapter_info["chapter_index"]
-                        current_pointid_value = int(current_chapter_info["start_pointid"])
-                        self.logger.warning(
-                            f"Chapter '{chapter_name_from_stored}' not found in mapping, using first chapter settings. "
-                            f"Reset PointId to {current_chapter_info['start_pointid']}"
-                        )
+                    # Ultimate fallback
+                    if book_id and chapter_id:
+                        fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
                     else:
-                        # Ultimate fallback
-                        if book_id and chapter_id:
-                            fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
-                        else:
-                            fallback_pointid = f"001001{start_point_index:04d}"
-                        current_pointid_value = int(fallback_pointid)
-                        self.logger.warning(
-                            f"No chapter mapping available, using fallback: {fallback_pointid}"
-                        )
+                        fallback_pointid = f"001001{start_point_index:04d}"
+                    current_pointid_value = int(fallback_pointid)
+                    current_index = start_point_index
+                    self.logger.warning(
+                        f"No chapter mapping available, using fallback: {fallback_pointid}"
+                    )
             
             self.logger.info(f"  Assigning PointIds for chapter '{chapter_name_from_stored}' > subchapter '{subchapter_name}' ({num_points} points)...")
             self.logger.info(f"    Starting from PointId {current_pointid_value:010d}")
@@ -1639,8 +1748,11 @@ class MultiPartPostProcessor:
                 current_pointid_value += 1  # Simply increment the integer
             
             last_point_id_in_subchapter = f"{current_pointid_value - 1:010d}"
+            # Extract index from last PointId used (for metadata tracking) - last 4 digits
+            current_index = int(f"{current_pointid_value - 1:010d}"[6:10])
             self.logger.info(f"    ✓ Assigned {num_points} PointIds for subchapter '{subchapter_name}': {first_point_id_in_subchapter} to {last_point_id_in_subchapter}")
             self.logger.info(f"    Next PointId will be: {current_pointid_value:010d}")
+            self.logger.info(f"    Current index (extracted from last PointId): {current_index}")
             
             if point_idx >= len(flat_rows):
                 break
@@ -1670,6 +1782,14 @@ class MultiPartPostProcessor:
                         last_subchapter_info = points_per_subchapter_list[-1][0]
                         row["subchapter"] = last_subchapter_info.get("subchapter", "")
                 current_pointid_value += 1
+            
+            # Update current_index from last PointId used
+            current_index = int(f"{current_pointid_value - 1:010d}"[6:10])
+        
+        # Final update: Extract current_index from last PointId used
+        if current_pointid_value is not None:
+            current_index = int(f"{current_pointid_value - 1:010d}"[6:10])
+            self.logger.info(f"Final current_index (extracted from last PointId): {current_index}")
         
         self.logger.info("=" * 80)
         

@@ -129,7 +129,8 @@ class ContentAutomationGUI:
         # Initialize default settings variables (shared across all views)
         # These will be used as default values for all stages
         # Document Processing uses DeepSeek, so default to DeepSeek model
-        self.model_var = ctk.StringVar(value="deepseek-chat")
+        # Using DeepSeek-3.2 (Thinking Mode) as default
+        self.model_var = ctk.StringVar(value="deepseek-reasoner")
         self.output_folder_var = ctk.StringVar()
         
         # Setup UI
@@ -1893,7 +1894,7 @@ class ContentAutomationGUI:
                             return
                 
                 # Get selected model from Document Processing (DeepSeek API)
-                model_name = self.model_var.get() if hasattr(self, 'model_var') else "deepseek-chat"
+                model_name = self.model_var.get() if hasattr(self, 'model_var') else "deepseek-reasoner"
                 self.logger.info(f"[process_pdf] Using model: {model_name} (DeepSeek API)")
                 
                 # Get current API key info (for logging)
@@ -2839,7 +2840,7 @@ class ContentAutomationGUI:
         # Only create if doesn't exist
         # Document Processing uses DeepSeek API, so show DeepSeek models
         if not hasattr(self, 'second_stage_model_var'):
-            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "deepseek-chat")
+            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "deepseek-reasoner")
         if not hasattr(self, 'second_stage_model_combo'):
             self.second_stage_model_combo = ctk.CTkComboBox(
                 inner_model_frame,
@@ -2926,6 +2927,8 @@ class ContentAutomationGUI:
             )
             if filename:
                 self.document_processing_pointid_txt_var.set(filename)
+                # Automatically enable checkbox when file is selected
+                self.use_pointid_mapping_var.set(True)
                 # Extract and display pointids immediately
                 pointids = load_pointids_from_file(filename)
                 if pointids:
@@ -3066,7 +3069,7 @@ class ContentAutomationGUI:
         def cancel_pipeline():
             self.full_pipeline_cancel = True
             self.update_status("Cancellation requested. Current part will finish, then pipeline will stop.")
-            self.pipeline_progress_label.configure(
+            self.document_processing_progress_label.configure(
                 text="Cancellation requested...",
                 text_color="orange",
             )
@@ -3207,19 +3210,38 @@ class ContentAutomationGUI:
             # Set stage for Stage 2 (uses DeepSeek API)
             self.api_client.set_stage("stage_2")
             
-            # PointId handling
-            pointid_mapping_txt = None
+            # PointId handling - Load all pointids from txt file once
+            all_pointids_from_txt = []
+            pointid_mapping_txt_path = None
+            self.logger.info(f"PointId mapping checkbox state: {self.use_pointid_mapping_var.get()}")
             if self.use_pointid_mapping_var.get():
-                pointid_mapping_txt = self.document_processing_pointid_txt_var.get().strip()
-                if pointid_mapping_txt and not os.path.exists(pointid_mapping_txt):
-                    self.root.after(0, lambda: messagebox.showerror("Error", f"PointId mapping file not found:\n{pointid_mapping_txt}"))
-                    return
+                pointid_mapping_txt_raw = self.document_processing_pointid_txt_var.get()
+                self.logger.info(f"PointId mapping file path (raw): '{pointid_mapping_txt_raw}'")
+                pointid_mapping_txt_path = pointid_mapping_txt_raw.strip() if pointid_mapping_txt_raw else None
+                self.logger.info(f"PointId mapping file path (stripped): '{pointid_mapping_txt_path}'")
+                if pointid_mapping_txt_path:
+                    self.logger.info(f"PointId mapping file absolute path: '{os.path.abspath(pointid_mapping_txt_path)}'")
+                    self.logger.info(f"PointId mapping file exists: {os.path.exists(pointid_mapping_txt_path)}")
+                    if not os.path.exists(pointid_mapping_txt_path):
+                        self.root.after(0, lambda: messagebox.showerror("Error", f"PointId mapping file not found:\n{pointid_mapping_txt_path}"))
+                        return
+                    # Load all pointids from txt file once
+                    all_pointids_from_txt = self.multi_part_post_processor.load_chapter_pointid_mapping(pointid_mapping_txt_path)
+                    self.logger.info(f"Loaded {len(all_pointids_from_txt)} PointIds from txt file: {all_pointids_from_txt}")
+                    if len(all_pointids_from_txt) < len(self.document_processing_selected_files):
+                        self.root.after(0, lambda: messagebox.showwarning("Warning", 
+                            f"TXT file has {len(all_pointids_from_txt)} PointIds but {len(self.document_processing_selected_files)} files selected. "
+                            f"Some files will use fallback PointId."))
+                else:
+                    self.logger.warning("PointId mapping checkbox is checked but file path is empty")
+            else:
+                self.logger.info("PointId mapping checkbox is not checked")
             
             # If not using mapping, get manual start PointId
             book_id = None
             chapter_id_num = None
             start_point_index = 1
-            if not pointid_mapping_txt:
+            if not all_pointids_from_txt:
                 start_pointid_str = self.auto_start_pointid_var.get().strip()
                 if start_pointid_str:
                     if not (start_pointid_str.isdigit() and len(start_pointid_str) == 10):
@@ -3272,6 +3294,24 @@ class ContentAutomationGUI:
                         self.root.after(0, lambda m=msg: 
                                        self.document_processing_progress_label.configure(text=m))
                     
+                    # Get pointid for this file from txt (one pointid per file, in order)
+                    file_pointid_mapping_txt = None
+                    if all_pointids_from_txt and idx < len(all_pointids_from_txt):
+                        # Create a temporary txt file with only the pointid for this file
+                        temp_dir = os.path.dirname(json_file_path) or os.getcwd()
+                        temp_txt_path = os.path.join(temp_dir, f"_temp_pointid_{idx}.txt")
+                        try:
+                            with open(temp_txt_path, 'w', encoding='utf-8') as f:
+                                f.write(all_pointids_from_txt[idx] + '\n')
+                            file_pointid_mapping_txt = temp_txt_path
+                            self.logger.info(f"File {idx+1}/{total_files}: Using PointId {all_pointids_from_txt[idx]} from txt file (line {idx+1})")
+                        except Exception as e:
+                            self.logger.error(f"Failed to create temporary pointid file: {e}")
+                            file_pointid_mapping_txt = None
+                    else:
+                        if all_pointids_from_txt:
+                            self.logger.warning(f"File {idx+1}/{total_files}: No PointId in txt file for this file index, using fallback")
+                    
                     # Process the file
                     final_output_path = self.multi_part_post_processor.process_document_processing_from_ocr_json(
                         ocr_json_path=json_file_path,
@@ -3280,9 +3320,16 @@ class ContentAutomationGUI:
                         book_id=book_id,
                         chapter_id=chapter_id_num,
                         start_point_index=start_point_index,
-                        pointid_mapping_txt=pointid_mapping_txt,
+                        pointid_mapping_txt=file_pointid_mapping_txt,
                         progress_callback=progress_callback,
                     )
+                    
+                    # Clean up temporary file
+                    if file_pointid_mapping_txt and os.path.exists(file_pointid_mapping_txt):
+                        try:
+                            os.remove(file_pointid_mapping_txt)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to remove temporary pointid file: {e}")
                     
                     if final_output_path and os.path.exists(final_output_path):
                         completed += 1
