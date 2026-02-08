@@ -106,8 +106,10 @@ class StageFProcessor(BaseStageProcessor):
             letter_prefix = letter_match.group(1)
             file_name = file_name[len(letter_prefix):].strip()
         
-        # Replace ":" with "-"
-        file_name = file_name.replace(":", "-")
+        # Replace all colon-like and point/dot characters with "-" (ASCII ":", fullwidth "：", ".", etc.)
+        # Otherwise a fullwidth colon or dot gets stripped by the next regex and "13：44" or "13.44" becomes "1344"
+        for char in (":", "：", "︰", "﹕", ".", "．", "۔", "·"):
+            file_name = file_name.replace(char, "-")
         
         # Extract numbers and "-" (remove all other characters except spaces)
         # Keep the pattern: numbers-numbers (e.g., "30-19" or "30-3")

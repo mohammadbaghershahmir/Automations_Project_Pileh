@@ -9,7 +9,7 @@ import json
 import time
 import requests
 from typing import Optional, Dict, List, Any, Callable
-from api_layer import APIKeyManager
+from api_layer import APIKeyManager, APIConfig
 
 
 class DeepSeekAPIClient:
@@ -50,7 +50,7 @@ class DeepSeekAPIClient:
         adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
         self.session.mount("https://", adapter)
         
-    def initialize_text_client(self, model_name: str = "deepseek-reasoner", 
+    def initialize_text_client(self, model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                               api_key: Optional[str] = None) -> bool:
         """
         Initialize text processing client (for compatibility with GeminiAPIClient interface)
@@ -79,7 +79,7 @@ class DeepSeekAPIClient:
     def process_text(self,
                     text: str,
                     system_prompt: Optional[str] = None,
-                    model_name: str = "deepseek-reasoner",
+                    model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                     temperature: float = 0.7,
                     max_tokens: int = 8192,
                     api_key: Optional[str] = None,
@@ -369,7 +369,10 @@ class DeepSeekAPIClient:
     def process_pdf_with_prompt(self,
                                 pdf_path: str,
                                 prompt: str,
+<<<<<<< HEAD
                                 model_name: str = "deepseek-reasoner",
+=======
+                                model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                                 temperature: float = 0.7,
                                 max_tokens: int = 8192,
                                 api_key: Optional[str] = None,
@@ -440,7 +443,7 @@ class DeepSeekAPIClient:
     def process_pdf_with_prompt_batch(self,
                                       pdf_path: str,
                                       prompt: str,
-                                      model_name: str = "deepseek-reasoner",
+                                      model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                                       temperature: float = 0.7,
                                       max_tokens: int = 8192,
                                       pages_per_batch: int = 10,

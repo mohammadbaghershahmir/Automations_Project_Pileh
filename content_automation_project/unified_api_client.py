@@ -33,6 +33,7 @@ class UnifiedAPIClient:
         "stage_x": "deepseek",
         "stage_y": "deepseek",
         "stage_z": "deepseek",
+        "reference_change_rag": "google",
     }
     
     def __init__(self, google_api_key_manager: Optional[APIKeyManager] = None,
@@ -95,6 +96,9 @@ class UnifiedAPIClient:
                               api_key: Optional[str] = None) -> bool:
         """Initialize text client for current stage"""
         client = self.get_client_for_stage()
+        from deepseek_api_client import DeepSeekAPIClient
+        if isinstance(client, DeepSeekAPIClient) and (model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name):
+            model_name = APIConfig.DEFAULT_DEEPSEEK_MODEL
         stage = self._current_stage or "unknown"
         self.logger.info(f"[UnifiedAPIClient] Initializing {model_name} for stage: {stage}")
         result = client.initialize_text_client(model_name, api_key)
@@ -117,7 +121,9 @@ class UnifiedAPIClient:
         # Cap max_tokens for DeepSeek API
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient):
-            # This is DeepSeek client, cap max_tokens
+            # Use DeepSeek model when caller passed Gemini default (avoids "Model Not Exist" on DeepSeek API)
+            if model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name:
+                model_name = APIConfig.DEFAULT_DEEPSEEK_MODEL
             max_tokens = min(max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
             self.logger.info(f"[UnifiedAPIClient] Processing text with DeepSeek model: {model_name} (stage: {stage})")
         else:
