@@ -1035,10 +1035,10 @@ class MultiPartPostProcessor:
         Process Document Processing stage using OCR Extraction JSON as input.
         
         This method:
-        1. Reads OCR Extraction JSON (with chapters->subchapters->topics structure)
-        2. Extracts all topics with their subchapter names
-        3. For each topic, replaces {Topic_NAME} and {Subchapter_Name} in the prompt
-        4. Processes each topic with the replaced prompt
+        1. Reads OCR Extraction JSON (with chapters->subchapters->topics/paragraphs structure)
+        2. Extracts all paragraphs with their subchapter names (if paragraph field exists, otherwise uses topics)
+        3. For each paragraph, replaces {Paragraph_NAME} and {Subchapter_Name} in the prompt
+        4. Processes each paragraph with the replaced prompt
         5. Combines all outputs
         6. Flattens to points and assigns PointId
         
@@ -1200,12 +1200,14 @@ class MultiPartPostProcessor:
         
         self.logger.info(f"Chapter name from input JSON: {chapter_name_from_input}")
         
-        # Collect all topics with their subchapter and chapter info
-        # Process topic by topic, but for EACH topic send the FULL subchapter (all its topics) as context to the model.
-        topics_list = []  # List of (chapter_name, subchapter_name, topic_data) tuples
-        subchapters_dict = {}  # subchapter_name -> list of topic names (for logging / txt saving)
-        # subchapter_name -> list of full topic dicts {"topic": ..., "extractions": [...]}
-        subchapter_full_topics: Dict[str, List[Dict[str, Any]]] = {}
+        # Collect all paragraphs with their subchapter and chapter info
+        # Process paragraph by paragraph, but for EACH paragraph send the FULL subchapter (all its paragraphs/topics) as context to the model.
+        paragraphs_list = []  # List of (chapter_name, subchapter_name, paragraph_data) tuples
+        subchapters_dict = {}  # subchapter_name -> list of paragraph names (for logging / txt saving)
+        # subchapter_name -> list of full paragraph/topic dicts for context
+        subchapter_full_items: Dict[str, List[Dict[str, Any]]] = {}
+        # Track which subchapters have paragraphs vs topics
+        subchapter_has_paragraphs: Dict[str, bool] = {}  # subchapter_name -> True if has paragraphs, False if has topics
         
         # Track total removed records for logging
         total_removed_figures = 0
@@ -1224,7 +1226,6 @@ class MultiPartPostProcessor:
                 if not isinstance(subchapter, dict):
                     continue
                 subchapter_name = subchapter.get("subchapter", "")
-                topics = subchapter.get("topics", [])
                 
                 if not subchapter_name:
                     continue
@@ -1232,17 +1233,30 @@ class MultiPartPostProcessor:
                 # Initialize structures for this subchapter if not exists
                 if subchapter_name not in subchapters_dict:
                     subchapters_dict[subchapter_name] = []
-                if subchapter_name not in subchapter_full_topics:
-                    subchapter_full_topics[subchapter_name] = []
+                if subchapter_name not in subchapter_full_items:
+                    subchapter_full_items[subchapter_name] = []
                 
-                # Collect each topic individually and also build full subchapter topics list
-                for topic in topics:
-                    if not isinstance(topic, dict):
+                # Check if subchapter has paragraphs field (new structure) or topics field (old structure)
+                paragraphs = subchapter.get("paragraphs", [])
+                topics = subchapter.get("topics", [])
+                
+                # Use paragraphs if available, otherwise fallback to topics
+                items_to_process = paragraphs if paragraphs else topics
+                item_type = "paragraph" if paragraphs else "topic"
+                
+                # Track whether this subchapter has paragraphs or topics
+                subchapter_has_paragraphs[subchapter_name] = bool(paragraphs)
+                
+                # Collect each paragraph/topic individually and also build full subchapter list
+                for item in items_to_process:
+                    if not isinstance(item, dict):
                         continue
-                    topic_name = topic.get("topic", "")
-                    extractions = topic.get("extractions", [])
                     
-                    if topic_name and extractions:
+                    # Try to get paragraph name first, then fallback to topic
+                    item_name = item.get("paragraph", "") or item.get("Paragraph", "") or item.get("topic", "") or item.get("Topic", "")
+                    extractions = item.get("extractions", [])
+                    
+                    if item_name and extractions:
                         # Filter out records with type "figure" or "e-figure"
                         original_count = len(extractions)
                         filtered_extractions = [
@@ -1253,18 +1267,21 @@ class MultiPartPostProcessor:
                         total_removed_figures += removed_count
                         
                         if removed_count > 0:
-                            self.logger.info(f"Removed {removed_count} figure record(s) from topic '{topic_name}' in subchapter '{subchapter_name}'")
+                            self.logger.info(f"Removed {removed_count} figure record(s) from {item_type} '{item_name}' in subchapter '{subchapter_name}'")
                         
-                        topic_data = {
-                            "topic": topic_name,
-                            "extractions": filtered_extractions
-                        }
-                        # For per-topic processing - now includes chapter_name
-                        topics_list.append((chapter_name, subchapter_name, topic_data))
+                        # Create item data (preserve original structure)
+                        item_data = dict(item)  # Copy all fields from original item
+                        item_data["extractions"] = filtered_extractions
+                        # Ensure we have a consistent name field
+                        if "paragraph" not in item_data and "Paragraph" not in item_data:
+                            item_data["paragraph"] = item_name
+                        
+                        # For per-paragraph processing - now includes chapter_name
+                        paragraphs_list.append((chapter_name, subchapter_name, item_data))
                         # For logging
-                        subchapters_dict[subchapter_name].append(topic_name)
-                        # For model context (FULL subchapter for every topic)
-                        subchapter_full_topics[subchapter_name].append(topic_data)
+                        subchapters_dict[subchapter_name].append(item_name)
+                        # For model context (FULL subchapter for every paragraph)
+                        subchapter_full_items[subchapter_name].append(item_data)
         
         # Log total removed records
         if total_removed_figures > 0:
@@ -1272,32 +1289,32 @@ class MultiPartPostProcessor:
         else:
             self.logger.info("No figure/e-figure records found in OCR JSON")
         
-        if not topics_list:
-            self.logger.error("No topics found in OCR JSON")
+        if not paragraphs_list:
+            self.logger.error("No paragraphs/topics found in OCR JSON")
             return None
         
         # Count unique subchapters
-        unique_subchapters = set(subchapter_name for _, subchapter_name, _ in topics_list)
+        unique_subchapters = set(subchapter_name for _, subchapter_name, _ in paragraphs_list)
         
         self.logger.info("=" * 80)
-        self.logger.info("DOCUMENT PROCESSING - PROCESSING BY TOPIC")
+        self.logger.info("DOCUMENT PROCESSING - PROCESSING BY PARAGRAPH")
         self.logger.info("=" * 80)
-        self.logger.info(f"Found {len(topics_list)} topics to process")
+        self.logger.info(f"Found {len(paragraphs_list)} paragraphs to process")
         self.logger.info(f"Found {len(unique_subchapters)} unique subchapters")
         self.logger.info("")
         
-        # Log subchapters and their topics
+        # Log subchapters and their paragraphs
         subchapter_idx_map = {}
         for idx, subchapter_name in enumerate(sorted(unique_subchapters), 1):
             subchapter_idx_map[subchapter_name] = idx
-            topic_names = subchapters_dict[subchapter_name]
-            self.logger.info(f"  Subchapter {idx}: '{subchapter_name}' - {len(topic_names)} topics")
-            for topic_idx, topic_name in enumerate(topic_names, 1):
-                self.logger.info(f"    Topic {topic_idx}: '{topic_name}'")
+            paragraph_names = subchapters_dict[subchapter_name]
+            self.logger.info(f"  Subchapter {idx}: '{subchapter_name}' - {len(paragraph_names)} paragraphs")
+            for paragraph_idx, paragraph_name in enumerate(paragraph_names, 1):
+                self.logger.info(f"    Paragraph {paragraph_idx}: '{paragraph_name}'")
         self.logger.info("=" * 80)
         
         if progress_callback:
-            progress_callback(f"Found {len(topics_list)} topics in {len(unique_subchapters)} subchapters to process")
+            progress_callback(f"Found {len(paragraphs_list)} paragraphs in {len(unique_subchapters)} subchapters to process")
         
         # Prepare base directory and filename for JSON files
         base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
@@ -1331,8 +1348,8 @@ class MultiPartPostProcessor:
                 "source_file": os.path.basename(ocr_json_path),
                 "model": model_name,
                 "processing_status": "in_progress",
-                "topics_processed": 0,
-                "total_topics": len(topics_list)
+                "paragraphs_processed": 0,
+                "total_paragraphs": len(paragraphs_list)
             },
             "points": [],
             "raw_responses": []  # Store all raw responses to ensure nothing is lost
@@ -1347,56 +1364,57 @@ class MultiPartPostProcessor:
             self.logger.error(f"Failed to initialize output file: {e}")
             return None
         
-        # Process each topic individually
+        # Process each paragraph individually
         all_responses = []
-        # Store topic/subchapter info for each response to maintain correct mapping
-        response_topic_info = []  # List of topic_info dicts, one per response
+        # Store paragraph/subchapter info for each response to maintain correct mapping
+        response_paragraph_info = []  # List of paragraph_info dicts, one per response
         
-        for topic_idx, (chapter_name_for_topic, subchapter_name, topic_data) in enumerate(topics_list, 1):
-            topic_name = topic_data["topic"]
-            extractions = topic_data["extractions"]
+        for paragraph_idx, (chapter_name_for_paragraph, subchapter_name, paragraph_data) in enumerate(paragraphs_list, 1):
+            # Get paragraph name (try paragraph field first, then topic as fallback)
+            paragraph_name = paragraph_data.get("paragraph", "") or paragraph_data.get("Paragraph", "") or paragraph_data.get("topic", "") or paragraph_data.get("Topic", "")
+            extractions = paragraph_data.get("extractions", [])
             
             self.logger.info("")
             self.logger.info("=" * 80)
-            self.logger.info(f"PROCESSING TOPIC {topic_idx}/{len(topics_list)}")
+            self.logger.info(f"PROCESSING PARAGRAPH {paragraph_idx}/{len(paragraphs_list)}")
             self.logger.info("=" * 80)
-            self.logger.info(f"  Chapter: '{chapter_name_for_topic}'")
+            self.logger.info(f"  Chapter: '{chapter_name_for_paragraph}'")
             self.logger.info(f"  Subchapter: '{subchapter_name}'")
-            self.logger.info(f"  Topic: '{topic_name}'")
+            self.logger.info(f"  Paragraph: '{paragraph_name}'")
             self.logger.info(f"  Number of extractions: {len(extractions)}")
             
             if progress_callback:
-                progress_callback(f"Processing topic {topic_idx}/{len(topics_list)}: {chapter_name_for_topic} > {subchapter_name} > {topic_name}")
+                progress_callback(f"Processing paragraph {paragraph_idx}/{len(paragraphs_list)}: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
             
-            # Replace placeholders in prompt with current topic and subchapter
-            topic_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name)
-            topic_prompt = topic_prompt.replace("{Topic_NAME}", topic_name)
+            # Replace placeholders in prompt with current paragraph and subchapter
+            paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name)
+            # Support both {Topic_NAME} and {Paragraph_NAME} for backward compatibility
+            paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name)
+            paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)  # Fallback for old prompts
             
-            # Build JSON payload for this topic:
-            # IMPORTANT: the model should see the FULL subchapter (all topics of this subchapter)
-            # as context, but focus only on the current topic defined by {Topic_NAME} in the prompt.
-            full_subchapter_topics = subchapter_full_topics.get(subchapter_name, [])
-            if not full_subchapter_topics:
-                # Fallback: at least send the current topic if for some reason subchapter list is empty
-                full_subchapter_topics = [
-                    {
-                        "topic": topic_name,
-                        "extractions": extractions
-                    }
-                ]
+            # Build JSON payload for this paragraph:
+            # IMPORTANT: the model should see the FULL subchapter (all paragraphs/topics of this subchapter)
+            # as context, but focus only on the current paragraph defined by {Paragraph_NAME} in the prompt.
+            full_subchapter_items = subchapter_full_items.get(subchapter_name, [])
+            if not full_subchapter_items:
+                # Fallback: at least send the current paragraph if for some reason subchapter list is empty
+                full_subchapter_items = [paragraph_data]
             
-            topic_json = {
+            paragraph_json = {
                 "subchapter": subchapter_name,
-                "chapter": chapter_name_for_topic,
-                # FULL subchapter context (all topics), not just the current topic
-                "topics": full_subchapter_topics
+                "chapter": chapter_name_for_paragraph,
+                # FULL subchapter context (all paragraphs/topics), not just the current paragraph
+                "paragraphs": full_subchapter_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
+                "topics": full_subchapter_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None
             }
-            topic_json_text = json.dumps(topic_json, ensure_ascii=False, indent=2)
+            # Remove None values
+            paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
+            paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
             
             # Log JSON size before sending to model
-            json_size = len(topic_json_text.encode('utf-8'))
+            json_size = len(paragraph_json_text.encode('utf-8'))
             self.logger.info(f"  JSON payload size: {json_size:,} bytes ({json_size/1024:.2f} KB)")
-            self.logger.info(f"  Sending topic JSON to model (full subchapter context with {len(full_subchapter_topics)} topics)...")
+            self.logger.info(f"  Sending paragraph JSON to model (full subchapter context with {len(full_subchapter_items)} items)...")
             
             # Process with model (retry up to 3 times if response is empty)
             max_attempts = 3
@@ -1404,31 +1422,31 @@ class MultiPartPostProcessor:
             for attempt in range(1, max_attempts + 1):
                 self.logger.info(f"  Calling model API... (attempt {attempt}/{max_attempts})")
                 response_text = self.api_client.process_text(
-                    text=topic_json_text,
-                    system_prompt=topic_prompt,
+                    text=paragraph_json_text,
+                    system_prompt=paragraph_prompt,
                     model_name=model_name,
                 )
                 if response_text and response_text.strip():
                     break
                 if attempt < max_attempts:
-                    self.logger.warning(f"  Empty response for topic '{topic_name}', retrying ({attempt}/{max_attempts})...")
+                    self.logger.warning(f"  Empty response for paragraph '{paragraph_name}', retrying ({attempt}/{max_attempts})...")
                 else:
-                    self.logger.error(f"  ✗ No response received for topic after {max_attempts} attempts: {chapter_name_for_topic} > {subchapter_name} > {topic_name}")
+                    self.logger.error(f"  ✗ No response received for paragraph after {max_attempts} attempts: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
                     response_text = ""
             
             response_size = len(response_text.encode('utf-8')) if response_text else 0
-            self.logger.info(f"  ✓ Topic '{topic_name}' processed successfully")
+            self.logger.info(f"  ✓ Paragraph '{paragraph_name}' processed successfully")
             self.logger.info(f"  Response size: {response_size:,} bytes ({response_size/1024:.2f} KB)")
             self.logger.info(f"  Response length: {len(response_text):,} characters")
             
-            # Store response and its corresponding topic info
+            # Store response and its corresponding paragraph info
             all_responses.append(response_text)
-            topic_info = {
-                "chapter": chapter_name_for_topic,
+            paragraph_info = {
+                "chapter": chapter_name_for_paragraph,
                 "subchapter": subchapter_name,
-                "topic": topic_name,
+                "paragraph": paragraph_name,
             }
-            response_topic_info.append(topic_info)
+            response_paragraph_info.append(paragraph_info)
             
             # Immediately add raw response to JSON file (incremental write)
             try:
@@ -1438,9 +1456,9 @@ class MultiPartPostProcessor:
                 
                 # Add raw response entry; also parse response_text to "response" (handles raw JSON and markdown ```json)
                 raw_response_entry = {
-                    "topic_index": topic_idx,
+                    "paragraph_index": paragraph_idx,
                     "subchapter": subchapter_name,
-                    "topic": topic_name,
+                    "paragraph": paragraph_name,
                     "response_text": response_text,
                     "response_size_bytes": response_size,
                     "processed_at": datetime.now().isoformat()
@@ -1462,50 +1480,50 @@ class MultiPartPostProcessor:
                 current_data["raw_responses"].append(raw_response_entry)
                 
                 # Update metadata
-                current_data["metadata"]["topics_processed"] = len(current_data["raw_responses"])
+                current_data["metadata"]["paragraphs_processed"] = len(current_data["raw_responses"])
                 current_data["metadata"]["processed_at"] = datetime.now().isoformat()
                 
                 # Write back immediately
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(current_data, f, ensure_ascii=False, indent=2)
                 
-                self.logger.info(f"  ✓ Added raw response for topic '{topic_name}' to JSON file immediately")
+                self.logger.info(f"  ✓ Added raw response for paragraph '{paragraph_name}' to JSON file immediately")
             except Exception as e:
-                self.logger.error(f"Failed to write raw response for topic '{topic_name}' to file: {e}", exc_info=True)
-                # Continue processing other topics
+                self.logger.error(f"Failed to write raw response for paragraph '{paragraph_name}' to file: {e}", exc_info=True)
+                # Continue processing other paragraphs
             
-            self.logger.info(f"  ✓ Topic '{topic_name}' completed")
+            self.logger.info(f"  ✓ Paragraph '{paragraph_name}' completed")
             self.logger.info("=" * 80)
         
         if not all_responses:
             self.logger.error("No responses produced by Document Processing")
             return None
         
-        # Extract JSON blocks from each response (one per topic)
+        # Extract JSON blocks from each response (one per paragraph)
         self.logger.info("=" * 80)
         self.logger.info("EXTRACTING JSON BLOCKS FROM RESPONSES")
         self.logger.info("=" * 80)
-        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per topic)...")
+        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per paragraph)...")
         if progress_callback:
             progress_callback("Extracting JSON from responses...")
         
         all_json_blocks = []
-        # Track number of blocks per topic to maintain correct mapping after flattening
-        blocks_per_topic = []  # List of (topic_info, num_blocks) tuples
+        # Track number of blocks per paragraph to maintain correct mapping after flattening
+        blocks_per_paragraph = []  # List of (paragraph_info, num_blocks) tuples
         
-        for response_idx, (topic_info_stored, response_text) in enumerate(zip(response_topic_info, all_responses), 1):
-            subchapter_name = topic_info_stored["subchapter"]
-            topic_name = topic_info_stored["topic"]
-            self.logger.info(f"  Topic {response_idx}/{len(all_responses)}: '{subchapter_name}' > '{topic_name}'")
+        for response_idx, (paragraph_info_stored, response_text) in enumerate(zip(response_paragraph_info, all_responses), 1):
+            subchapter_name = paragraph_info_stored["subchapter"]
+            paragraph_name = paragraph_info_stored["paragraph"]
+            self.logger.info(f"  Paragraph {response_idx}/{len(all_responses)}: '{subchapter_name}' > '{paragraph_name}'")
             self.logger.debug(f"    Extracting JSON from response ({len(response_text):,} characters)...")
             
-            topic_json_blocks = self._extract_json_blocks_from_text(response_text)
-            if topic_json_blocks:
-                all_json_blocks.extend(topic_json_blocks)
-                blocks_per_topic.append((topic_info_stored, len(topic_json_blocks)))
-                self.logger.info(f"    ✓ Extracted {len(topic_json_blocks)} JSON block(s)")
+            paragraph_json_blocks = self._extract_json_blocks_from_text(response_text)
+            if paragraph_json_blocks:
+                all_json_blocks.extend(paragraph_json_blocks)
+                blocks_per_paragraph.append((paragraph_info_stored, len(paragraph_json_blocks)))
+                self.logger.info(f"    ✓ Extracted {len(paragraph_json_blocks)} JSON block(s)")
             else:
-                blocks_per_topic.append((topic_info_stored, 0))
+                blocks_per_paragraph.append((paragraph_info_stored, 0))
                 self.logger.warning(f"    ✗ No JSON blocks found in response")
         
         self.logger.info(f"Total JSON blocks extracted: {len(all_json_blocks)}")
@@ -1522,34 +1540,34 @@ class MultiPartPostProcessor:
                 if raw_list:
                     self.logger.info("No blocks from in-memory extraction; building from file raw_responses...")
                     all_json_blocks = []
-                    response_topic_info = []
-                    blocks_per_topic = []
+                    response_paragraph_info = []
+                    blocks_per_paragraph = []
                     for r in raw_list:
                         if not isinstance(r, dict):
                             continue
-                        topic_info = {
+                        paragraph_info = {
                             "chapter": chapter_from_meta or r.get("chapter", ""),
                             "subchapter": r.get("subchapter", ""),
-                            "topic": r.get("topic", ""),
+                            "paragraph": r.get("paragraph", "") or r.get("topic", ""),  # Support both paragraph and topic
                         }
-                        response_topic_info.append(topic_info)
+                        response_paragraph_info.append(paragraph_info)
                         # Prefer parsed "response" object when present
                         parsed_response = r.get("response")
                         if isinstance(parsed_response, dict):
                             all_json_blocks.append(parsed_response)
-                            blocks_per_topic.append((topic_info, 1))
+                            blocks_per_paragraph.append((paragraph_info, 1))
                         elif isinstance(parsed_response, list):
                             dict_items = [item for item in parsed_response if isinstance(item, dict)]
                             all_json_blocks.extend(dict_items)
-                            blocks_per_topic.append((topic_info, len(dict_items)))
+                            blocks_per_paragraph.append((paragraph_info, len(dict_items)))
                         else:
                             text = r.get("response_text") or ""
                             blocks = self._extract_json_blocks_from_text(text)
                             if blocks:
                                 all_json_blocks.extend(blocks)
-                                blocks_per_topic.append((topic_info, len(blocks)))
+                                blocks_per_paragraph.append((paragraph_info, len(blocks)))
                             else:
-                                blocks_per_topic.append((topic_info, 0))
+                                blocks_per_paragraph.append((paragraph_info, 0))
                     if all_json_blocks:
                         self.logger.info(f"Recovered {len(all_json_blocks)} JSON block(s) from raw_responses")
             except Exception as e:
@@ -1567,23 +1585,23 @@ class MultiPartPostProcessor:
         converter = ThirdStageConverter()
         
         # Group blocks by subchapter
-        blocks_by_subchapter = {}  # subchapter_name -> list of (topic_info, blocks)
+        blocks_by_subchapter = {}  # subchapter_name -> list of (paragraph_info, blocks)
         block_start_idx = 0
         
-        for topic_info_stored, num_blocks in blocks_per_topic:
-            subchapter_name = topic_info_stored["subchapter"]
+        for paragraph_info_stored, num_blocks in blocks_per_paragraph:
+            subchapter_name = paragraph_info_stored["subchapter"]
             if subchapter_name not in blocks_by_subchapter:
                 blocks_by_subchapter[subchapter_name] = {
-                    "topics": [],
+                    "paragraphs": [],
                     "blocks": []
                 }
             
-            # Get blocks for this topic
-            topic_blocks = all_json_blocks[block_start_idx:block_start_idx + num_blocks]
+            # Get blocks for this paragraph
+            paragraph_blocks = all_json_blocks[block_start_idx:block_start_idx + num_blocks]
             block_start_idx += num_blocks
             
-            blocks_by_subchapter[subchapter_name]["topics"].append(topic_info_stored)
-            blocks_by_subchapter[subchapter_name]["blocks"].extend(topic_blocks)
+            blocks_by_subchapter[subchapter_name]["paragraphs"].append(paragraph_info_stored)
+            blocks_by_subchapter[subchapter_name]["blocks"].extend(paragraph_blocks)
         
         # Helper function to normalize chapter names for comparison
         def normalize_name(name: str) -> str:
@@ -1615,11 +1633,11 @@ class MultiPartPostProcessor:
         
         for subchapter_name, subchapter_data in blocks_by_subchapter.items():
             subchapter_blocks = subchapter_data["blocks"]
-            topics_info = subchapter_data["topics"]
+            paragraphs_info = subchapter_data["paragraphs"]
             
-            # Get chapter name from first topic info (all topics in same subchapter have same chapter)
-            first_topic_info = topics_info[0] if topics_info else {}
-            chapter_name_for_subchapter = first_topic_info.get("chapter", "")
+            # Get chapter name from first paragraph info (all paragraphs in same subchapter have same chapter)
+            first_paragraph_info = paragraphs_info[0] if paragraphs_info else {}
+            chapter_name_for_subchapter = first_paragraph_info.get("chapter", "")
             
             # Try to find chapter index from OCR JSON mapping first (most reliable)
             chapter_idx_from_ocr = subchapter_to_chapter_index.get(subchapter_name)
@@ -1643,19 +1661,19 @@ class MultiPartPostProcessor:
                     # This is not perfect but better than using chapter_name_from_input
                     chapter_name_for_subchapter = chapters_info[0]["chapter_name"]
                     self.logger.warning(
-                        f"Subchapter '{subchapter_name}': Chapter name '{first_topic_info.get('chapter', '')}' not found, "
+                        f"Subchapter '{subchapter_name}': Chapter name '{first_paragraph_info.get('chapter', '')}' not found, "
                         f"using '{chapter_name_for_subchapter}' as fallback"
                     )
                 else:
                     chapter_name_for_subchapter = chapter_name_from_input
             
             if not subchapter_blocks:
-                # Create subchapter_info from first topic (all topics in same subchapter have same chapter/subchapter)
+                # Create subchapter_info from first paragraph (all paragraphs in same subchapter have same chapter/subchapter)
                 subchapter_info = {
                     "subchapter": subchapter_name,
                     "chapter": chapter_name_for_subchapter,
-                    "num_topics": len(topics_info),
-                    "topic_names": [t.get("topic", "") for t in topics_info]
+                    "num_paragraphs": len(paragraphs_info),
+                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
                 }
                 points_per_subchapter_list.append((subchapter_info, 0))
                 self.logger.info(f"  Subchapter '{subchapter_name}': 0 points (no blocks), Chapter: '{chapter_name_for_subchapter}'")
@@ -1667,8 +1685,8 @@ class MultiPartPostProcessor:
                 subchapter_info = {
                     "subchapter": subchapter_name,
                     "chapter": chapter_name_for_subchapter,
-                    "num_topics": len(topics_info),
-                    "topic_names": [t.get("topic", "") for t in topics_info]
+                    "num_paragraphs": len(paragraphs_info),
+                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
                 }
                 points_per_subchapter_list.append((subchapter_info, 0))
                 self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to combine blocks, Chapter: '{chapter_name_for_subchapter}'")
@@ -1680,17 +1698,17 @@ class MultiPartPostProcessor:
                 subchapter_info = {
                     "subchapter": subchapter_name,
                     "chapter": chapter_name_for_subchapter,
-                    "num_topics": len(topics_info),
-                    "topic_names": [t.get("topic", "") for t in topics_info]
+                    "num_paragraphs": len(paragraphs_info),
+                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
                 }
                 points_per_subchapter_list.append((subchapter_info, len(subchapter_flat_rows)))
-                self.logger.info(f"  Subchapter '{subchapter_name}': {len(subchapter_flat_rows)} points ({len(topics_info)} topics), Chapter: '{chapter_name_for_subchapter}'")
+                self.logger.info(f"  Subchapter '{subchapter_name}': {len(subchapter_flat_rows)} points ({len(paragraphs_info)} paragraphs), Chapter: '{chapter_name_for_subchapter}'")
             except Exception as e:
                 subchapter_info = {
                     "subchapter": subchapter_name,
                     "chapter": chapter_name_for_subchapter,
-                    "num_topics": len(topics_info),
-                    "topic_names": [t.get("topic", "") for t in topics_info]
+                    "num_paragraphs": len(paragraphs_info),
+                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
                 }
                 self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to count points - {e}, Chapter: '{chapter_name_for_subchapter}'")
                 points_per_subchapter_list.append((subchapter_info, 0))

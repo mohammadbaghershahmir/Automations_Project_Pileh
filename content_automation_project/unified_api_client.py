@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Dict, Any, Callable
 from api_layer import GeminiAPIClient, APIKeyManager, APIConfig
 from deepseek_api_client import DeepSeekAPIClient
+from stage_settings_manager import StageSettingsManager
 
 
 class UnifiedAPIClient:
@@ -37,19 +38,24 @@ class UnifiedAPIClient:
     }
     
     def __init__(self, google_api_key_manager: Optional[APIKeyManager] = None,
-                 deepseek_api_key_manager: Optional[APIKeyManager] = None):
+                 deepseek_api_key_manager: Optional[APIKeyManager] = None,
+                 stage_settings_manager: Optional[StageSettingsManager] = None):
         """
         Initialize Unified API Client
         
         Args:
             google_api_key_manager: APIKeyManager for Google API keys
             deepseek_api_key_manager: APIKeyManager for DeepSeek API keys
+            stage_settings_manager: Optional StageSettingsManager for stage-specific settings
         """
         self.logger = logging.getLogger(__name__)
         
         # Initialize both clients
         self.google_client = GeminiAPIClient(google_api_key_manager or APIKeyManager())
         self.deepseek_client = DeepSeekAPIClient(deepseek_api_key_manager or APIKeyManager())
+        
+        # Initialize stage settings manager
+        self.stage_settings = stage_settings_manager or StageSettingsManager()
         
         # Track current stage for routing
         self._current_stage: Optional[str] = None
@@ -68,6 +74,10 @@ class UnifiedAPIClient:
         """
         Get appropriate API client for given stage
         
+        Priority:
+        1. Stage-specific provider from StageSettingsManager
+        2. Default provider from STAGE_API_MAPPING
+        
         Args:
             stage_name: Stage name (if None, uses current stage)
             
@@ -81,7 +91,15 @@ class UnifiedAPIClient:
             self.logger.warning("No stage specified, defaulting to Google API")
             return self.google_client
         
-        api_provider = self.STAGE_API_MAPPING.get(stage.lower(), "google")
+        # Check for stage-specific provider setting first
+        stage_provider = self.stage_settings.get_stage_provider(stage)
+        if stage_provider:
+            api_provider = stage_provider
+            self.logger.info(f"Using stage-specific provider '{api_provider}' for stage: {stage}")
+        else:
+            # Fall back to default mapping
+            api_provider = self.STAGE_API_MAPPING.get(stage.lower(), "google")
+            self.logger.info(f"Using default provider '{api_provider}' for stage: {stage}")
         
         if api_provider == "deepseek":
             self.logger.info(f"✓ Using DeepSeek API for stage: {stage}")
@@ -94,12 +112,36 @@ class UnifiedAPIClient:
     
     def initialize_text_client(self, model_name: str = APIConfig.DEFAULT_TEXT_MODEL,
                               api_key: Optional[str] = None) -> bool:
-        """Initialize text client for current stage"""
+        """
+        Initialize text client for current stage
+        
+        Priority for model and API key:
+        1. Explicitly passed parameters (api_key, model_name if not default)
+        2. Stage-specific settings from StageSettingsManager
+        3. Default values from APIConfig
+        """
         client = self.get_client_for_stage()
+        stage = self._current_stage or "unknown"
+        
+        # Get stage-specific settings if available
+        stage_model = self.stage_settings.get_stage_model(stage)
+        stage_api_key = self.stage_settings.get_stage_api_key(stage)
+        
+        # Use stage-specific model if available and model_name is default
+        if stage_model and (model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name):
+            model_name = stage_model
+            self.logger.info(f"[UnifiedAPIClient] Using stage-specific model: {model_name} for stage: {stage}")
+        
+        # Use stage-specific API key if available and api_key not explicitly provided
+        if stage_api_key and not api_key:
+            api_key = stage_api_key
+            self.logger.info(f"[UnifiedAPIClient] Using stage-specific API key for stage: {stage}")
+        
+        # Auto-adjust model for DeepSeek client
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient) and (model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name):
             model_name = APIConfig.DEFAULT_DEEPSEEK_MODEL
-        stage = self._current_stage or "unknown"
+        
         self.logger.info(f"[UnifiedAPIClient] Initializing {model_name} for stage: {stage}")
         result = client.initialize_text_client(model_name, api_key)
         if result:
@@ -115,9 +157,31 @@ class UnifiedAPIClient:
                     temperature: float = 0.7,
                     max_tokens: int = APIConfig.DEFAULT_MAX_TOKENS,
                     api_key: Optional[str] = None) -> Optional[str]:
-        """Process text using appropriate API for current stage"""
+        """
+        Process text using appropriate API for current stage
+        
+        Priority for model and API key:
+        1. Explicitly passed parameters (api_key, model_name if not default)
+        2. Stage-specific settings from StageSettingsManager
+        3. Default values from APIConfig
+        """
         client = self.get_client_for_stage()
         stage = self._current_stage or "unknown"
+        
+        # Get stage-specific settings if available
+        stage_model = self.stage_settings.get_stage_model(stage)
+        stage_api_key = self.stage_settings.get_stage_api_key(stage)
+        
+        # Use stage-specific model if available and model_name is default
+        if stage_model and (model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name):
+            model_name = stage_model
+            self.logger.info(f"[UnifiedAPIClient] Using stage-specific model: {model_name} for stage: {stage}")
+        
+        # Use stage-specific API key if available and api_key not explicitly provided
+        if stage_api_key and not api_key:
+            api_key = stage_api_key
+            self.logger.info(f"[UnifiedAPIClient] Using stage-specific API key for stage: {stage}")
+        
         # Cap max_tokens for DeepSeek API
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient):

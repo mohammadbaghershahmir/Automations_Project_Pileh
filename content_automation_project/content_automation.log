@@ -25209,3 +25209,994 @@ Exception: Step 1 (PDF extraction) failed for oldpdf.pdf
 2026-02-02 14:19:50,312 - INFO - Read file as plain text (latin-1): /home/mohammadbagher/Downloads/ch117_105.docx
 2026-02-02 14:19:50,314 - INFO - Processing Stage V - Step 1 for Topic 5/33 (full file)...
 2026-02-02 14:19:50,315 - INFO - ✓ Using DeepSeek API for stage: stage_v
+2026-02-08 09:23:00,661 - INFO - Loaded 16 predefined prompts
+2026-02-08 09:23:00,742 - INFO - python-docx library is available
+2026-02-08 09:23:00,743 - INFO - python-docx library is available
+2026-02-08 11:19:55,603 - INFO - Loaded 16 predefined prompts
+2026-02-08 11:19:55,604 - INFO - No existing settings file found, starting with empty settings
+2026-02-08 11:19:55,621 - INFO - python-docx library is available
+2026-02-08 11:19:55,621 - INFO - python-docx library is available
+2026-02-08 12:00:17,521 - INFO - Loaded 16 predefined prompts
+2026-02-08 12:00:17,521 - INFO - No existing settings file found, starting with empty settings
+2026-02-08 12:00:17,550 - INFO - python-docx library is available
+2026-02-08 12:00:17,550 - INFO - python-docx library is available
+2026-02-08 12:15:42,540 - INFO - Loaded 16 predefined prompts
+2026-02-08 12:15:42,541 - INFO - No existing settings file found, starting with empty settings
+2026-02-08 12:15:42,559 - INFO - python-docx library is available
+2026-02-08 12:15:42,559 - INFO - python-docx library is available
+2026-02-09 08:33:18,613 - INFO - Loaded 16 predefined prompts
+2026-02-09 08:33:18,613 - INFO - No existing settings file found, starting with empty settings
+2026-02-09 08:33:18,645 - INFO - python-docx library is available
+2026-02-09 08:33:18,645 - INFO - python-docx library is available
+2026-02-09 09:19:52,922 - INFO - Loaded 16 predefined prompts
+2026-02-09 09:19:52,922 - INFO - No existing settings file found, starting with empty settings
+2026-02-09 09:19:52,939 - INFO - python-docx library is available
+2026-02-09 09:19:52,939 - INFO - python-docx library is available
+2026-02-09 09:42:05,958 - INFO - Loaded 16 predefined prompts
+2026-02-09 09:42:05,958 - INFO - No existing settings file found, starting with empty settings
+2026-02-09 09:42:05,975 - INFO - python-docx library is available
+2026-02-09 09:42:05,975 - INFO - python-docx library is available
+2026-02-09 09:56:47,497 - INFO - Loaded 16 predefined prompts
+2026-02-09 09:56:47,497 - INFO - No existing settings file found, starting with empty settings
+2026-02-09 09:56:47,513 - INFO - python-docx library is available
+2026-02-09 09:56:47,513 - INFO - python-docx library is available
+2026-02-09 10:01:32,364 - INFO - Loaded 16 predefined prompts
+2026-02-09 10:01:32,365 - INFO - No existing settings file found, starting with empty settings
+2026-02-09 10:01:32,383 - INFO - python-docx library is available
+2026-02-09 10:01:32,384 - INFO - python-docx library is available
+2026-02-09 11:42:20,897 - INFO - Saved stage settings to stage_settings.json
+2026-02-09 11:42:56,453 - INFO - Loaded 3 API keys
+2026-02-09 11:43:03,562 - INFO - Saved stage settings to stage_settings.json
+2026-02-09 11:43:04,594 - INFO - Saved stage settings to stage_settings.json
+2026-02-09 11:43:07,537 - INFO - Saved stage settings to stage_settings.json
+2026-02-09 11:43:59,800 - INFO - Added manual pair: PDF=2644_PDFsam_Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library).pdf, Topic=t0052024.json
+2026-02-09 11:44:03,129 - INFO - Current stage set to: ocr_extraction
+2026-02-09 11:44:03,129 - INFO - Using output directory: /home/shahmir/Desktop/oldes-pdf
+2026-02-09 11:44:03,274 - INFO - Successfully extracted 110376 characters from 17 pages using PyMuPDF
+2026-02-09 11:44:03,277 - INFO - Current stage set to: ocr_extraction
+2026-02-09 11:44:03,277 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 11:44:03,277 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 11:44:03,277 - INFO - [UnifiedAPIClient] Initializing gemini-2.0-flash for stage: ocr_extraction
+2026-02-09 11:44:03,277 - INFO - Text client initialized with model: gemini-2.0-flash
+2026-02-09 11:44:03,277 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.0-flash for stage: ocr_extraction
+2026-02-09 11:44:03,278 - INFO - Initialized OCR Extraction JSON file: /home/shahmir/Desktop/oldes-pdf/OCR Extraction_2644_PDFsam_Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library).json
+2026-02-09 11:44:03,278 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 11:44:03,278 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 11:44:54,283 - INFO - Received response for subchapter 'Phototherapy with UVB' (26641 characters)
+2026-02-09 11:44:54,283 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-02-09 11:44:54,284 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 227 column 30 (char 26312). Trying fallback extraction...
+2026-02-09 11:44:54,285 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 221 column 14 (char 26099)
+2026-02-09 11:44:54,285 - INFO - Attempting to repair incomplete JSON...
+2026-02-09 11:44:54,287 - WARNING - Repair method returned None
+2026-02-09 11:44:54,287 - ERROR - All JSON extraction methods failed
+2026-02-09 11:44:54,287 - WARNING - Failed to extract JSON from response
+2026-02-09 11:44:54,287 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-02-09 11:44:54,287 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 227 column 30 (char 26312). Trying fallback extraction...
+2026-02-09 11:44:54,288 - WARNING - Object extraction parse failed: Expecting ',' delimiter: line 221 column 14 (char 26099)
+2026-02-09 11:44:54,289 - INFO - Attempting to repair incomplete JSON...
+2026-02-09 11:44:54,291 - WARNING - Repair method returned None
+2026-02-09 11:44:54,291 - ERROR - All JSON extraction methods failed
+2026-02-09 11:44:54,292 - WARNING - Failed to extract JSON from Persian text
+2026-02-09 11:44:54,292 - WARNING - Failed to extract JSON from response for subchapter 'Phototherapy with UVB'
+2026-02-09 11:44:54,293 - INFO - ✓ Added subchapter 'Phototherapy with UVB' to JSON file immediately
+2026-02-09 11:44:54,293 - INFO - Subchapter 'Phototherapy with the 308 nm Excimer Laser or Lamp' has no Topics, processing with empty topics
+2026-02-09 11:44:54,322 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 11:44:54,322 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 11:44:56,214 - ERROR - Error processing subchapter Phototherapy with the 308 nm Excimer Laser or Lamp: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.ResourceExhausted: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+2026-02-09 11:44:56,220 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 11:44:56,220 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 11:45:04,834 - INFO - Received response for subchapter 'Phototherapy with UVA1' (2803 characters)
+2026-02-09 11:45:04,834 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-09 11:45:04,834 - INFO - Extracted chapter name from model response: درمان با اشعه ماوراء بنفش
+2026-02-09 11:45:04,835 - INFO - ✓ Added subchapter 'Phototherapy with UVA1' to JSON file immediately
+2026-02-09 11:45:04,836 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 11:45:04,836 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 11:45:06,398 - ERROR - Error processing subchapter Photochemotherapy with Psoralens (PUVA): 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.ResourceExhausted: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+2026-02-09 11:45:06,400 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 11:45:06,400 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 11:45:07,760 - ERROR - Error processing subchapter Extracorporeal Photochemotherapy (Photopheresis): 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.ResourceExhausted: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+2026-02-09 11:45:07,761 - INFO - ✓ OCR Extraction completed. 2 subchapters processed and saved incrementally.
+2026-02-09 11:45:07,761 - INFO - Completed: 2644_PDFsam_Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library).pdf + t0052024.json -> /home/shahmir/Desktop/oldes-pdf/OCR Extraction_2644_PDFsam_Dermatology 2-Volume Set (Jean L. Bolognia MD, Julie V. Schaffer MD etc.) (Z-Library).json
+2026-02-09 12:29:58,569 - INFO - Selected 2 PDF files for batch processing
+2026-02-09 12:30:09,414 - INFO - Saved stage settings to stage_settings.json
+2026-02-09 12:30:10,232 - INFO - Current stage set to: pre_ocr_topic
+2026-02-09 12:30:10,234 - INFO - Current stage set to: pre_ocr_topic
+2026-02-09 12:30:10,234 - INFO - Starting Pre-OCR Topic Extraction...
+2026-02-09 12:30:10,235 - INFO - Using Book ID: 105, Chapter ID: 3
+2026-02-09 12:30:10,235 - INFO - Extracting text from PDF with complete metadata...
+2026-02-09 12:30:10,344 - INFO - Successfully extracted 73881 characters with formatting from 10 pages using PyMuPDF
+2026-02-09 12:30:10,346 - INFO - Extracted 73,881 characters from PDF with complete metadata
+2026-02-09 12:30:10,347 - INFO - Processing PDF text to extract topics with LLM...
+2026-02-09 12:30:10,347 - INFO - Current stage set to: pre_ocr_topic
+2026-02-09 12:30:10,347 - INFO - Using default provider 'google' for stage: pre_ocr_topic
+2026-02-09 12:30:10,347 - INFO - ✓ Using Google API for stage: pre_ocr_topic
+2026-02-09 12:30:10,347 - INFO - [UnifiedAPIClient] Processing text with Google model: gemini-2.5-pro (stage: pre_ocr_topic)
+2026-02-09 12:30:10,347 - INFO - Initialized/recreated text client with model: gemini-2.5-pro
+2026-02-09 12:31:08,468 - INFO - Text processed successfully with gemini-2.5-pro
+2026-02-09 12:31:08,469 - INFO - Received response (1458 characters)
+2026-02-09 12:31:08,469 - INFO - Extracting JSON from response...
+2026-02-09 12:31:08,469 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-09 12:31:08,469 - INFO - Extracted 7 topics
+2026-02-09 12:31:08,470 - INFO - Pre-OCR Topic Extraction completed: /home/shahmir/Downloads/t105003_110.json
+2026-02-09 12:31:08,471 - INFO - Pre-OCR Topic Extraction completed: /home/shahmir/Downloads/t105003_110.json
+2026-02-09 12:31:08,471 - INFO - Completed: 110.pdf -> /home/shahmir/Downloads/t105003_110.json
+2026-02-09 12:31:18,473 - INFO - Current stage set to: pre_ocr_topic
+2026-02-09 12:31:18,473 - INFO - Starting Pre-OCR Topic Extraction...
+2026-02-09 12:31:18,473 - INFO - Extracted Book ID: 1, Chapter ID: 1 from filename
+2026-02-09 12:31:18,473 - INFO - Using Book ID: 1, Chapter ID: 1
+2026-02-09 12:31:18,473 - INFO - Extracting text from PDF with complete metadata...
+2026-02-09 12:31:18,593 - INFO - Successfully extracted 81515 characters with formatting from 11 pages using PyMuPDF
+2026-02-09 12:31:18,595 - INFO - Extracted 81,515 characters from PDF with complete metadata
+2026-02-09 12:31:18,595 - INFO - Processing PDF text to extract topics with LLM...
+2026-02-09 12:31:18,595 - INFO - Current stage set to: pre_ocr_topic
+2026-02-09 12:31:18,595 - INFO - Using default provider 'google' for stage: pre_ocr_topic
+2026-02-09 12:31:18,596 - INFO - ✓ Using Google API for stage: pre_ocr_topic
+2026-02-09 12:31:18,596 - INFO - [UnifiedAPIClient] Processing text with Google model: gemini-2.5-pro (stage: pre_ocr_topic)
+2026-02-09 12:31:55,282 - INFO - Text processed successfully with gemini-2.5-pro
+2026-02-09 12:31:55,282 - INFO - Received response (1152 characters)
+2026-02-09 12:31:55,282 - INFO - Extracting JSON from response...
+2026-02-09 12:31:55,282 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-09 12:31:55,282 - INFO - Extracted 11 topics
+2026-02-09 12:31:55,283 - INFO - Pre-OCR Topic Extraction completed: /home/shahmir/Downloads/t001001_JOSEPH~1-1-859-869.json
+2026-02-09 12:31:55,283 - INFO - Pre-OCR Topic Extraction completed: /home/shahmir/Downloads/t001001_JOSEPH~1-1-859-869.json
+2026-02-09 12:31:55,283 - INFO - Completed: JOSEPH~1-1-859-869.pdf -> /home/shahmir/Downloads/t001001_JOSEPH~1-1-859-869.json
+2026-02-09 13:34:57,501 - INFO - Added manual pair: PDF=102006.pdf, Topic=t105003_102006.json
+2026-02-09 13:40:18,430 - INFO - Saved stage settings to stage_settings.json
+2026-02-09 13:40:20,119 - INFO - Current stage set to: ocr_extraction
+2026-02-09 13:40:20,127 - INFO - Using output directory: /home/shahmir/Downloads/1تا6
+2026-02-09 13:40:20,199 - INFO - Successfully extracted 130398 characters from 22 pages using PyMuPDF
+2026-02-09 13:40:20,199 - INFO - Current stage set to: ocr_extraction
+2026-02-09 13:40:20,199 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:40:20,199 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:40:20,200 - INFO - [UnifiedAPIClient] Initializing gemini-2.5-pro for stage: ocr_extraction
+2026-02-09 13:40:20,200 - INFO - Text client initialized with model: gemini-2.5-pro
+2026-02-09 13:40:20,200 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.5-pro for stage: ocr_extraction
+2026-02-09 13:40:20,200 - INFO - Initialized OCR Extraction JSON file: /home/shahmir/Downloads/1تا6/OCR Extraction_102006.json
+2026-02-09 13:40:20,200 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:40:20,200 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:41:56,760 - INFO - Received response for subchapter 'Epidemiology' (4777 characters)
+2026-02-09 13:41:56,760 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-09 13:41:56,760 - INFO - Extracted chapter name from model response: خارش و دیسستزی
+2026-02-09 13:41:56,760 - INFO - ✓ Added subchapter 'Epidemiology' to JSON file immediately
+2026-02-09 13:41:56,761 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:41:56,761 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:41:58,478 - ERROR - Error processing subchapter Evaluation of the Patient: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:41:58,481 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:41:58,481 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:41:59,743 - ERROR - Error processing subchapter Pruritus in Dermatologic Disease: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:41:59,745 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:41:59,745 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:00,851 - ERROR - Error processing subchapter Dermatoses Induced by Pruritus-Associated Scratching or Rubbing: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:00,853 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:00,853 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:02,077 - ERROR - Error processing subchapter Pruritus in Specific Locations: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:02,078 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:02,078 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:03,189 - ERROR - Error processing subchapter Pruritus Variants: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:03,190 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:03,190 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:04,316 - ERROR - Error processing subchapter Pruritus in Systemic Disease: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:04,316 - INFO - Subchapter 'Pruritus in Pregnancy' has no Topics, processing with empty topics
+2026-02-09 13:42:04,317 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:04,317 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:05,478 - ERROR - Error processing subchapter Pruritus in Pregnancy: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:05,478 - INFO - Subchapter 'Pharmacologic Pruritus' has no Topics, processing with empty topics
+2026-02-09 13:42:05,479 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:05,479 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:06,979 - ERROR - Error processing subchapter Pharmacologic Pruritus: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:06,981 - INFO - Subchapter 'Psychogenic Pruritus' has no Topics, processing with empty topics
+2026-02-09 13:42:06,981 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:06,981 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:08,412 - ERROR - Error processing subchapter Psychogenic Pruritus: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:08,415 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:08,415 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:42:10,415 - ERROR - Error processing subchapter Neuropathic Etiologies of Pruritus and Dysesthesia: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-09 13:42:10,418 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-09 13:42:10,418 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-09 13:43:11,693 - INFO - Received response for subchapter 'Treatment' (9516 characters)
+2026-02-09 13:43:11,693 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-09 13:43:11,694 - INFO - Extracted chapter name from model response: خارش و دیسستزی
+2026-02-09 13:43:11,694 - INFO - ✓ Added subchapter 'Treatment' to JSON file immediately
+2026-02-09 13:43:11,696 - INFO - ✓ OCR Extraction completed. 2 subchapters processed and saved incrementally.
+2026-02-09 13:43:11,700 - INFO - Completed: 102006.pdf + t105003_102006.json -> /home/shahmir/Downloads/1تا6/OCR Extraction_102006.json
+2026-02-10 12:16:15,954 - INFO - Current stage set to: ocr_extraction
+2026-02-10 12:16:15,959 - INFO - Using output directory: /home/shahmir/Downloads/1تا6
+2026-02-10 12:16:16,013 - INFO - Successfully extracted 130398 characters from 22 pages using PyMuPDF
+2026-02-10 12:16:16,013 - INFO - Current stage set to: ocr_extraction
+2026-02-10 12:16:16,013 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:16,013 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:16,013 - INFO - [UnifiedAPIClient] Initializing gemini-2.5-pro for stage: ocr_extraction
+2026-02-10 12:16:16,013 - INFO - Text client initialized with model: gemini-2.5-pro
+2026-02-10 12:16:16,013 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.5-pro for stage: ocr_extraction
+2026-02-10 12:16:16,014 - INFO - Initialized OCR Extraction JSON file: /home/shahmir/Downloads/1تا6/OCR Extraction_102006.json
+2026-02-10 12:16:16,014 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:16,014 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:16,957 - ERROR - Error processing subchapter Epidemiology: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:16,960 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:16,961 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:17,692 - ERROR - Error processing subchapter Evaluation of the Patient: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:17,694 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:17,695 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:18,170 - ERROR - Error processing subchapter Pruritus in Dermatologic Disease: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:18,173 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:18,173 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:18,703 - ERROR - Error processing subchapter Dermatoses Induced by Pruritus-Associated Scratching or Rubbing: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:18,708 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:18,709 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:19,150 - ERROR - Error processing subchapter Pruritus in Specific Locations: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:19,152 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:19,153 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:19,526 - ERROR - Error processing subchapter Pruritus Variants: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:19,526 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:19,526 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:19,907 - ERROR - Error processing subchapter Pruritus in Systemic Disease: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:19,909 - INFO - Subchapter 'Pruritus in Pregnancy' has no Topics, processing with empty topics
+2026-02-10 12:16:19,910 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:19,910 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:20,445 - ERROR - Error processing subchapter Pruritus in Pregnancy: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:20,446 - INFO - Subchapter 'Pharmacologic Pruritus' has no Topics, processing with empty topics
+2026-02-10 12:16:20,448 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:20,448 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:20,776 - ERROR - Error processing subchapter Pharmacologic Pruritus: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:20,778 - INFO - Subchapter 'Psychogenic Pruritus' has no Topics, processing with empty topics
+2026-02-10 12:16:20,779 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:20,779 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:21,107 - ERROR - Error processing subchapter Psychogenic Pruritus: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:21,109 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:21,109 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:21,487 - ERROR - Error processing subchapter Neuropathic Etiologies of Pruritus and Dysesthesia: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:21,489 - INFO - Using default provider 'google' for stage: ocr_extraction
+2026-02-10 12:16:21,489 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-10 12:16:21,870 - ERROR - Error processing subchapter Treatment: 403 Received http2 header with status: 403
+Traceback (most recent call last):
+  File "/media/shahmir/Program/automation_pileh/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shahmir/anaconda3/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
+2026-02-10 12:16:21,872 - INFO - ✓ OCR Extraction completed. 0 subchapters processed and saved incrementally.
+2026-02-10 12:16:21,872 - INFO - Completed: 102006.pdf + t105003_102006.json -> /home/shahmir/Downloads/1تا6/OCR Extraction_102006.json

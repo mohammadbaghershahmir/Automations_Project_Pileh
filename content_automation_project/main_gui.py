@@ -19,6 +19,7 @@ from typing import Optional, List, Dict, Any
 
 from api_layer import APIConfig, APIKeyManager, GeminiAPIClient
 from unified_api_client import UnifiedAPIClient
+from stage_settings_manager import StageSettingsManager
 from pdf_processor import PDFProcessor
 from prompt_manager import PromptManager
 from multi_part_processor import MultiPartProcessor
@@ -26,6 +27,7 @@ from multi_part_post_processor import MultiPartPostProcessor
 from third_stage_converter import ThirdStageConverter
 from txt_stage_json_utils import load_stage_txt_as_json
 from stage_e_processor import StageEProcessor
+from stage_ta_processor import StageTAProcessor
 from stage_f_processor import StageFProcessor
 from stage_j_processor import StageJProcessor
 from stage_h_processor import StageHProcessor
@@ -37,7 +39,7 @@ from stage_y_processor import StageYProcessor
 from stage_z_processor import StageZProcessor
 from pre_ocr_topic_processor import PreOCRTopicProcessor
 from automated_pipeline_orchestrator import AutomatedPipelineOrchestrator
-from reference_change_rag import get_reference_changes_with_client
+from reference_change_topic_extractor import extract_topics_from_ocr_json
 
 
 class ContentAutomationGUI:
@@ -87,14 +89,19 @@ class ContentAutomationGUI:
             self.deepseek_api_key_file_var.set("deepseek_api_keys.csv")
             self.deepseek_api_key_manager.load_from_csv("deepseek_api_keys.csv")
         
+        # Initialize stage settings manager
+        self.stage_settings_manager = StageSettingsManager()
+        
         # Initialize unified API client
         self.api_client = UnifiedAPIClient(
             google_api_key_manager=self.google_api_key_manager,
-            deepseek_api_key_manager=self.deepseek_api_key_manager
+            deepseek_api_key_manager=self.deepseek_api_key_manager,
+            stage_settings_manager=self.stage_settings_manager
         )
         self.multi_part_processor = MultiPartProcessor(self.api_client)
         self.multi_part_post_processor = MultiPartPostProcessor(self.api_client)
         self.stage_e_processor = StageEProcessor(self.api_client)
+        self.stage_ta_processor = StageTAProcessor(self.api_client)
         self.stage_f_processor = StageFProcessor(self.api_client)
         self.stage_j_processor = StageJProcessor(self.api_client)
         self.stage_h_processor = StageHProcessor(self.api_client)
@@ -180,7 +187,11 @@ class ContentAutomationGUI:
         self.tab_stage_e = self.main_tabview.add("Image Notes Generation")
         self.setup_stage_e_ui(self.tab_stage_e)
         
-        # Tab 3: Image File Catalog
+        # Tab 3.5: Table Notes Generation
+        self.tab_stage_ta = self.main_tabview.add("Table Notes Generation")
+        self.setup_stage_ta_ui(self.tab_stage_ta)
+        
+        # Tab 4: Image File Catalog
         self.tab_stage_f = self.main_tabview.add("Image File Catalog")
         self.setup_stage_f_ui(self.tab_stage_f)
         
@@ -220,9 +231,9 @@ class ContentAutomationGUI:
         self.tab_json_to_csv = self.main_tabview.add("JSON to CSV Converter")
         self.setup_json_to_csv_ui(self.tab_json_to_csv)
         
-        # Tab 13: Reference Change (RAG)
-        self.tab_reference_change_rag = self.main_tabview.add("Reference Change (RAG)")
-        self.setup_reference_change_rag_ui(self.tab_reference_change_rag)
+        # Tab 13: Reference Change
+        self.tab_reference_change = self.main_tabview.add("Reference Change")
+        self.setup_reference_change_ui(self.tab_reference_change)
         
         # Ensure Pre-OCR Topic Extraction is the default/selected tab
         self.main_tabview.set("Pre-OCR Topic Extraction")
@@ -350,6 +361,190 @@ class ContentAutomationGUI:
                                                       font=ctk.CTkFont(size=10), text_color="gray")
             deepseek_api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
     
+    def add_stage_settings_section(self, parent, stage_name: str, 
+                                   api_provider: str = "auto",
+                                   default_model: Optional[str] = None) -> tuple:
+        """
+        Add stage-specific settings section (Provider, Model and API Key) to a stage UI
+        
+        Args:
+            parent: Parent frame to add settings to
+            stage_name: Name of the stage (e.g., "pre_ocr_topic", "stage_e")
+            api_provider: "google", "deepseek", or "auto" (auto-detect from stage)
+            default_model: Default model to use if no stage setting exists
+            
+        Returns:
+            Tuple of (provider_var, model_var, api_key_var) for the stage
+        """
+        from unified_api_client import UnifiedAPIClient
+        
+        # Auto-detect API provider if needed
+        if api_provider == "auto":
+            api_provider = UnifiedAPIClient.STAGE_API_MAPPING.get(stage_name.lower(), "google")
+        
+        # Get stage-specific settings if available
+        stage_provider = self.stage_settings_manager.get_stage_provider(stage_name, api_provider)
+        stage_model = self.stage_settings_manager.get_stage_model(stage_name)
+        stage_api_key = self.stage_settings_manager.get_stage_api_key(stage_name)
+        
+        # Determine available models based on current provider
+        def get_models_for_provider(provider):
+            if provider == "deepseek":
+                return APIConfig.DEEPSEEK_TEXT_MODELS
+            else:
+                return APIConfig.TEXT_MODELS
+        
+        def get_default_model_for_provider(provider):
+            if provider == "deepseek":
+                return APIConfig.DEFAULT_DEEPSEEK_MODEL
+            else:
+                return APIConfig.DEFAULT_TEXT_MODEL
+        
+        # Settings frame
+        settings_frame = ctk.CTkFrame(parent)
+        settings_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(settings_frame, text="Stage Settings:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Provider selection
+        provider_frame = ctk.CTkFrame(settings_frame)
+        provider_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(provider_frame, text="API Provider:", 
+                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=5, pady=2)
+        
+        provider_var_name = f"{stage_name}_provider_var"
+        if not hasattr(self, provider_var_name):
+            setattr(self, provider_var_name, ctk.StringVar(value=stage_provider))
+        provider_var = getattr(self, provider_var_name)
+        
+        provider_combo = ctk.CTkComboBox(provider_frame, values=["google", "deepseek"], 
+                                         variable=provider_var, width=400,
+                                         command=lambda choice: self._on_provider_changed(
+                                             stage_name, choice, model_var, model_combo, api_key_var
+                                         ))
+        provider_combo.pack(anchor="w", padx=5, pady=(0, 5))
+        
+        # Model selection
+        model_frame = ctk.CTkFrame(settings_frame)
+        model_frame.pack(fill="x", padx=10, pady=5)
+        
+        provider_label = "DeepSeek" if stage_provider == "deepseek" else "Google"
+        ctk.CTkLabel(model_frame, text=f"{provider_label} Model:", 
+                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=5, pady=2)
+        
+        model_var_name = f"{stage_name}_model_var"
+        if not hasattr(self, model_var_name):
+            # Use stage model if available, otherwise use default for current provider
+            if stage_model and (
+                (stage_provider == "deepseek" and stage_model in APIConfig.DEEPSEEK_TEXT_MODELS) or
+                (stage_provider == "google" and stage_model in APIConfig.TEXT_MODELS)
+            ):
+                initial_model = stage_model
+            else:
+                initial_model = get_default_model_for_provider(stage_provider)
+            setattr(self, model_var_name, ctk.StringVar(value=initial_model))
+        model_var = getattr(self, model_var_name)
+        
+        model_combo = ctk.CTkComboBox(model_frame, values=get_models_for_provider(stage_provider), 
+                                     variable=model_var, width=400)
+        model_combo.pack(anchor="w", padx=5, pady=(0, 5))
+        
+        # Store reference to model_combo for provider change callback
+        setattr(self, f"{stage_name}_model_combo", model_combo)
+        
+        # Save provider and model button
+        def save_provider_and_model():
+            provider_value = provider_var.get()
+            model_value = model_var.get()
+            if self.stage_settings_manager.set_stage_provider(stage_name, provider_value):
+                if self.stage_settings_manager.set_stage_model(stage_name, model_value):
+                    self.update_status(f"Provider and model saved for {stage_name}: {provider_value} / {model_value}")
+                else:
+                    messagebox.showerror("Error", f"Failed to save model for {stage_name}")
+            else:
+                messagebox.showerror("Error", f"Failed to save provider for {stage_name}")
+        
+        save_model_btn = ctk.CTkButton(model_frame, text="Save as Default", 
+                                       command=save_provider_and_model, width=120)
+        save_model_btn.pack(anchor="w", padx=5, pady=(0, 5))
+        
+        # API Key selection
+        api_key_frame = ctk.CTkFrame(settings_frame)
+        api_key_frame.pack(fill="x", padx=10, pady=5)
+        
+        provider_label_key = "DeepSeek" if stage_provider == "deepseek" else "Google"
+        api_key_label = ctk.CTkLabel(api_key_frame, text=f"{provider_label_key} API Key (Optional - overrides CSV keys):", 
+                    font=ctk.CTkFont(size=12, weight="bold"))
+        api_key_label.pack(anchor="w", padx=5, pady=2)
+        # Store reference to api_key_label for provider change callback
+        setattr(self, f"{stage_name}_api_key_label", api_key_label)
+        
+        api_key_var_name = f"{stage_name}_api_key_var"
+        if not hasattr(self, api_key_var_name):
+            setattr(self, api_key_var_name, ctk.StringVar(value=stage_api_key or ""))
+        api_key_var = getattr(self, api_key_var_name)
+        
+        api_key_entry = ctk.CTkEntry(api_key_frame, textvariable=api_key_var, 
+                                     width=400, show="*")
+        api_key_entry.pack(anchor="w", padx=5, pady=(0, 5))
+        
+        # Save API key button
+        def save_api_key():
+            api_key_value = api_key_var.get().strip()
+            if api_key_value:
+                if self.stage_settings_manager.set_stage_api_key(stage_name, api_key_value):
+                    self.update_status(f"API key saved for {stage_name}")
+                else:
+                    messagebox.showerror("Error", f"Failed to save API key for {stage_name}")
+            else:
+                # Clear API key
+                self.stage_settings_manager.set_stage_api_key(stage_name, "")
+                self.update_status(f"API key cleared for {stage_name}")
+        
+        save_api_key_btn = ctk.CTkButton(api_key_frame, text="Save as Default", 
+                                         command=save_api_key, width=120)
+        save_api_key_btn.pack(anchor="w", padx=5, pady=(0, 5))
+        
+        # Info label
+        info_text = f"Settings saved here will be used as default for {stage_name} stage. "
+        info_text += "You can override them per-request if needed."
+        ctk.CTkLabel(settings_frame, text=info_text, 
+                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
+        
+        return (provider_var, model_var, api_key_var)
+    
+    def _on_provider_changed(self, stage_name: str, provider: str, model_var, model_combo, api_key_var):
+        """Handle provider change - update model list and labels"""
+        # Update model list based on provider
+        if provider == "deepseek":
+            available_models = APIConfig.DEEPSEEK_TEXT_MODELS
+            default_model = APIConfig.DEFAULT_DEEPSEEK_MODEL
+        else:
+            available_models = APIConfig.TEXT_MODELS
+            default_model = APIConfig.DEFAULT_TEXT_MODEL
+        
+        # Update model combo values
+        model_combo.configure(values=available_models)
+        
+        # If current model is not in new list, set to default
+        current_model = model_var.get()
+        if current_model not in available_models:
+            model_var.set(default_model)
+        
+        # Update API key label
+        api_key_label = getattr(self, f"{stage_name}_api_key_label", None)
+        if api_key_label:
+            provider_label = "DeepSeek" if provider == "deepseek" else "Google"
+            api_key_label.configure(text=f"{provider_label} API Key (Optional - overrides CSV keys):")
+        
+        # Update model label
+        model_label = getattr(self, f"{stage_name}_model_label", None)
+        if model_label:
+            provider_label = "DeepSeek" if provider == "deepseek" else "Google"
+            model_label.configure(text=f"{provider_label} Model:")
+    
     def setup_pre_ocr_topic_ui(self, parent):
         """Setup UI for Pre-OCR Topic Extraction"""
         main_frame = ctk.CTkScrollableFrame(parent)
@@ -452,18 +647,10 @@ class ContentAutomationGUI:
             self.pre_ocr_prompt_text.delete("1.0", tk.END)
             self.pre_ocr_prompt_text.insert("1.0", default_prompt)
         
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(model_frame, text="Select Gemini Model:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        if not hasattr(self, 'pre_ocr_model_var'):
-            self.pre_ocr_model_var = ctk.StringVar(value="gemini-2.5-pro")
-        pre_ocr_model_combo = ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, 
-                                             variable=self.pre_ocr_model_var, width=400)
-        pre_ocr_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        # Stage Settings (Provider, Model and API Key)
+        self.pre_ocr_provider_var, self.pre_ocr_model_var, self.pre_ocr_api_key_var = self.add_stage_settings_section(
+            main_frame, "pre_ocr_topic", api_provider="google", default_model="gemini-2.5-pro"
+        )
         
         # Process button
         process_frame = ctk.CTkFrame(main_frame)
@@ -585,33 +772,26 @@ class ContentAutomationGUI:
             self.on_prompt_selected(default_value)
     
     def setup_model_section(self, parent):
-        """Setup model selection section for Document Processing (uses DeepSeek API)"""
-        model_frame = ctk.CTkFrame(parent)
-        model_frame.pack(fill="x", pady=(0, 20))
+        """Setup model selection section for Document Processing"""
+        # Stage Settings (Provider, Model and API Key)
+        self.document_processing_provider_var, self.document_processing_model_var, self.document_processing_api_key_var = self.add_stage_settings_section(
+            parent, "document_processing", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
-        model_label = ctk.CTkLabel(model_frame, text="Model Selection", 
-                                  font=ctk.CTkFont(size=18, weight="bold"))
-        model_label.pack(pady=(15, 10))
-        
-        model_select_frame = ctk.CTkFrame(model_frame)
-        model_select_frame.pack(fill="x", padx=15, pady=(0, 15))
-        
-        ctk.CTkLabel(model_select_frame, text="Select DeepSeek Model:", 
-                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Use shared model_var (initialized in __init__)
-        # Document Processing uses DeepSeek API, so show DeepSeek models
-        self.model_combo = ctk.CTkComboBox(model_select_frame, values=APIConfig.DEEPSEEK_TEXT_MODELS, 
-                                          variable=self.model_var, width=400,
-                                          command=self.on_model_changed)
-        self.model_combo.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        # Also add trace to StringVar to catch any changes (using trace like other variables)
-        self.model_var.trace('w', lambda *args: self._on_model_var_changed())
-        
-        ctk.CTkLabel(model_select_frame, 
-                    text=f"Available DeepSeek models: {', '.join(APIConfig.DEEPSEEK_TEXT_MODELS)} (Document Processing uses DeepSeek API)", 
-                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 10))
+        # Also sync with shared model_var for backward compatibility
+        if hasattr(self, 'document_processing_model_var'):
+            # Sync document_processing_model_var with shared model_var
+            def sync_model_var(*args):
+                if hasattr(self, 'model_var'):
+                    self.model_var.set(self.document_processing_model_var.get())
+            self.document_processing_model_var.trace('w', sync_model_var)
+            
+            # Also sync in reverse direction
+            if hasattr(self, 'model_var'):
+                def sync_reverse(*args):
+                    if hasattr(self, 'document_processing_model_var'):
+                        self.document_processing_model_var.set(self.model_var.get())
+                self.model_var.trace('w', sync_reverse)
     
     def setup_output_section(self, parent):
         """Setup output configuration section"""
@@ -1188,6 +1368,37 @@ class ContentAutomationGUI:
                 except Exception:
                     pass
 
+    def on_stage_ta_prompt_type_change(self):
+        """Switch between default and custom prompt for Stage TA."""
+        if not hasattr(self, 'stage_ta_prompt_type_var') \
+           or not hasattr(self, 'stage_ta_default_prompt_combo') \
+           or not hasattr(self, 'stage_ta_prompt_text'):
+            return
+        mode = self.stage_ta_prompt_type_var.get()
+        if mode == "default":
+            self.stage_ta_default_prompt_combo.configure(state="normal")
+            selected_name = self.stage_ta_default_prompt_var.get()
+            self.on_stage_ta_default_prompt_selected(selected_name)
+            try:
+                self.stage_ta_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.stage_ta_default_prompt_combo.configure(state="disabled")
+            try:
+                self.stage_ta_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    def on_stage_ta_default_prompt_selected(self, selected_name: str):
+        """When default Stage TA prompt combobox changes, fill the prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'stage_ta_prompt_text'):
+            self.stage_ta_prompt_text.configure(state="normal")
+            self.stage_ta_prompt_text.delete("1.0", tk.END)
+            self.stage_ta_prompt_text.insert("1.0", prompt_text)
+            self.stage_ta_prompt_text.configure(state="disabled")
+    
     def on_stage_e_default_prompt_selected(self, selected_name: str):
         """When default Stage E prompt combobox changes, fill the Stage E prompt textbox."""
         prompt_text = self.prompt_manager.get_prompt(selected_name)
@@ -2257,6 +2468,31 @@ class ContentAutomationGUI:
             default_prompt_name = self.second_stage_default_prompt_var.get()
             if default_prompt_name:
                 self.on_second_stage_default_prompt_selected(default_prompt_name)
+        
+        # Stage Settings for Stage 2, 3, 4
+        stages_settings_frame = ctk.CTkFrame(main_frame)
+        stages_settings_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            stages_settings_frame,
+            text="Stage Settings (Provider, Model and API Key)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 10))
+        
+        # Stage 2 Settings
+        self.stage_2_provider_var, self.stage_2_model_var, self.stage_2_api_key_var = self.add_stage_settings_section(
+            stages_settings_frame, "stage_2", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
+        
+        # Stage 3 Settings
+        self.stage_3_provider_var, self.stage_3_model_var, self.stage_3_api_key_var = self.add_stage_settings_section(
+            stages_settings_frame, "stage_3", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
+        
+        # Stage 4 Settings
+        self.stage_4_provider_var, self.stage_4_model_var, self.stage_4_api_key_var = self.add_stage_settings_section(
+            stages_settings_frame, "stage_4", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Chapter name section (right after prompt)
         chapter_frame = ctk.CTkFrame(stage2_frame)
@@ -3836,18 +4072,10 @@ class ContentAutomationGUI:
             if default_prompt_name:
                 self.on_ocr_extraction_default_prompt_selected(default_prompt_name)
         
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(model_frame, text="Select Gemini Model:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        if not hasattr(self, 'ocr_extraction_model_var'):
-            self.ocr_extraction_model_var = ctk.StringVar(value="gemini-2.5-pro")
-        ocr_model_combo = ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, 
-                                         variable=self.ocr_extraction_model_var, width=400)
-        ocr_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
+        # Stage Settings (Provider, Model and API Key)
+        self.ocr_extraction_provider_var, self.ocr_extraction_model_var, self.ocr_extraction_api_key_var = self.add_stage_settings_section(
+            main_frame, "ocr_extraction", api_provider="google", default_model="gemini-2.5-pro"
+        )
         
         # Process Button
         process_frame = ctk.CTkFrame(main_frame)
@@ -4217,26 +4445,10 @@ class ContentAutomationGUI:
         # Apply initial default/custom state and fill textbox
         self.on_stage_e_prompt_type_change()
         
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(model_frame, text="Model:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        # Get default model from main model selection if available
-        default_model = "gemini-2.5-pro"
-        if hasattr(self, 'model_var') and self.model_var:
-            default_model = self.model_var.get()
-        
-        self.stage_e_model_var = ctk.StringVar(value=default_model)
-        self.stage_e_model_combo = ctk.CTkComboBox(
-            model_frame,
-            values=APIConfig.TEXT_MODELS,
-            variable=self.stage_e_model_var,
-            width=300
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_e_provider_var, self.stage_e_model_var, self.stage_e_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_e", api_provider="deepseek", default_model="deepseek-reasoner"
         )
-        self.stage_e_model_combo.pack(anchor="w", padx=10, pady=5)
         
         # Process Buttons
         process_btn_frame = ctk.CTkFrame(main_frame)
@@ -4325,6 +4537,421 @@ class ContentAutomationGUI:
             self.stage_e_stage4_var = ctk.StringVar(value="")
         if not hasattr(self, 'stage_e_ocr_extraction_json_var'):
             self.stage_e_ocr_extraction_json_var = ctk.StringVar(value="")
+    
+    def setup_stage_ta_ui(self, parent):
+        """Setup UI for Stage TA: Table Notes Processing"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="Table Notes Generation", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Generate table notes from Stage E JSON and OCR Extraction JSON, and merge with Stage E data.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # File Pair Selection - Batch Processing
+        pairs_frame = ctk.CTkFrame(main_frame)
+        pairs_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            pairs_frame,
+            text="Input File Pairs (Stage E JSON + OCR Extraction JSON) - Batch Processing",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # File selection buttons
+        buttons_frame = ctk.CTkFrame(pairs_frame)
+        buttons_frame.pack(fill="x", padx=15, pady=5)
+        
+        def select_folder_and_match_stage_ta_pairs():
+            folder_path = filedialog.askdirectory(title="Select folder containing Stage E and OCR Extraction JSON files")
+            if not folder_path:
+                return
+            
+            import glob
+            # Support both old format (e{book}{chapter}_{name}.json) and new format
+            stage_e_files = glob.glob(os.path.join(folder_path, "e*.json"))
+            stage_e_files = [f for f in stage_e_files if os.path.isfile(f)]
+            
+            ocr_files = glob.glob(os.path.join(folder_path, "*.json"))
+            ocr_files = [f for f in ocr_files if os.path.isfile(f)]
+            
+            if not stage_e_files:
+                messagebox.showinfo("Info", "No Stage E JSON files (e*.json) found in selected folder")
+                return
+            
+            if not ocr_files:
+                messagebox.showinfo("Info", "No OCR Extraction JSON files found in selected folder")
+                return
+            
+            # Match pairs based on book_id and chapter_id
+            matched_pairs = []
+            unmatched_stage_e = []
+            
+            for stage_e_file in stage_e_files:
+                stage_e_name = os.path.basename(stage_e_file)
+                matched_ocr = None
+                
+                # Strategy 1: Try to match by book_id and chapter_id from filename (e{book}{chapter}_{name}.json)
+                import re
+                match = re.search(r'e(\d{3})(\d{3})_', stage_e_name)
+                if match:
+                    book_id = int(match.group(1))
+                    chapter_id = int(match.group(2))
+                    
+                    # Try to find matching OCR file by metadata
+                    for ocr_file in ocr_files:
+                        try:
+                            with open(ocr_file, 'r', encoding='utf-8') as f:
+                                ocr_data = json.load(f)
+                            metadata = ocr_data.get('metadata', {})
+                            ocr_book_id = metadata.get('book_id')
+                            ocr_chapter_id = metadata.get('chapter_id')
+                            
+                            if ocr_book_id == book_id and ocr_chapter_id == chapter_id:
+                                matched_ocr = ocr_file
+                                break
+                        except Exception:
+                            continue
+                
+                # Strategy 2: Try to match by metadata from Stage E file
+                if not matched_ocr:
+                    try:
+                        with open(stage_e_file, 'r', encoding='utf-8') as f:
+                            stage_e_data = json.load(f)
+                        stage_e_metadata = stage_e_data.get('metadata', {})
+                        stage_e_book_id = stage_e_metadata.get('book_id')
+                        stage_e_chapter_id = stage_e_metadata.get('chapter_id')
+                        
+                        if stage_e_book_id and stage_e_chapter_id:
+                            # Try to find matching OCR file by metadata
+                            for ocr_file in ocr_files:
+                                try:
+                                    with open(ocr_file, 'r', encoding='utf-8') as f:
+                                        ocr_data = json.load(f)
+                                    ocr_metadata = ocr_data.get('metadata', {})
+                                    ocr_book_id = ocr_metadata.get('book_id')
+                                    ocr_chapter_id = ocr_metadata.get('chapter_id')
+                                    
+                                    if (ocr_book_id == stage_e_book_id and 
+                                        ocr_chapter_id == stage_e_chapter_id):
+                                        matched_ocr = ocr_file
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception:
+                        pass
+                
+                if matched_ocr:
+                    matched_pairs.append((stage_e_file, matched_ocr))
+                else:
+                    unmatched_stage_e.append(stage_e_file)
+            
+            if not matched_pairs:
+                messagebox.showinfo("Info", "No matching pairs found. Please check file names or metadata.")
+                return
+            
+            # Add pairs to UI
+            if not hasattr(self, 'stage_ta_selected_pairs'):
+                self.stage_ta_selected_pairs = []
+            
+            added_count = 0
+            for stage_e_path, ocr_path in matched_pairs:
+                # Check if pair already exists
+                exists = any(
+                    p['stage_e_path'] == stage_e_path and p['ocr_path'] == ocr_path
+                    for p in self.stage_ta_selected_pairs
+                )
+                if not exists:
+                    self.stage_ta_selected_pairs.append({
+                        'stage_e_path': stage_e_path,
+                        'ocr_path': ocr_path,
+                        'status': 'pending',
+                        'output_path': None
+                    })
+                    self._add_stage_ta_pair_to_ui(stage_e_path, ocr_path)
+                    added_count += 1
+            
+            summary = f"Auto-matched {added_count} pair(s):\n"
+            for stage_e_path, ocr_path in matched_pairs[:5]:
+                summary += f"\nStageE: {os.path.basename(stage_e_path)}\nOCR: {os.path.basename(ocr_path)}"
+            if len(matched_pairs) > 5:
+                summary += f"\n... and {len(matched_pairs) - 5} more"
+            
+            if unmatched_stage_e:
+                summary += f"\n\nUnmatched Stage E files: {len(unmatched_stage_e)}"
+            
+            messagebox.showinfo("Auto-Matching Results", summary)
+            self.logger.info(f"Auto-matched {added_count} pairs from folder: {folder_path}")
+        
+        def add_stage_ta_pair_manual():
+            # Browse Stage E JSON
+            stage_e_path = filedialog.askopenfilename(
+                title="Select Stage E JSON File",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if not stage_e_path:
+                return
+            
+            # Browse OCR Extraction JSON
+            ocr_path = filedialog.askopenfilename(
+                title="Select OCR Extraction JSON File",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if not ocr_path:
+                return
+            
+            if not hasattr(self, 'stage_ta_selected_pairs'):
+                self.stage_ta_selected_pairs = []
+            
+            # Check if pair already exists
+            exists = any(
+                p['stage_e_path'] == stage_e_path and p['ocr_path'] == ocr_path
+                for p in self.stage_ta_selected_pairs
+            )
+            if not exists:
+                self.stage_ta_selected_pairs.append({
+                    'stage_e_path': stage_e_path,
+                    'ocr_path': ocr_path,
+                    'status': 'pending',
+                    'output_path': None
+                })
+                self._add_stage_ta_pair_to_ui(stage_e_path, ocr_path)
+                self.logger.info(f"Added manual pair: StageE={os.path.basename(stage_e_path)}, OCR={os.path.basename(ocr_path)}")
+        
+        ctk.CTkButton(
+            buttons_frame,
+            text="Select Folder (Auto-Match)",
+            command=select_folder_and_match_stage_ta_pairs,
+            width=200,
+        ).pack(side="left", padx=5, pady=5)
+        
+        ctk.CTkButton(
+            buttons_frame,
+            text="Add Pair Manually",
+            command=add_stage_ta_pair_manual,
+            width=180,
+        ).pack(side="left", padx=5, pady=5)
+        
+        # Delay setting
+        delay_frame = ctk.CTkFrame(pairs_frame)
+        delay_frame.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(
+            delay_frame,
+            text="Delay between pairs (seconds):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=10, pady=5)
+        
+        if not hasattr(self, 'stage_ta_delay_var'):
+            self.stage_ta_delay_var = ctk.StringVar(value="5")
+        
+        delay_entry = ctk.CTkEntry(delay_frame, textvariable=self.stage_ta_delay_var, width=100)
+        delay_entry.pack(side="left", padx=5, pady=5)
+        
+        # Pairs list (scrollable)
+        list_frame = ctk.CTkFrame(pairs_frame)
+        list_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        
+        ctk.CTkLabel(
+            list_frame,
+            text="Selected Pairs:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        if not hasattr(self, 'stage_ta_pairs_list_scroll'):
+            self.stage_ta_pairs_list_scroll = ctk.CTkScrollableFrame(list_frame, height=150)
+        self.stage_ta_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Initialize selected pairs list if not exists
+        if not hasattr(self, 'stage_ta_selected_pairs'):
+            self.stage_ta_selected_pairs = []
+        
+        ctk.CTkLabel(
+            pairs_frame,
+            text="Each pair should have: Stage E JSON (with PointId) + OCR Extraction JSON",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+        ).pack(anchor="w", padx=15, pady=(0, 10))
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for Table Notes Generation:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Stage TA prompt mode (default vs custom)
+        stage_ta_mode_frame = ctk.CTkFrame(prompt_frame)
+        stage_ta_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'stage_ta_prompt_type_var'):
+            self.stage_ta_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            stage_ta_mode_frame,
+            text="Use Default Prompt",
+            variable=self.stage_ta_prompt_type_var,
+            value="default",
+            command=self.on_stage_ta_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            stage_ta_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.stage_ta_prompt_type_var,
+            value="custom",
+            command=self.on_stage_ta_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+
+        # Default Stage TA prompt combobox (predefined prompts)
+        stage_ta_default_frame = ctk.CTkFrame(prompt_frame)
+        stage_ta_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(
+            stage_ta_default_frame,
+            text="Default Stage TA Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+
+        stage_ta_prompt_names = self.prompt_manager.get_prompt_names()
+        # Prefer the Table Notes prompt by its current name in prompts.json
+        preferred_stage_ta_name = "Table Notes Prompt"
+        if preferred_stage_ta_name in stage_ta_prompt_names:
+            stage_ta_default_value = preferred_stage_ta_name
+        else:
+            stage_ta_default_value = stage_ta_prompt_names[0] if stage_ta_prompt_names else ""
+        self.stage_ta_default_prompt_var = ctk.StringVar(value=stage_ta_default_value)
+        self.stage_ta_default_prompt_combo = ctk.CTkComboBox(
+            stage_ta_default_frame,
+            values=stage_ta_prompt_names,
+            variable=self.stage_ta_default_prompt_var,
+            width=400,
+            command=self.on_stage_ta_default_prompt_selected,
+        )
+        self.stage_ta_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+
+        # Textbox for Stage TA prompt (default-filled or custom)
+        if not hasattr(self, 'stage_ta_prompt_text'):
+            self.stage_ta_prompt_text = ctk.CTkTextbox(prompt_frame, height=150, font=self.farsi_text_font)
+        else:
+            try:
+                self.stage_ta_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.stage_ta_prompt_text.pack(fill="x", padx=10, pady=5)
+        # Apply initial default/custom state and fill textbox
+        self.on_stage_ta_prompt_type_change()
+        
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_ta_provider_var, self.stage_ta_model_var, self.stage_ta_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_ta", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
+        
+        # Process Buttons
+        process_btn_frame = ctk.CTkFrame(main_frame)
+        process_btn_frame.pack(fill="x", pady=20)
+        
+        # Single file processing button (for backward compatibility)
+        self.stage_ta_process_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process Single Pair",
+            command=self.process_stage_ta,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="blue"
+        )
+        self.stage_ta_process_btn.pack(side="left", padx=10, pady=10)
+        
+        # Batch processing button
+        def start_batch_processing():
+            if not hasattr(self, 'stage_ta_selected_pairs') or not self.stage_ta_selected_pairs:
+                messagebox.showwarning("Warning", "Please add at least one file pair")
+                return
+            batch_btn.configure(state="disabled", text="Processing...")
+            self.full_pipeline_cancel = False
+            threading.Thread(
+                target=self.process_multiple_stage_ta_pairs,
+                args=(self.root, batch_btn),
+                daemon=True,
+            ).start()
+        
+        batch_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="Process All Pairs",
+            command=start_batch_processing,
+            width=200,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        batch_btn.pack(side="left", padx=10, pady=10)
+        self.stage_ta_process_all_btn = batch_btn
+        
+        # View CSV button
+        self.stage_ta_view_csv_btn = ctk.CTkButton(
+            process_btn_frame,
+            text="View CSV",
+            command=self.view_csv_stage_ta,
+            width=150,
+            height=40,
+            font=ctk.CTkFont(size=14),
+            fg_color="purple",
+            hover_color="darkpurple",
+            state="disabled"
+        )
+        self.stage_ta_view_csv_btn.pack(side="left", padx=10, pady=10)
+        
+        # Progress bar for batch processing
+        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame.pack(fill="x", padx=20, pady=10)
+        
+        if not hasattr(self, 'stage_ta_progress_bar'):
+            self.stage_ta_progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.stage_ta_progress_bar.pack(fill="x", padx=10, pady=(0, 5))
+        self.stage_ta_progress_bar.set(0.0)
+        
+        if not hasattr(self, 'stage_ta_progress_label'):
+            self.stage_ta_progress_label = ctk.CTkLabel(
+                progress_frame,
+                text="Waiting to start...",
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+            )
+        self.stage_ta_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Status for Stage TA
+        self.stage_ta_status_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                 font=ctk.CTkFont(size=12), text_color="gray")
+        self.stage_ta_status_label.pack(pady=10)
+        
+        # Initialize selected pairs list if not exists
+        if not hasattr(self, 'stage_ta_selected_pairs'):
+            self.stage_ta_selected_pairs = []
     
     def browse_file_for_stage(self, var: ctk.StringVar, filetypes: list = None):
         """Browse for file and set variable"""
@@ -4738,6 +5365,322 @@ class ContentAutomationGUI:
                 )
             except Exception:
                 pass
+    
+    def _add_stage_ta_pair_to_ui(self, stage_e_path: str, ocr_path: str):
+        """Add a file pair to the Stage TA UI list"""
+        pair_frame = ctk.CTkFrame(self.stage_ta_pairs_list_scroll)
+        pair_frame.pack(fill="x", padx=5, pady=2)
+        
+        # Stage E file name
+        stage_e_name = os.path.basename(stage_e_path)
+        stage_e_label = ctk.CTkLabel(pair_frame, text=f"StageE: {stage_e_name}", 
+                                   font=ctk.CTkFont(size=10))
+        stage_e_label.pack(side="left", padx=5)
+        
+        # OCR file name
+        ocr_name = os.path.basename(ocr_path)
+        ocr_label = ctk.CTkLabel(pair_frame, text=f"OCR: {ocr_name}", 
+                                font=ctk.CTkFont(size=10))
+        ocr_label.pack(side="left", padx=5)
+        
+        # Status label
+        status_label = ctk.CTkLabel(pair_frame, text="Pending", 
+                                   text_color="gray", font=ctk.CTkFont(size=11))
+        status_label.pack(side="right", padx=5)
+        
+        # Remove button
+        remove_btn = ctk.CTkButton(pair_frame, text="X", width=30, height=20,
+                                  command=lambda se=stage_e_path, ocr=ocr_path, w=pair_frame: 
+                                  self.remove_stage_ta_pair(se, ocr, w))
+        remove_btn.pack(side="right", padx=2)
+        
+        # Store pair info (if list doesn't exist, create it)
+        if not hasattr(self, 'stage_ta_pair_info_list'):
+            self.stage_ta_pair_info_list = []
+        
+        self.stage_ta_pair_info_list.append({
+            'stage_e_path': stage_e_path,
+            'ocr_path': ocr_path,
+            'status_label': status_label,
+            'frame': pair_frame,
+            'output_path': None
+        })
+    
+    def remove_stage_ta_pair(self, stage_e_path: str, ocr_path: str, frame_widget):
+        """Remove a pair from the Stage TA selection list"""
+        if hasattr(self, 'stage_ta_selected_pairs'):
+            self.stage_ta_selected_pairs = [
+                p for p in self.stage_ta_selected_pairs 
+                if not (p['stage_e_path'] == stage_e_path and p['ocr_path'] == ocr_path)
+            ]
+        if hasattr(self, 'stage_ta_pair_info_list'):
+            self.stage_ta_pair_info_list = [
+                p for p in self.stage_ta_pair_info_list
+                if not (p['stage_e_path'] == stage_e_path and p['ocr_path'] == ocr_path)
+            ]
+        frame_widget.destroy()
+    
+    def process_stage_ta(self):
+        """Process Stage TA in background thread"""
+        def worker():
+            try:
+                self.stage_ta_process_btn.configure(state="disabled", text="Processing...")
+                self.stage_ta_status_label.configure(text="Processing Table Notes Generation...", text_color="blue")
+                
+                # For single file mode - we'll use batch processing mode instead
+                messagebox.showinfo("Info", "Please use 'Process All Pairs' button for batch processing.")
+                return
+            
+            except Exception as e:
+                self.logger.error(f"Error in Table Notes Generation processing: {e}", exc_info=True)
+                self.stage_ta_status_label.configure(text=f"Error: {str(e)}", text_color="red")
+                messagebox.showerror("Error", f"Table Notes Generation processing error:\n{str(e)}")
+            finally:
+                self.root.after(0, lambda: self.stage_ta_process_btn.configure(state="normal", text="Process Single Pair"))
+        
+        # Run in background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    
+    def process_multiple_stage_ta_pairs(self, parent_window, start_button):
+        """Process multiple Stage TA file pairs sequentially"""
+        try:
+            if not hasattr(self, 'stage_ta_selected_pairs') or not self.stage_ta_selected_pairs:
+                self.root.after(0, lambda: messagebox.showwarning("Warning", "Please add at least one file pair"))
+                return
+            
+            # Get prompt
+            stage_ta_prompt = self.stage_ta_prompt_text.get("1.0", tk.END).strip()
+            if not stage_ta_prompt:
+                default_prompt = self.prompt_manager.get_prompt("Table Notes Prompt")
+                if default_prompt:
+                    stage_ta_prompt = default_prompt
+                    self.logger.info("Using default Table Notes prompt from prompts.json")
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                    return
+            
+            # Get delay
+            try:
+                delay_seconds = int(self.stage_ta_delay_var.get())
+            except ValueError:
+                delay_seconds = 5
+                self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
+            
+            # Validate API keys
+            if not self.deepseek_api_key_manager.api_keys:
+                self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
+                return
+            
+            # Set stage for Stage TA (uses DeepSeek API)
+            self.api_client.set_stage("stage_ta")
+            
+            # Get model
+            model_name = self.get_default_model()
+            total_pairs = len(self.stage_ta_selected_pairs)
+            completed = 0
+            failed = 0
+            skipped = 0
+            
+            # Reset progress bar
+            self.root.after(0, lambda: self.stage_ta_progress_bar.set(0))
+            
+            # Process each pair
+            for idx, pair in enumerate(self.stage_ta_selected_pairs):
+                if self.full_pipeline_cancel:
+                    self.root.after(0, lambda: self.stage_ta_progress_label.configure(
+                        text="Cancelled by user", text_color="orange"))
+                    break
+                
+                stage_e_path = pair['stage_e_path']
+                ocr_path = pair['ocr_path']
+                stage_e_name = os.path.basename(stage_e_path)
+                ocr_name = os.path.basename(ocr_path)
+                
+                # Check if output file already exists
+                output_dir = self.get_default_output_dir(stage_e_path)
+                expected_output_path = None
+                
+                # Try to determine expected output filename
+                # Format: ta{book}{chapter}_{base_name}.json
+                stage_e_data = None
+                base_name_stage_e, _ = os.path.splitext(stage_e_name)
+                # Remove 'e' prefix if present
+                if base_name_stage_e.startswith('e') and len(base_name_stage_e) > 1 and base_name_stage_e[1:4].isdigit():
+                    base_name_stage_e = base_name_stage_e[1:]
+                
+                try:
+                    with open(stage_e_path, 'r', encoding='utf-8') as f:
+                        stage_e_data = json.load(f)
+                    stage_e_points = stage_e_data.get("data") or stage_e_data.get("points") or stage_e_data.get("rows", [])
+                    if stage_e_points and stage_e_points[0].get("PointId"):
+                        first_point_id = stage_e_points[0].get("PointId")
+                        book_id, chapter_id = self.stage_ta_processor.extract_book_chapter_from_pointid(first_point_id)
+                        # Use unique filename format: ta{book}{chapter}_{base_name}.json
+                        output_filename = f"ta{book_id:03d}{chapter_id:03d}_{base_name_stage_e}.json"
+                        expected_output_path = os.path.join(output_dir, output_filename)
+                except Exception as e:
+                    self.logger.warning(f"Could not determine expected output path for {stage_e_name}: {e}")
+                
+                # Check if output already exists and is valid
+                if expected_output_path and os.path.exists(expected_output_path):
+                    try:
+                        with open(expected_output_path, 'r', encoding='utf-8') as f:
+                            existing_data = json.load(f)
+                        existing_points = existing_data.get("data") or existing_data.get("points") or existing_data.get("rows", [])
+                        if existing_points and len(existing_points) > 0:
+                            skipped += 1
+                            self.logger.info(f"Skipping already processed pair: {stage_e_name} + {ocr_name} -> {os.path.basename(expected_output_path)}")
+                            
+                            if hasattr(self, 'stage_ta_pair_info_list'):
+                                for pair_info in self.stage_ta_pair_info_list:
+                                    if pair_info['stage_e_path'] == stage_e_path and pair_info['ocr_path'] == ocr_path:
+                                        pair_info['output_path'] = expected_output_path
+                                        self.root.after(0, lambda sl=pair_info['status_label']: 
+                                                       sl.configure(text="Already Completed", text_color="gray"))
+                                        break
+                            
+                            self.root.after(0, lambda idx=idx, total=total_pairs, se=stage_e_name: 
+                                           self.stage_ta_progress_label.configure(
+                                               text=f"Skipping pair {idx+1}/{total}: {se} (already completed)"))
+                            
+                            progress = (idx + 1) / total_pairs
+                            self.root.after(0, lambda p=progress: self.stage_ta_progress_bar.set(p))
+                            
+                            continue
+                    except Exception as e:
+                        self.logger.warning(f"Existing output file {expected_output_path} appears invalid, will reprocess: {e}")
+                
+                # Update status to processing
+                if hasattr(self, 'stage_ta_pair_info_list'):
+                    for pair_info in self.stage_ta_pair_info_list:
+                        if pair_info['stage_e_path'] == stage_e_path and pair_info['ocr_path'] == ocr_path:
+                            self.root.after(0, lambda sl=pair_info['status_label']: 
+                                           sl.configure(text="Processing...", text_color="blue"))
+                            break
+                
+                self.root.after(0, lambda idx=idx, total=total_pairs, se=stage_e_name: 
+                               self.stage_ta_progress_label.configure(
+                                   text=f"Processing pair {idx+1}/{total}: {se}"))
+                
+                progress = idx / total_pairs
+                self.root.after(0, lambda p=progress: self.stage_ta_progress_bar.set(p))
+                
+                try:
+                    def progress_callback(msg: str):
+                        self.root.after(0, lambda m=msg: 
+                                       self.stage_ta_progress_label.configure(text=m))
+                    
+                    # Process the pair
+                    output_path = self.stage_ta_processor.process_stage_ta(
+                        stage_e_path=stage_e_path,
+                        ocr_extraction_json_path=ocr_path,
+                        prompt=stage_ta_prompt,
+                        model_name=model_name,
+                        output_dir=output_dir,
+                        progress_callback=progress_callback
+                    )
+                    
+                    if output_path and os.path.exists(output_path):
+                        completed += 1
+                        self.last_stage_ta_path = output_path
+                        self.root.after(0, lambda: self.stage_ta_view_csv_btn.configure(state="normal"))
+                        if hasattr(self, 'stage_ta_pair_info_list'):
+                            for pair_info in self.stage_ta_pair_info_list:
+                                if pair_info['stage_e_path'] == stage_e_path and pair_info['ocr_path'] == ocr_path:
+                                    pair_info['output_path'] = output_path
+                                    self.root.after(0, lambda sl=pair_info['status_label']: 
+                                                   sl.configure(text="Completed", text_color="green"))
+                                    break
+                        
+                        self.logger.info(f"Successfully processed: {stage_e_name} + {ocr_name} -> {os.path.basename(output_path)}")
+                    else:
+                        failed += 1
+                        if hasattr(self, 'stage_ta_pair_info_list'):
+                            for pair_info in self.stage_ta_pair_info_list:
+                                if pair_info['stage_e_path'] == stage_e_path and pair_info['ocr_path'] == ocr_path:
+                                    self.root.after(0, lambda sl=pair_info['status_label']: 
+                                                   sl.configure(text="Failed", text_color="red"))
+                                    break
+                        self.logger.error(f"Failed to process: {stage_e_name} + {ocr_name}")
+                    
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        import time
+                        time.sleep(delay_seconds)
+                        
+                except Exception as e:
+                    failed += 1
+                    self.logger.error(f"Error processing {stage_e_name} + {ocr_name}: {str(e)}", exc_info=True)
+                    if hasattr(self, 'stage_ta_pair_info_list'):
+                        for pair_info in self.stage_ta_pair_info_list:
+                            if pair_info['stage_e_path'] == stage_e_path and pair_info['ocr_path'] == ocr_path:
+                                self.root.after(0, lambda sl=pair_info['status_label']: 
+                                               sl.configure(text="Failed", text_color="red"))
+                                break
+                    
+                    if idx < total_pairs - 1 and delay_seconds > 0:
+                        import time
+                        time.sleep(delay_seconds)
+            
+            # Final progress update
+            progress = 1.0
+            self.root.after(0, lambda: self.stage_ta_progress_bar.set(progress))
+            
+            summary_msg = f"Table Notes Generation batch completed!\n\n"
+            summary_msg += f"Total pairs: {total_pairs}\n"
+            summary_msg += f"Successful: {completed}\n"
+            if skipped > 0:
+                summary_msg += f"Skipped (already completed): {skipped}\n"
+            summary_msg += f"Failed: {failed}"
+            
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Batch Processing Complete",
+                summary_msg
+            ))
+            
+        except Exception as e:
+            self.logger.error(f"Error in batch Table Notes Generation: {str(e)}", exc_info=True)
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Batch processing error:\n{str(e)}"))
+        finally:
+            try:
+                self.root.after(
+                    0,
+                    lambda: start_button.configure(state="normal", text="Process All Pairs")
+                )
+            except Exception:
+                pass
+    
+    def view_csv_stage_ta(self):
+        """Convert Table Notes JSON to CSV format and display it"""
+        if not hasattr(self, 'last_stage_ta_path') or not self.last_stage_ta_path:
+            messagebox.showerror("Error", "No Table Notes JSON file available. Please process Table Notes Generation first.")
+            return
+        
+        try:
+            with open(self.last_stage_ta_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            points = json_data.get("data") or json_data.get("points") or json_data.get("rows", [])
+            if not points:
+                messagebox.showwarning("Warning", "No data found in Table Notes JSON file")
+                return
+            
+            # Convert to CSV
+            import csv
+            import io
+            output = io.StringIO()
+            if points:
+                fieldnames = list(points[0].keys())
+                writer = csv.DictWriter(output, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(points)
+            
+            csv_text = output.getvalue()
+            self.show_response_window(csv_text, file_path=self.last_stage_ta_path.replace('.json', '.csv'), is_csv=True)
+            
+        except Exception as e:
+            self.logger.error(f"Error viewing CSV for Stage TA: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Failed to convert Table Notes JSON to CSV:\n{str(e)}")
     
     def process_ocr_extraction(self):
         """Process OCR Extraction in background thread"""
@@ -5350,6 +6293,11 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=15, pady=(0, 10))
+        
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_f_provider_var, self.stage_f_model_var, self.stage_f_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_f", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Progress bar for batch processing
         if not hasattr(self, 'stage_f_progress_bar'):
@@ -5977,28 +6925,10 @@ class ContentAutomationGUI:
         # Apply initial default/custom state and fill textbox
         self.on_stage_j_prompt_type_change()
         
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(model_frame, text="Model:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        # Get default model from main model selection if available
-        default_model = "gemini-2.5-pro"
-        if hasattr(self, 'model_var') and self.model_var:
-            default_model = self.model_var.get()
-        
-        if not hasattr(self, 'stage_j_model_var'):
-            self.stage_j_model_var = ctk.StringVar(value=default_model)
-        if not hasattr(self, 'stage_j_model_combo'):
-            self.stage_j_model_combo = ctk.CTkComboBox(
-                model_frame,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.stage_j_model_var,
-                width=300
-            )
-        self.stage_j_model_combo.pack(anchor="w", padx=10, pady=5)
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_j_provider_var, self.stage_j_model_var, self.stage_j_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_j", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Process Button
         process_btn_frame = ctk.CTkFrame(main_frame)
@@ -7295,28 +8225,10 @@ class ContentAutomationGUI:
         # Apply initial default/custom state and fill textbox
         self.on_stage_h_prompt_type_change()
         
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(model_frame, text="Model:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        # Get default model from main model selection if available
-        default_model = "gemini-2.5-pro"
-        if hasattr(self, 'model_var') and self.model_var:
-            default_model = self.model_var.get()
-        
-        if not hasattr(self, 'stage_h_model_var'):
-            self.stage_h_model_var = ctk.StringVar(value=default_model)
-        if not hasattr(self, 'stage_h_model_combo'):
-            self.stage_h_model_combo = ctk.CTkComboBox(
-                model_frame,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.stage_h_model_var,
-                width=300
-            )
-        self.stage_h_model_combo.pack(anchor="w", padx=10, pady=5)
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_h_provider_var, self.stage_h_model_var, self.stage_h_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_h", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Delay Setting
         delay_frame = ctk.CTkFrame(main_frame)
@@ -7611,6 +8523,13 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(ocr_extraction_frame, text="Note: If not specified, OCR Extraction JSON will be auto-detected from Stage J directory for each pair.", 
                     font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Stage Settings (Provider, Model and API Key)
+        # Note: Stage V uses two models (Step 1 and Step 2)
+        # We'll add settings for the main stage, but individual model selections remain in Step 1 and Step 2
+        self.stage_v_provider_var, self.stage_v_model_var, self.stage_v_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_v", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Pairs Section
         pairs_frame = ctk.CTkFrame(main_frame)
@@ -8529,6 +9448,11 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_m_selected_stage_h_files'):
             self.stage_m_selected_stage_h_files = []
         
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_m_provider_var, self.stage_m_model_var, self.stage_m_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_m", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
+        
         # Delay Setting
         delay_frame = ctk.CTkFrame(main_frame)
         delay_frame.pack(fill="x", pady=10)
@@ -9080,30 +10004,10 @@ class ContentAutomationGUI:
         # Initialize prompt textbox with default prompt
         self.on_stage_l_prompt_type_change()
 
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-
-        ctk.CTkLabel(
-            model_frame,
-            text="Model for Chapter Summary:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=10, pady=5)
-
-        default_model = "gemini-2.5-pro"
-        if hasattr(self, "model_var") and self.model_var:
-            default_model = self.model_var.get()
-
-        if not hasattr(self, "stage_l_model_var"):
-            self.stage_l_model_var = ctk.StringVar(value=default_model)
-        if not hasattr(self, "stage_l_model_combo"):
-            self.stage_l_model_combo = ctk.CTkComboBox(
-                model_frame,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.stage_l_model_var,
-                width=300
-            )
-        self.stage_l_model_combo.pack(anchor="w", padx=10, pady=5)
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_l_provider_var, self.stage_l_model_var, self.stage_l_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_l", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Delay Setting
         delay_frame = ctk.CTkFrame(main_frame)
@@ -9737,6 +10641,13 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_x_selected_pdf_files'):
             self.stage_x_selected_pdf_files = []
         
+        # Stage Settings (Provider, Model and API Key)
+        # Note: Stage X uses two models (PDF extraction and Change detection)
+        # We'll add settings for the main stage, but individual model selections remain in Part 1 and Part 2
+        self.stage_x_provider_var, self.stage_x_model_var, self.stage_x_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_x", api_provider="google", default_model="gemini-2.5-pro"
+        )
+        
         # Part 1: PDF Extraction Settings
         part1_frame = ctk.CTkFrame(main_frame)
         part1_frame.pack(fill="x", pady=10)
@@ -10124,6 +11035,13 @@ class ContentAutomationGUI:
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
+        
+        # Stage Settings (Provider, Model and API Key)
+        # Note: Stage Y uses two models (OCR extraction and Deletion detection)
+        # We'll add settings for the main stage, but individual model selections remain in Step 1 and Step 2
+        self.stage_y_provider_var, self.stage_y_model_var, self.stage_y_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_y", api_provider="google", default_model="gemini-2.5-pro"
+        )
         
         # Old Reference PDF Files Selection - Batch Processing
         old_pdf_frame = ctk.CTkFrame(main_frame)
@@ -11415,16 +12333,10 @@ class ContentAutomationGUI:
         # Initialize Stage Z prompt textbox
         self.on_stage_z_prompt_type_change()
         
-        # Model Selection
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(model_frame, text="Model:",
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        if not hasattr(self, 'stage_z_model_var'):
-            default_model = self.model_var.get() if hasattr(self, 'model_var') else "gemini-2.5-pro"
-            self.stage_z_model_var = ctk.StringVar(value=default_model)
-        ctk.CTkComboBox(model_frame, values=APIConfig.TEXT_MODELS, variable=self.stage_z_model_var, width=300).pack(anchor="w", padx=10, pady=5)
+        # Stage Settings (Provider, Model and API Key)
+        self.stage_z_provider_var, self.stage_z_model_var, self.stage_z_api_key_var = self.add_stage_settings_section(
+            main_frame, "stage_z", api_provider="google", default_model="gemini-2.5-pro"
+        )
         
         # Delay Setting
         delay_frame = ctk.CTkFrame(main_frame)
@@ -11728,8 +12640,8 @@ class ContentAutomationGUI:
         if not hasattr(self, 'json_to_csv_results_list'):
             self.json_to_csv_results_list = []
     
-    def setup_reference_change_rag_ui(self, parent):
-        """Setup UI for Reference Change (RAG): two PDFs -> structured change list."""
+    def setup_reference_change_ui(self, parent):
+        """Setup UI for Reference Change: Extract topics from OCR JSON and compare via LLM."""
         main_frame = ctk.CTkScrollableFrame(parent)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
@@ -11749,89 +12661,107 @@ class ContentAutomationGUI:
         
         title = ctk.CTkLabel(
             main_frame,
-            text="Reference Change (RAG)",
+            text="Reference Change",
             font=ctk.CTkFont(size=24, weight="bold")
         )
         title.pack(pady=(0, 20))
         
         desc = ctk.CTkLabel(
             main_frame,
-            text="Use two OCR/text files (old & new reference), compare via LLM with your prompt, and get a structured list of changes: added, removed, merged, split, unchanged. Prompt must contain {OLD_TEXT} and {NEW_TEXT}.",
+            text="Detect reference book changes: Select CSV file with old/cold/new/cnew columns and OCR JSON files. The system builds chunks and processes them with the model.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
         desc.pack(pady=(0, 20))
         
-        # Old reference OCR/Text file
+        # Section 1: CSV File (NEW)
+        csv_file_frame = ctk.CTkFrame(main_frame)
+        csv_file_frame.pack(fill="x", pady=10)
+        ctk.CTkLabel(csv_file_frame, text="1. CSV File (old, cold, new, cnew columns):", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(csv_file_frame, text="CSV file with columns: old (old topic), cold (old chapter number), new (new topic), cnew (new chapter number)", 
+                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
+        csv_entry_frame = ctk.CTkFrame(csv_file_frame)
+        csv_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
+        if not hasattr(self, 'ref_change_csv_file_var'):
+            self.ref_change_csv_file_var = ctk.StringVar(value="")
+        ctk.CTkEntry(csv_entry_frame, textvariable=self.ref_change_csv_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(csv_entry_frame, text="Browse", command=self._ref_change_browse_csv_file, width=80).pack(side="left", pady=5)
+        
+        # Section 2: Old Reference OCR JSON file
         old_file_frame = ctk.CTkFrame(main_frame)
         old_file_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(old_file_frame, text="Old Reference OCR/Text file:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(old_file_frame, text="2. Old Reference OCR JSON file:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         old_entry_frame = ctk.CTkFrame(old_file_frame)
         old_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
-        if not hasattr(self, 'ref_change_rag_old_file_var'):
-            self.ref_change_rag_old_file_var = ctk.StringVar(value="")
-        ctk.CTkEntry(old_entry_frame, textvariable=self.ref_change_rag_old_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
-        ctk.CTkButton(old_entry_frame, text="Browse", command=self._ref_change_rag_browse_old_file, width=80).pack(side="left", pady=5)
+        if not hasattr(self, 'ref_change_old_file_var'):
+            self.ref_change_old_file_var = ctk.StringVar(value="")
+        ctk.CTkEntry(old_entry_frame, textvariable=self.ref_change_old_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(old_entry_frame, text="Browse", command=self._ref_change_browse_old_file, width=80).pack(side="left", pady=5)
         
-        # New reference OCR/Text file
+        # Section 3: New Reference OCR JSON file
         new_file_frame = ctk.CTkFrame(main_frame)
         new_file_frame.pack(fill="x", pady=10)
-        ctk.CTkLabel(new_file_frame, text="New Reference OCR/Text file:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(new_file_frame, text="3. New Reference OCR JSON file:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
         new_entry_frame = ctk.CTkFrame(new_file_frame)
         new_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
-        if not hasattr(self, 'ref_change_rag_new_file_var'):
-            self.ref_change_rag_new_file_var = ctk.StringVar(value="")
-        ctk.CTkEntry(new_entry_frame, textvariable=self.ref_change_rag_new_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
-        ctk.CTkButton(new_entry_frame, text="Browse", command=self._ref_change_rag_browse_new_file, width=80).pack(side="left", pady=5)
+        if not hasattr(self, 'ref_change_new_file_var'):
+            self.ref_change_new_file_var = ctk.StringVar(value="")
+        ctk.CTkEntry(new_entry_frame, textvariable=self.ref_change_new_file_var, width=500).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(new_entry_frame, text="Browse", command=self._ref_change_browse_new_file, width=80).pack(side="left", pady=5)
         
-        # Prompt (user-provided)
+        # Section 4: Prompt
         prompt_frame = ctk.CTkFrame(main_frame)
         prompt_frame.pack(fill="x", pady=10)
         prompt_header = ctk.CTkFrame(prompt_frame)
         prompt_header.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(prompt_header, text="Prompt (must include {OLD_TEXT} and {NEW_TEXT}):", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(prompt_header, text="Load default prompt", command=self._ref_change_rag_load_default_prompt, width=140).pack(side="left", pady=2)
-        if not hasattr(self, 'ref_change_rag_prompt_text'):
-            self.ref_change_rag_prompt_text = ctk.CTkTextbox(prompt_frame, height=140, font=self.farsi_text_font)
-        self.ref_change_rag_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
-        if not self.ref_change_rag_prompt_text.get("1.0", tk.END).strip():
+        ctk.CTkLabel(prompt_header, text="5. Prompt (must include {OLD_TEXT} and {NEW_TEXT}):", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(prompt_header, text="Load default prompt", command=self._ref_change_load_default_prompt, width=160).pack(side="left", pady=2)
+        ctk.CTkButton(prompt_header, text="Save as default prompt", command=self._ref_change_save_default_prompt, width=160).pack(side="left", padx=5, pady=2)
+        if not hasattr(self, 'ref_change_prompt_text'):
+            self.ref_change_prompt_text = ctk.CTkTextbox(prompt_frame, height=140, font=self.farsi_text_font)
+        self.ref_change_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        if not self.ref_change_prompt_text.get("1.0", tk.END).strip():
             default_prompt = self.prompt_manager.get_prompt("Reference Change List Prompt") or ""
             if default_prompt:
-                self.ref_change_rag_prompt_text.delete("1.0", tk.END)
-                self.ref_change_rag_prompt_text.insert("1.0", default_prompt)
-        
-        # Use RAG checkbox (chunk + embed + retrieve + LLM per pair for long texts)
-        if not hasattr(self, 'ref_change_rag_use_rag_var'):
-            self.ref_change_rag_use_rag_var = ctk.BooleanVar(value=True)
-        rag_check = ctk.CTkCheckBox(
-            main_frame,
-            text="Use RAG (chunk, embed, retrieve, LLM per pair — best for long texts; needs sentence-transformers)",
-            variable=self.ref_change_rag_use_rag_var,
-            font=ctk.CTkFont(size=12),
+                self.ref_change_prompt_text.delete("1.0", tk.END)
+                self.ref_change_prompt_text.insert("1.0", default_prompt)
+        # Stage Settings (Provider, Model and API Key)
+        self.ref_change_provider_var, self.ref_change_model_var, self.ref_change_api_key_var = self.add_stage_settings_section(
+            main_frame, "reference_change", api_provider="google", default_model="gemini-2.5-pro"
         )
-        rag_check.pack(anchor="w", padx=10, pady=(5, 10))
+        
         # Run button and status
         run_frame = ctk.CTkFrame(main_frame)
         run_frame.pack(fill="x", pady=20)
-        if not hasattr(self, 'ref_change_rag_run_btn'):
-            self.ref_change_rag_run_btn = ctk.CTkButton(
+        if not hasattr(self, 'ref_change_run_btn'):
+            self.ref_change_run_btn = ctk.CTkButton(
                 run_frame,
-                text="Run Reference Change Detection",
-                command=self._run_reference_change_rag,
+                text="Run Change Detection",
+                command=self._run_reference_change,
                 width=220,
                 height=40,
                 font=ctk.CTkFont(size=14, weight="bold"),
                 fg_color="green",
                 hover_color="darkgreen"
             )
-        self.ref_change_rag_run_btn.pack(side="left", padx=10, pady=10)
-        if not hasattr(self, 'ref_change_rag_progress_bar'):
-            self.ref_change_rag_progress_bar = ctk.CTkProgressBar(run_frame, width=300)
-        self.ref_change_rag_progress_bar.pack(side="left", padx=10, pady=10)
-        self.ref_change_rag_progress_bar.set(0)
-        if not hasattr(self, 'ref_change_rag_status_label'):
-            self.ref_change_rag_status_label = ctk.CTkLabel(run_frame, text="Ready", font=ctk.CTkFont(size=12), text_color="gray")
-        self.ref_change_rag_status_label.pack(side="left", padx=5, pady=10)
+        self.ref_change_run_btn.pack(side="left", padx=10, pady=10)
+        if not hasattr(self, 'ref_change_progress_bar'):
+            self.ref_change_progress_bar = ctk.CTkProgressBar(run_frame, width=300)
+        self.ref_change_progress_bar.pack(side="left", padx=10, pady=10)
+        self.ref_change_progress_bar.set(0)
+        if not hasattr(self, 'ref_change_status_label'):
+            self.ref_change_status_label = ctk.CTkLabel(run_frame, text="Ready", font=ctk.CTkFont(size=12), text_color="gray")
+        self.ref_change_status_label.pack(side="left", padx=5, pady=10)
+        
+        # Status Display (NEW)
+        status_frame = ctk.CTkFrame(main_frame)
+        status_frame.pack(fill="both", expand=True, pady=10)
+        ctk.CTkLabel(status_frame, text="Status & Progress:", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
+        if not hasattr(self, 'ref_change_status_text'):
+            self.ref_change_status_text = ctk.CTkTextbox(status_frame, height=150, font=ctk.CTkFont(family="Tahoma", size=10))
+        self.ref_change_status_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.ref_change_status_text.insert("1.0", "Status will appear here during processing...")
+        self.ref_change_status_text.configure(state="disabled")
         
         # Output JSON path (optional save)
         out_frame = ctk.CTkFrame(main_frame)
@@ -11839,47 +12769,73 @@ class ContentAutomationGUI:
         ctk.CTkLabel(out_frame, text="Save result JSON (optional):", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=5)
         out_entry_frame = ctk.CTkFrame(out_frame)
         out_entry_frame.pack(fill="x", padx=10, pady=(0, 10))
-        if not hasattr(self, 'ref_change_rag_output_path_var'):
-            self.ref_change_rag_output_path_var = ctk.StringVar(value="")
-        ctk.CTkEntry(out_entry_frame, textvariable=self.ref_change_rag_output_path_var, width=400).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
-        ctk.CTkButton(out_entry_frame, text="Browse", command=self._ref_change_rag_browse_output, width=80).pack(side="left", pady=5)
+        if not hasattr(self, 'ref_change_output_path_var'):
+            self.ref_change_output_path_var = ctk.StringVar(value="")
+        ctk.CTkEntry(out_entry_frame, textvariable=self.ref_change_output_path_var, width=400).pack(side="left", fill="x", expand=True, padx=(0, 5), pady=5)
+        ctk.CTkButton(out_entry_frame, text="Browse", command=self._ref_change_browse_output, width=80).pack(side="left", pady=5)
         
         # Result summary (read-only textbox)
         result_frame = ctk.CTkFrame(main_frame)
         result_frame.pack(fill="both", expand=True, pady=10)
         ctk.CTkLabel(result_frame, text="Result (JSON):", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        if not hasattr(self, 'ref_change_rag_result_text'):
-            self.ref_change_rag_result_text = ctk.CTkTextbox(result_frame, height=200, font=ctk.CTkFont(family="Tahoma", size=11))
-        self.ref_change_rag_result_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        self.ref_change_rag_result_text.insert("1.0", "Result will appear here after run.")
-        self.ref_change_rag_result_text.configure(state="disabled")
+        if not hasattr(self, 'ref_change_result_text'):
+            self.ref_change_result_text = ctk.CTkTextbox(result_frame, height=200, font=ctk.CTkFont(family="Tahoma", size=11))
+        self.ref_change_result_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.ref_change_result_text.insert("1.0", "Result will appear here after run.")
+        self.ref_change_result_text.configure(state="disabled")
     
-    def _ref_change_rag_browse_old_file(self):
-        """Browse for old reference OCR/Text file."""
+    def _ref_change_browse_csv_file(self):
+        """Browse for CSV file with old/cold/new/cnew columns."""
         path = filedialog.askopenfilename(
-            title="Select Old Reference OCR/Text file",
-            filetypes=[("Text/JSON", "*.txt;*.json"), ("Text", "*.txt"), ("JSON", "*.json"), ("All files", "*.*")]
+            title="Select CSV File (old, cold, new, cnew columns)",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
-        if path and hasattr(self, 'ref_change_rag_old_file_var'):
-            self.ref_change_rag_old_file_var.set(path)
+        if path and hasattr(self, 'ref_change_csv_file_var'):
+            self.ref_change_csv_file_var.set(path)
     
-    def _ref_change_rag_browse_new_file(self):
-        """Browse for new reference OCR/Text file."""
+    def _ref_change_browse_old_file(self):
+        """Browse for old reference OCR JSON file."""
         path = filedialog.askopenfilename(
-            title="Select New Reference OCR/Text file",
-            filetypes=[("Text/JSON", "*.txt;*.json"), ("Text", "*.txt"), ("JSON", "*.json"), ("All files", "*.*")]
+            title="Select Old Reference OCR JSON file",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
         )
-        if path and hasattr(self, 'ref_change_rag_new_file_var'):
-            self.ref_change_rag_new_file_var.set(path)
+        if path and hasattr(self, 'ref_change_old_file_var'):
+            self.ref_change_old_file_var.set(path)
     
-    def _ref_change_rag_load_default_prompt(self):
+    def _ref_change_browse_new_file(self):
+        """Browse for new reference OCR JSON file."""
+        path = filedialog.askopenfilename(
+            title="Select New Reference OCR JSON file",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        if path and hasattr(self, 'ref_change_new_file_var'):
+            self.ref_change_new_file_var.set(path)
+    
+    def _ref_change_load_default_prompt(self):
         """Load default Reference Change List prompt from prompts.json into the prompt textbox."""
         default = self.prompt_manager.get_prompt("Reference Change List Prompt") or ""
-        if default and hasattr(self, 'ref_change_rag_prompt_text'):
-            self.ref_change_rag_prompt_text.delete("1.0", tk.END)
-            self.ref_change_rag_prompt_text.insert("1.0", default)
+        if default and hasattr(self, 'ref_change_prompt_text'):
+            self.ref_change_prompt_text.delete("1.0", tk.END)
+            self.ref_change_prompt_text.insert("1.0", default)
+            self.update_status("Default prompt loaded")
     
-    def _ref_change_rag_read_text_file(self, path: str) -> str:
+    def _ref_change_save_default_prompt(self):
+        """Save current prompt as default in prompts.json."""
+        if not hasattr(self, 'ref_change_prompt_text'):
+            return
+        prompt_text = self.ref_change_prompt_text.get("1.0", tk.END).strip()
+        if not prompt_text:
+            messagebox.showwarning("Warning", "Please enter a prompt first")
+            return
+        try:
+            self.prompt_manager.save_prompt("Reference Change List Prompt", prompt_text)
+            self.update_status("Default prompt saved")
+            messagebox.showinfo("Success", "Prompt saved as default")
+        except Exception as e:
+            self.logger.error(f"Failed to save prompt: {e}")
+            messagebox.showerror("Error", f"Error saving prompt: {str(e)}")
+    
+    def _ref_change_read_text_file(self, path: str) -> str:
         """Read OCR/text file as string. For .json, optionally use 'text' or 'content' key if present."""
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -11900,97 +12856,295 @@ class ContentAutomationGUI:
         except json.JSONDecodeError:
             return raw
     
-    def _ref_change_rag_browse_output(self):
+    def _ref_change_browse_output(self):
         """Browse for output JSON path."""
         path = filedialog.asksaveasfilename(title="Save Changes JSON As", defaultextension=".json", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
-        if path and hasattr(self, 'ref_change_rag_output_path_var'):
-            self.ref_change_rag_output_path_var.set(path)
+        if path and hasattr(self, 'ref_change_output_path_var'):
+            self.ref_change_output_path_var.set(path)
     
-    def _run_reference_change_rag(self):
-        """Run reference change detection in background thread (reads OCR/text files and user prompt)."""
-        old_path = self.ref_change_rag_old_file_var.get().strip() if hasattr(self, 'ref_change_rag_old_file_var') else ""
-        new_path = self.ref_change_rag_new_file_var.get().strip() if hasattr(self, 'ref_change_rag_new_file_var') else ""
+    def _update_status(self, message: str):
+        """Update status text display"""
+        if hasattr(self, 'ref_change_status_text'):
+            self.ref_change_status_text.configure(state="normal")
+            # Check if textbox is empty or has default message
+            current_text = self.ref_change_status_text.get("1.0", "end-1c")
+            if current_text and current_text.strip() and current_text != "Status will appear here during processing...":
+                self.ref_change_status_text.insert("end", f"\n{message}")
+            else:
+                # First message - replace default text
+                self.ref_change_status_text.delete("1.0", tk.END)
+                self.ref_change_status_text.insert("1.0", message)
+            self.ref_change_status_text.see("end")
+            self.ref_change_status_text.configure(state="disabled")
+        self.root.update_idletasks()
+    
+    def _clear_status(self):
+        """Clear status text display"""
+        if hasattr(self, 'ref_change_status_text'):
+            self.ref_change_status_text.configure(state="normal")
+            self.ref_change_status_text.delete("1.0", tk.END)
+            self.ref_change_status_text.insert("1.0", "Status will appear here during processing...")
+            self.ref_change_status_text.configure(state="disabled")
+    
+    def _run_reference_change(self):
+        """Run reference change detection: process CSV file, build chunks, and compare via LLM."""
+        # Get file paths
+        csv_path = self.ref_change_csv_file_var.get().strip() if hasattr(self, 'ref_change_csv_file_var') else ""
+        old_path = self.ref_change_old_file_var.get().strip() if hasattr(self, 'ref_change_old_file_var') else ""
+        new_path = self.ref_change_new_file_var.get().strip() if hasattr(self, 'ref_change_new_file_var') else ""
+        
+        if not csv_path:
+            messagebox.showwarning("Missing Input", "Please select CSV file.")
+            return
+        
         if not old_path or not new_path:
-            messagebox.showwarning("Missing input", "Please select both Old Reference OCR/Text file and New Reference OCR/Text file.")
+            messagebox.showwarning("Missing Input", "Please select both Old and New Reference OCR JSON files.")
             return
+        
+        if not os.path.isfile(csv_path):
+            messagebox.showerror("Error", f"CSV file not found: {csv_path}")
+            return
+        
         if not os.path.isfile(old_path):
-            messagebox.showerror("Error", f"Old file not found: {old_path}")
+            messagebox.showerror("Error", f"Old reference file not found: {old_path}")
             return
+        
         if not os.path.isfile(new_path):
-            messagebox.showerror("Error", f"New file not found: {new_path}")
+            messagebox.showerror("Error", f"New reference file not found: {new_path}")
             return
-        prompt_str = self.ref_change_rag_prompt_text.get("1.0", tk.END).strip() if hasattr(self, 'ref_change_rag_prompt_text') else ""
+        
+        # Get prompt
+        prompt_str = self.ref_change_prompt_text.get("1.0", tk.END).strip() if hasattr(self, 'ref_change_prompt_text') else ""
         if not prompt_str or "{OLD_TEXT}" not in prompt_str or "{NEW_TEXT}" not in prompt_str:
-            messagebox.showwarning("Missing prompt", "Please enter a prompt that contains {OLD_TEXT} and {NEW_TEXT}, or click 'Load default prompt'.")
+            messagebox.showwarning("Missing Prompt", "Please enter a prompt that includes {OLD_TEXT} and {NEW_TEXT}, or use 'Load default prompt'.")
             return
+        
+        # Get provider and model
+        provider = self.ref_change_provider_var.get() if hasattr(self, 'ref_change_provider_var') else "google"
+        model_name = self.ref_change_model_var.get() if hasattr(self, 'ref_change_model_var') else APIConfig.DEFAULT_TEXT_MODEL
+        
+        # Save provider and model to settings
+        if hasattr(self, 'ref_change_provider_var'):
+            self.stage_settings_manager.set_stage_provider("reference_change", provider)
+        if hasattr(self, 'ref_change_model_var'):
+            self.stage_settings_manager.set_stage_model("reference_change", model_name)
         
         def run():
             try:
-                self.ref_change_rag_progress_bar.set(0.1)
-                self.ref_change_rag_status_label.configure(text="Reading OCR/text files...")
+                self._clear_status()
+                self.ref_change_progress_bar.set(0.05)
+                self.ref_change_status_label.configure(text="Reading CSV file...")
+                self._update_status("=" * 60)
+                self._update_status("Starting Reference Change Detection")
+                self._update_status("=" * 60)
+                self._update_status(f"CSV File: {os.path.basename(csv_path)}")
+                self._update_status(f"Old OCR JSON: {os.path.basename(old_path)}")
+                self._update_status(f"New OCR JSON: {os.path.basename(new_path)}")
                 self.root.update_idletasks()
-                old_content = self._ref_change_rag_read_text_file(old_path)
-                new_content = self._ref_change_rag_read_text_file(new_path)
-                if not old_content:
-                    self.ref_change_rag_status_label.configure(text="Failed to read old file.")
-                    self.ref_change_rag_progress_bar.set(0)
+                
+                # Import CSV processor
+                from reference_change_csv_processor import build_chunks_from_csv, create_chunks_json
+                
+                # Build chunks from CSV
+                self._update_status("\n" + "-" * 60)
+                self._update_status("Step 1: Building chunks from CSV file...")
+                chunks, error = build_chunks_from_csv(csv_path, old_path, new_path, exclude_table_type=True)
+                
+                if error:
+                    error_msg = f"Failed to build chunks: {error}"
+                    self._update_status(f"ERROR: {error_msg}")
+                    self.ref_change_status_label.configure(text=f"Error: {error_msg}")
+                    self.ref_change_progress_bar.set(0)
+                    messagebox.showerror("Error", error_msg)
                     return
-                if not new_content:
-                    self.ref_change_rag_status_label.configure(text="Failed to read new file.")
-                    self.ref_change_rag_progress_bar.set(0)
+                
+                if not chunks:
+                    error_msg = "No chunks were created from CSV file"
+                    self._update_status(f"ERROR: {error_msg}")
+                    self.ref_change_status_label.configure(text=f"Error: {error_msg}")
+                    self.ref_change_progress_bar.set(0)
+                    messagebox.showerror("Error", error_msg)
                     return
-                self.ref_change_rag_progress_bar.set(0.2)
-                self.ref_change_rag_status_label.configure(text="Calling LLM...")
-                self.root.update_idletasks()
-                self.api_client.set_stage("reference_change_rag")
-                if not self.api_client.initialize_text_client():
-                    self.ref_change_rag_status_label.configure(text="Failed to init API client.")
-                    self.ref_change_rag_progress_bar.set(0)
+                
+                self.ref_change_progress_bar.set(0.2)
+                self._update_status(f"✓ Successfully built {len(chunks)} chunks")
+                self._update_status("\nChunk Details:")
+                for chunk in chunks:
+                    self._update_status(f"  Chunk {chunk['chunk_id']}:")
+                    self._update_status(f"    - Old Chapter {chunk['cold']} ({chunk['old_chapter_name']}): {len(chunk['old_topics'])} topics")
+                    if chunk['old_topics']:
+                        self._update_status(f"      Topics: {', '.join(chunk['old_topics'])}")
+                    self._update_status(f"    - New Chapter {chunk['cnew']} ({chunk['new_chapter_name']}): {len(chunk['new_topics'])} topics")
+                    if chunk['new_topics']:
+                        self._update_status(f"      Topics: {', '.join(chunk['new_topics'])}")
+                    self._update_status(f"    - Old content length: {len(chunk['old_content'])} chars")
+                    self._update_status(f"    - New content length: {len(chunk['new_content'])} chars")
+                
+                # Create chunks JSON
+                chunks_json = create_chunks_json(chunks)
+                self._update_status(f"\n✓ Created chunks JSON structure with {len(chunks)} chunks")
+                
+                # Get API key if provided
+                api_key = None
+                if hasattr(self, 'ref_change_api_key_var') and self.ref_change_api_key_var.get().strip():
+                    api_key = self.ref_change_api_key_var.get().strip()
+                
+                # Initialize API client
+                self.api_client.set_stage("reference_change")
+                if not self.api_client.initialize_text_client(model_name, api_key=api_key):
+                    error_msg = "Failed to initialize API client"
+                    self._update_status(f"ERROR: {error_msg}")
+                    self.ref_change_status_label.configure(text=f"Error: {error_msg}")
+                    self.ref_change_progress_bar.set(0)
                     return
-                self.ref_change_rag_progress_bar.set(0.5)
-                use_rag = self.ref_change_rag_use_rag_var.get() if hasattr(self, 'ref_change_rag_use_rag_var') else True
-                result = get_reference_changes_with_client(
-                    "",
-                    "",
-                    self.api_client,
-                    prompt_manager=self.prompt_manager,
-                    prompt_name="Reference Change List Prompt",
-                    prompt_template_override=prompt_str,
-                    old_text_override=old_content,
-                    new_text_override=new_content,
-                    use_rag=use_rag,
-                )
-                self.ref_change_rag_progress_bar.set(1.0)
-                if result is None:
-                    self.ref_change_rag_status_label.configure(text="Failed: no result from LLM.")
-                    self.ref_change_rag_result_text.configure(state="normal")
-                    self.ref_change_rag_result_text.delete("1.0", tk.END)
-                    self.ref_change_rag_result_text.insert("1.0", "Error: no structured result returned.")
-                    self.ref_change_rag_result_text.configure(state="disabled")
-                    return
-                self.ref_change_rag_status_label.configure(text="Done.")
-                out_path = self.ref_change_rag_output_path_var.get().strip() if hasattr(self, 'ref_change_rag_output_path_var') else ""
+                
+                self._update_status(f"\n✓ API client initialized (Model: {model_name})")
+                
+                # Process each chunk
+                self._update_status("\n" + "-" * 60)
+                self._update_status("Step 2: Processing chunks with model...")
+                all_results = []
+                
+                for chunk_idx, chunk in enumerate(chunks, 1):
+                    self.ref_change_progress_bar.set(0.2 + (chunk_idx / len(chunks)) * 0.7)
+                    self.ref_change_status_label.configure(text=f"Processing chunk {chunk_idx}/{len(chunks)}...")
+                    self._update_status(f"\nProcessing Chunk {chunk_idx}/{len(chunks)}:")
+                    self._update_status(f"  Old topics: {', '.join(chunk['old_topics']) if chunk['old_topics'] else 'None'}")
+                    self._update_status(f"  New topics: {', '.join(chunk['new_topics']) if chunk['new_topics'] else 'None'}")
+                    self.root.update_idletasks()
+                    
+                    # Prepare prompt with chunk content
+                    old_content = chunk['old_content'] or "[No old content]"
+                    new_content = chunk['new_content'] or "[No new content]"
+                    final_prompt = prompt_str.replace("{OLD_TEXT}", old_content).replace("{NEW_TEXT}", new_content)
+                    
+                    # Call model
+                    response_text = self.api_client.process_text(
+                        text=final_prompt,
+                        system_prompt=None,
+                        model_name=model_name,
+                        temperature=0.7,
+                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+                        api_key=api_key
+                    )
+                    
+                    if not response_text:
+                        self._update_status(f"  ⚠ Warning: No response from model for chunk {chunk_idx}")
+                        all_results.append({
+                            "chunk_id": chunk['chunk_id'],
+                            "error": "No response from model"
+                        })
+                        continue
+                    
+                    # Extract JSON from response
+                    try:
+                        from base_stage_processor import BaseStageProcessor
+                        base_processor = BaseStageProcessor(self.api_client)
+                        result = base_processor.extract_json_from_response_google(response_text)
+                        
+                        if not result:
+                            result = base_processor.load_txt_as_json_from_text_google(response_text)
+                        
+                        if not result:
+                            result = json.loads(response_text)
+                        
+                        # Add chunk metadata
+                        result['chunk_id'] = chunk['chunk_id']
+                        result['chunk_metadata'] = {
+                            'cold': chunk['cold'],
+                            'cnew': chunk['cnew'],
+                            'old_topics': chunk['old_topics'],
+                            'new_topics': chunk['new_topics']
+                        }
+                        all_results.append(result)
+                        self._update_status(f"  ✓ Chunk {chunk_idx} processed successfully")
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to extract JSON from chunk {chunk_idx} response: {e}")
+                        all_results.append({
+                            "chunk_id": chunk['chunk_id'],
+                            "raw_response": response_text,
+                            "error": f"Could not parse as JSON: {str(e)}"
+                        })
+                        self._update_status(f"  ⚠ Warning: Failed to parse JSON for chunk {chunk_idx}")
+                
+                # Combine all results
+                self.ref_change_progress_bar.set(0.95)
+                self._update_status("\n" + "-" * 60)
+                self._update_status("Step 3: Combining results...")
+                
+                final_result = {
+                    "metadata": {
+                        "total_chunks": len(chunks),
+                        "processed_chunks": len(all_results),
+                        "model": model_name,
+                        "chunks_json": chunks_json
+                    },
+                    "chunk_results": all_results
+                }
+                
+                # Try to merge results if they have standard structure
+                try:
+                    merged = {
+                        "added": [],
+                        "removed": [],
+                        "merged": [],
+                        "split": [],
+                        "unchanged": []
+                    }
+                    
+                    for chunk_result in all_results:
+                        if isinstance(chunk_result, dict) and 'error' not in chunk_result:
+                            for key in merged.keys():
+                                if key in chunk_result and isinstance(chunk_result[key], list):
+                                    merged[key].extend(chunk_result[key])
+                    
+                    final_result["merged_results"] = merged
+                    self._update_status("✓ Results merged successfully")
+                except Exception as e:
+                    self.logger.warning(f"Failed to merge results: {e}")
+                    self._update_status(f"⚠ Warning: Could not merge results: {str(e)}")
+                
+                self.ref_change_progress_bar.set(1.0)
+                self.ref_change_status_label.configure(text="Done")
+                self._update_status("\n" + "=" * 60)
+                self._update_status("✓ Processing completed successfully!")
+                self._update_status("=" * 60)
+                
+                # Save result if output path specified
+                out_path = self.ref_change_output_path_var.get().strip() if hasattr(self, 'ref_change_output_path_var') else ""
                 if out_path:
-                    with open(out_path, "w", encoding="utf-8") as f:
-                        json.dump(result, f, ensure_ascii=False, indent=2)
-                    self.ref_change_rag_status_label.configure(text=f"Done. Saved to {os.path.basename(out_path)}")
-                self.ref_change_rag_result_text.configure(state="normal")
-                self.ref_change_rag_result_text.delete("1.0", tk.END)
-                self.ref_change_rag_result_text.insert("1.0", json.dumps(result, ensure_ascii=False, indent=2))
-                self.ref_change_rag_result_text.configure(state="disabled")
+                    try:
+                        with open(out_path, "w", encoding="utf-8") as f:
+                            json.dump(final_result, f, ensure_ascii=False, indent=2)
+                        self._update_status(f"\n✓ Results saved to: {os.path.basename(out_path)}")
+                        self.ref_change_status_label.configure(text=f"Saved: {os.path.basename(out_path)}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to save result: {e}")
+                        self._update_status(f"\n⚠ Warning: Failed to save results: {str(e)}")
+                
+                # Display result
+                self.ref_change_result_text.configure(state="normal")
+                self.ref_change_result_text.delete("1.0", tk.END)
+                self.ref_change_result_text.insert("1.0", json.dumps(final_result, ensure_ascii=False, indent=2))
+                self.ref_change_result_text.configure(state="disabled")
+                
             except Exception as e:
-                logging.getLogger(__name__).exception("Reference change RAG failed")
-                self.ref_change_rag_status_label.configure(text=f"Error: {str(e)}")
-                self.ref_change_rag_progress_bar.set(0)
-                self.ref_change_rag_result_text.configure(state="normal")
-                self.ref_change_rag_result_text.delete("1.0", tk.END)
-                self.ref_change_rag_result_text.insert("1.0", f"Error: {str(e)}")
-                self.ref_change_rag_result_text.configure(state="disabled")
+                self.logger.exception("Reference change detection failed")
+                error_msg = str(e)
+                self._update_status(f"\nERROR: {error_msg}")
+                self.ref_change_status_label.configure(text=f"Error: {error_msg}")
+                self.ref_change_progress_bar.set(0)
+                self.ref_change_result_text.configure(state="normal")
+                self.ref_change_result_text.delete("1.0", tk.END)
+                self.ref_change_result_text.insert("1.0", f"Error: {error_msg}")
+                self.ref_change_result_text.configure(state="disabled")
+                messagebox.showerror("Error", f"Reference change detection failed:\n{error_msg}")
             finally:
-                self.ref_change_rag_progress_bar.set(0)
-                self.root.after(0, lambda: self.ref_change_rag_run_btn.configure(state="normal"))
+                self.ref_change_progress_bar.set(0)
+                self.root.after(0, lambda: self.ref_change_run_btn.configure(state="normal"))
         
-        self.ref_change_rag_run_btn.configure(state="disabled")
+        self.ref_change_run_btn.configure(state="disabled")
         thread = threading.Thread(target=run)
         thread.daemon = True
         thread.start()
