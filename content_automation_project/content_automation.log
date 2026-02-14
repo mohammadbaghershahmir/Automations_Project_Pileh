@@ -26200,3 +26200,546 @@ Traceback (most recent call last):
 google.api_core.exceptions.PermissionDenied: 403 Received http2 header with status: 403
 2026-02-10 12:16:21,872 - INFO - ✓ OCR Extraction completed. 0 subchapters processed and saved incrementally.
 2026-02-10 12:16:21,872 - INFO - Completed: 102006.pdf + t105003_102006.json -> /home/shahmir/Downloads/1تا6/OCR Extraction_102006.json
+2026-02-12 09:43:39,554 - INFO - Loaded 16 predefined prompts
+2026-02-12 09:43:39,554 - INFO - No existing settings file found, starting with empty settings
+2026-02-12 09:43:39,555 - WARNING - python-docx not available. Will try alternative methods.
+2026-02-12 09:43:39,555 - WARNING - python-docx not available. Will try alternative methods.
+2026-02-12 10:01:40,916 - INFO - Loaded 3 API keys
+2026-02-12 10:02:53,058 - INFO - Added manual pair: PDF=110.pdf, Topic=new 110.json
+2026-02-12 10:02:59,362 - INFO - Added manual pair: PDF=JOSEPH~1-1-859-869.pdf, Topic=old (2).json
+2026-02-12 10:03:33,689 - INFO - Saved stage settings to stage_settings.json
+2026-02-12 10:03:33,691 - INFO - Saved stage settings to stage_settings.json
+2026-02-12 10:03:34,673 - INFO - Saved stage settings to stage_settings.json
+2026-02-12 10:03:39,102 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:03:39,150 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:03:39,166 - ERROR - Failed to load topic file: Expecting value: line 19 column 7 (char 417)
+2026-02-12 10:03:39,171 - ERROR - Failed: 110.pdf + new 110.json
+2026-02-12 10:03:44,177 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:03:44,179 - ERROR - Failed to load topic file: Expecting value: line 19 column 7 (char 417)
+2026-02-12 10:03:44,179 - ERROR - Failed: JOSEPH~1-1-859-869.pdf + old (2).json
+2026-02-12 10:15:57,107 - INFO - Added manual pair: PDF=JOSEPH~1-1-859-869.pdf, Topic=old2.json
+2026-02-12 10:16:03,995 - INFO - Added manual pair: PDF=110.pdf, Topic=new 110.json
+2026-02-12 10:16:07,285 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:16:07,299 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:16:07,308 - ERROR - Failed to load topic file: Expecting value: line 19 column 7 (char 417)
+2026-02-12 10:16:07,322 - ERROR - Failed: JOSEPH~1-1-859-869.pdf + old2.json
+2026-02-12 10:16:12,335 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:16:12,343 - ERROR - Failed to load topic file: Expecting value: line 19 column 7 (char 417)
+2026-02-12 10:16:12,363 - ERROR - Failed: 110.pdf + new 110.json
+2026-02-12 10:18:51,104 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:18:51,125 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:18:51,540 - INFO - Successfully extracted 80664 characters from 11 pages using PyMuPDF
+2026-02-12 10:18:51,541 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:18:51,542 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:18:51,542 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:18:51,543 - INFO - [UnifiedAPIClient] Initializing gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:18:51,551 - INFO - Text client initialized with model: gemini-2.5-pro
+2026-02-12 10:18:51,551 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:18:51,565 - INFO - Initialized OCR Extraction JSON file: /home/mohammadbagher/Desktop/test1/OCR Extraction_JOSEPH~1-1-859-869.json
+2026-02-12 10:18:51,571 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:18:51,571 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:18:53,832 - ERROR - Error processing subchapter 1: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:18:53,856 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:18:53,856 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:18:54,387 - ERROR - Error processing subchapter 2: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:18:54,394 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:18:54,395 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:18:54,908 - ERROR - Error processing subchapter 3: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:18:54,914 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:18:54,915 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:18:55,389 - ERROR - Error processing subchapter 4: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:18:55,397 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:18:55,397 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:18:55,905 - ERROR - Error processing subchapter 5: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:18:55,908 - INFO - ✓ OCR Extraction completed. 0 subchapters processed and saved incrementally.
+2026-02-12 10:18:55,910 - INFO - Completed: JOSEPH~1-1-859-869.pdf + old2.json -> /home/mohammadbagher/Desktop/test1/OCR Extraction_JOSEPH~1-1-859-869.json
+2026-02-12 10:19:00,915 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:19:01,159 - INFO - Successfully extracted 73095 characters from 10 pages using PyMuPDF
+2026-02-12 10:19:01,161 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:19:01,161 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:19:01,161 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:19:01,161 - INFO - [UnifiedAPIClient] Initializing gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:19:01,161 - INFO - Text client initialized with model: gemini-2.5-pro
+2026-02-12 10:19:01,162 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:19:01,163 - INFO - Initialized OCR Extraction JSON file: /home/mohammadbagher/Desktop/test1/OCR Extraction_110.json
+2026-02-12 10:19:01,168 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:19:01,168 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:19:03,277 - ERROR - Error processing subchapter 1: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:19:03,280 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:19:03,281 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:19:03,910 - ERROR - Error processing subchapter 2: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:19:03,918 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:19:03,918 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:19:04,643 - ERROR - Error processing subchapter 3: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:19:04,649 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:19:04,650 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:19:05,283 - ERROR - Error processing subchapter 4: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:19:05,289 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:19:05,290 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:19:05,937 - ERROR - Error processing subchapter 5: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:19:05,945 - INFO - ✓ OCR Extraction completed. 0 subchapters processed and saved incrementally.
+2026-02-12 10:19:05,948 - INFO - Completed: 110.pdf + new 110.json -> /home/mohammadbagher/Desktop/test1/OCR Extraction_110.json
+2026-02-12 10:23:34,625 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:23:34,640 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:23:34,817 - INFO - Successfully extracted 80664 characters from 11 pages using PyMuPDF
+2026-02-12 10:23:34,818 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:23:34,818 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:23:34,818 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:23:34,818 - INFO - [UnifiedAPIClient] Initializing gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:23:34,819 - INFO - Text client initialized with model: gemini-2.5-pro
+2026-02-12 10:23:34,819 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:23:34,819 - INFO - Initialized OCR Extraction JSON file: /home/mohammadbagher/Desktop/test1/OCR Extraction_JOSEPH~1-1-859-869.json
+2026-02-12 10:23:34,821 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:23:34,822 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:25:05,613 - INFO - Received response for subchapter '1' (16754 characters)
+2026-02-12 10:25:05,623 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:25:05,624 - INFO - Extracted chapter name from model response: بیماری‌های خون و سرطان
+2026-02-12 10:25:05,628 - INFO - ✓ Added subchapter '1' to JSON file immediately
+2026-02-12 10:25:05,631 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:25:05,632 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:26:40,522 - INFO - Received response for subchapter '2' (20860 characters)
+2026-02-12 10:26:40,524 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:26:40,525 - INFO - Extracted chapter name from model response: لوسمی میلوئید مزمن
+2026-02-12 10:26:40,549 - INFO - ✓ Added subchapter '2' to JSON file immediately
+2026-02-12 10:26:40,554 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:26:40,556 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:30:29,146 - INFO - Received response for subchapter '3' (20279 characters)
+2026-02-12 10:30:29,150 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:30:29,151 - INFO - Extracted chapter name from model response: لوسمی میلوئید مزمن
+2026-02-12 10:30:29,163 - INFO - ✓ Added subchapter '3' to JSON file immediately
+2026-02-12 10:30:29,167 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:30:29,168 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:32:14,764 - INFO - Received response for subchapter '4' (28177 characters)
+2026-02-12 10:32:14,770 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:32:14,770 - INFO - Extracted chapter name from model response: لوسمی میلوئید مزمن
+2026-02-12 10:32:14,789 - INFO - ✓ Added subchapter '4' to JSON file immediately
+2026-02-12 10:32:14,791 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:32:14,793 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:33:34,265 - INFO - Received response for subchapter '5' (11662 characters)
+2026-02-12 10:33:34,266 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:33:34,267 - INFO - Extracted chapter name from model response: لوسمی میلوئید مزمن
+2026-02-12 10:33:34,284 - INFO - ✓ Added subchapter '5' to JSON file immediately
+2026-02-12 10:33:34,309 - INFO - ✓ OCR Extraction completed. 5 subchapters processed and saved incrementally.
+2026-02-12 10:33:34,324 - INFO - Completed: JOSEPH~1-1-859-869.pdf + old2.json -> /home/mohammadbagher/Desktop/test1/OCR Extraction_JOSEPH~1-1-859-869.json
+2026-02-12 10:33:39,334 - INFO - Using output directory: /home/mohammadbagher/Desktop/test1
+2026-02-12 10:33:39,464 - INFO - Successfully extracted 73095 characters from 10 pages using PyMuPDF
+2026-02-12 10:33:39,466 - INFO - Current stage set to: ocr_extraction
+2026-02-12 10:33:39,467 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:33:39,467 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:33:39,467 - INFO - [UnifiedAPIClient] Initializing gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:33:39,467 - INFO - Text client initialized with model: gemini-2.5-pro
+2026-02-12 10:33:39,467 - INFO - [UnifiedAPIClient] Successfully initialized gemini-2.5-pro for stage: ocr_extraction
+2026-02-12 10:33:39,469 - INFO - Initialized OCR Extraction JSON file: /home/mohammadbagher/Desktop/test1/OCR Extraction_110.json
+2026-02-12 10:33:39,472 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:33:39,472 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:34:57,982 - INFO - Received response for subchapter '1' (17583 characters)
+2026-02-12 10:34:57,984 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:34:57,984 - INFO - Extracted chapter name from model response: لوسمی میلوئید مزمن
+2026-02-12 10:34:57,990 - INFO - ✓ Added subchapter '1' to JSON file immediately
+2026-02-12 10:34:57,993 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:34:57,994 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:36:49,554 - INFO - Received response for subchapter '2' (25470 characters)
+2026-02-12 10:36:49,555 - INFO - Successfully extracted JSON from response using Google/Gemini method
+2026-02-12 10:36:49,556 - INFO - Extracted chapter name from model response: لوسمی میلوئید مزمن
+2026-02-12 10:36:49,566 - INFO - ✓ Added subchapter '2' to JSON file immediately
+2026-02-12 10:36:49,569 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:36:49,572 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:38:51,926 - ERROR - Error processing subchapter 3: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:38:51,951 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:38:51,954 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:38:52,629 - ERROR - Error processing subchapter 4: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:38:52,632 - INFO - Using stage-specific provider 'google' for stage: ocr_extraction
+2026-02-12 10:38:52,632 - INFO - ✓ Using Google API for stage: ocr_extraction
+2026-02-12 10:38:53,285 - ERROR - Error processing subchapter 5: 400 User location is not supported for the API use.
+Traceback (most recent call last):
+  File "/home/mohammadbagher/Desktop/tts app bagher/content_automation_project/multi_part_processor.py", line 582, in process_ocr_extraction_with_topics
+    response = self.api_client.text_client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+               ^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+           ^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+             ^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mohammadbagher/anaconda3/lib/python3.11/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.FailedPrecondition: 400 User location is not supported for the API use.
+2026-02-12 10:38:53,310 - INFO - ✓ OCR Extraction completed. 2 subchapters processed and saved incrementally.
+2026-02-12 10:38:53,317 - INFO - Completed: 110.pdf + new 110.json -> /home/mohammadbagher/Desktop/test1/OCR Extraction_110.json
