@@ -1200,88 +1200,226 @@ class MultiPartPostProcessor:
         
         self.logger.info(f"Chapter name from input JSON: {chapter_name_from_input}")
         
-        # Collect all paragraphs with their subchapter and chapter info
-        # Process paragraph by paragraph, but for EACH paragraph send the FULL subchapter (all its paragraphs/topics) as context to the model.
-        paragraphs_list = []  # List of (chapter_name, subchapter_name, paragraph_data) tuples
-        subchapters_dict = {}  # subchapter_name -> list of paragraph names (for logging / txt saving)
-        # subchapter_name -> list of full paragraph/topic dicts for context
-        subchapter_full_items: Dict[str, List[Dict[str, Any]]] = {}
-        # Track which subchapters have paragraphs vs topics
-        subchapter_has_paragraphs: Dict[str, bool] = {}  # subchapter_name -> True if has paragraphs, False if has topics
+        # Detect input format: OCR Extraction Paragraph has topics with extractions as object { paragraphs, tables, figs }
+        is_ocr_extraction_paragraph = False
+        for _ch in chapters:
+            if not isinstance(_ch, dict):
+                continue
+            for _sub in _ch.get("subchapters", []):
+                if not isinstance(_sub, dict):
+                    continue
+                for _topic in _sub.get("topics", []):
+                    if not isinstance(_topic, dict):
+                        continue
+                    ext = _topic.get("extractions")
+                    if isinstance(ext, dict) and ("paragraphs" in ext or "tables" in ext or "figs" in ext):
+                        is_ocr_extraction_paragraph = True
+                        break
+                if is_ocr_extraction_paragraph:
+                    break
+            if is_ocr_extraction_paragraph:
+                break
+        if is_ocr_extraction_paragraph:
+            self.logger.info("Detected OCR Extraction Paragraph format (extractions as object with paragraphs/tables/figs)")
         
-        # Track total removed records for logging
+        # Collect items to process: either topics (OCR Extraction Paragraph) or paragraphs/topics (OCR Extraction)
+        paragraphs_list = []  # List of (chapter_name, subchapter_name, paragraph_data) tuples
+        topics_list = []  # List of (chapter_name, subchapter_name, topic_info_dict) for OCR Extraction Paragraph
+        subchapters_dict = {}  # subchapter_name -> list of paragraph/topic names (for logging)
+        subchapter_full_items: Dict[str, List[Dict[str, Any]]] = {}
+        subchapter_has_paragraphs: Dict[str, bool] = {}
         total_removed_figures = 0
         
-        for chapter_idx, chapter in enumerate(chapters):
-            if not isinstance(chapter, dict):
-                continue
-            
-            chapter_name = chapter.get("chapter", "")
-            if not chapter_name:
-                chapter_name = f"Chapter_{chapter_idx + 1}"
-            
-            subchapters = chapter.get("subchapters", [])
-            
-            for subchapter in subchapters:
-                if not isinstance(subchapter, dict):
+        if is_ocr_extraction_paragraph:
+            # Build topics_list: one API call per topic; input JSON = chapters with one topic and extractions as array of { type, content }
+            subchapter_topic_count = {}  # Track topics per subchapter
+            subchapter_skipped_count = {}  # Track skipped topics per subchapter
+            for chapter_idx, chapter in enumerate(chapters):
+                if not isinstance(chapter, dict):
                     continue
-                subchapter_name = subchapter.get("subchapter", "")
-                
-                if not subchapter_name:
-                    continue
-                
-                # Initialize structures for this subchapter if not exists
-                if subchapter_name not in subchapters_dict:
-                    subchapters_dict[subchapter_name] = []
-                if subchapter_name not in subchapter_full_items:
-                    subchapter_full_items[subchapter_name] = []
-                
-                # Check if subchapter has paragraphs field (new structure) or topics field (old structure)
-                paragraphs = subchapter.get("paragraphs", [])
-                topics = subchapter.get("topics", [])
-                
-                # Use paragraphs if available, otherwise fallback to topics
-                items_to_process = paragraphs if paragraphs else topics
-                item_type = "paragraph" if paragraphs else "topic"
-                
-                # Track whether this subchapter has paragraphs or topics
-                subchapter_has_paragraphs[subchapter_name] = bool(paragraphs)
-                
-                # Collect each paragraph/topic individually and also build full subchapter list
-                for item in items_to_process:
-                    if not isinstance(item, dict):
+                chapter_name = chapter.get("chapter", "") or f"Chapter_{chapter_idx + 1}"
+                for subchapter in chapter.get("subchapters", []):
+                    if not isinstance(subchapter, dict):
+                        continue
+                    subchapter_name = subchapter.get("subchapter", "")
+                    if not subchapter_name:
+                        continue
+                    if subchapter_name not in subchapter_topic_count:
+                        subchapter_topic_count[subchapter_name] = 0
+                        subchapter_skipped_count[subchapter_name] = 0
+                    
+                    topics_in_subchapter = subchapter.get("topics", [])
+                    if not topics_in_subchapter:
+                        self.logger.warning(f"Subchapter '{subchapter_name}' has no topics - skipping")
                         continue
                     
-                    # Try to get paragraph name first, then fallback to topic
-                    item_name = item.get("paragraph", "") or item.get("Paragraph", "") or item.get("topic", "") or item.get("Topic", "")
-                    extractions = item.get("extractions", [])
+                    for topic in topics_in_subchapter:
+                        if not isinstance(topic, dict):
+                            continue
+                        topic_name = topic.get("topic", "") or topic.get("Topic", "")
+                        if not topic_name:
+                            continue
+                        extras = topic.get("extractions", {})
+                        if not isinstance(extras, dict):
+                            self.logger.warning(f"Topic '{topic_name}' in subchapter '{subchapter_name}' has invalid extractions format - skipping")
+                            subchapter_skipped_count[subchapter_name] += 1
+                            continue
+                        
+                        # Log paragraph names for this topic
+                        paragraphs_list_for_topic = extras.get("paragraphs", [])
+                        paragraph_names = []
+                        for p in paragraphs_list_for_topic:
+                            if isinstance(p, dict):
+                                # Try to get paragraph name from various possible fields
+                                para_name = p.get("paragraph") or p.get("Paragraph") or p.get("name") or p.get("title") or ""
+                                if para_name:
+                                    paragraph_names.append(para_name)
+                                elif p.get("content"):
+                                    # If no name, use first 50 chars of content as identifier
+                                    content_preview = p.get("content", "")[:50].replace("\n", " ")
+                                    paragraph_names.append(f"[Content: {content_preview}...]")
+                        
+                        # Build extractions array as expected by prompt: [ { "type": "text", "content": "..." } ]
+                        # Only include paragraphs (text content); exclude tables and figures
+                        extractions_array = []
+                        for p in paragraphs_list_for_topic:
+                            if isinstance(p, dict) and p.get("content"):
+                                extractions_array.append({"type": "text", "content": p.get("content", "")})
+                        
+                        # Log paragraph names for this topic
+                        if paragraph_names:
+                            self.logger.info(f"  Topic '{topic_name}' in subchapter '{subchapter_name}' has {len(paragraph_names)} paragraph(s):")
+                            for para_idx, para_name in enumerate(paragraph_names, 1):
+                                self.logger.info(f"    Paragraph {para_idx}: {para_name}")
+                        else:
+                            self.logger.warning(f"  Topic '{topic_name}' in subchapter '{subchapter_name}' has no named paragraphs")
+                        
+                        # Tables and figures are excluded from input to model
+                        if not extractions_array:
+                            self.logger.warning(f"  Skipping topic '{topic_name}' in subchapter '{subchapter_name}' (no text content after filtering)")
+                            subchapter_skipped_count[subchapter_name] += 1
+                            continue
+                        
+                        input_json = {
+                            "chapters": [
+                                {
+                                    "chapter": chapter_name,
+                                    "subchapters": [
+                                        {
+                                            "subchapter": subchapter_name,
+                                            "topics": [{"topic": topic_name, "extractions": extractions_array}],
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                        topics_list.append((chapter_name, subchapter_name, {"topic": topic_name, "input_json": input_json}))
+                        subchapters_dict.setdefault(subchapter_name, []).append(topic_name)
+                        subchapter_topic_count[subchapter_name] += 1
+            
+            # Log summary for subchapters
+            self.logger.info("=" * 80)
+            self.logger.info("SUBCHAPTER PROCESSING SUMMARY")
+            self.logger.info("=" * 80)
+            for subchapter_name in sorted(subchapter_topic_count.keys()):
+                processed = subchapter_topic_count[subchapter_name]
+                skipped = subchapter_skipped_count.get(subchapter_name, 0)
+                total = processed + skipped
+                if total == 0:
+                    self.logger.warning(f"  Subchapter '{subchapter_name}': NO TOPICS FOUND - will be skipped")
+                elif skipped > 0:
+                    self.logger.warning(f"  Subchapter '{subchapter_name}': {processed} topics processed, {skipped} topics skipped (no content)")
+                else:
+                    self.logger.info(f"  Subchapter '{subchapter_name}': {processed} topics processed successfully")
+            self.logger.info("=" * 80)
+            
+            self.logger.info(f"OCR Extraction Paragraph: built {len(topics_list)} topics to process")
+        else:
+            # Original: collect paragraphs/topics with extractions as array
+            subchapter_item_count = {}  # Track items per subchapter
+            subchapter_skipped_count = {}  # Track skipped items per subchapter
+            for chapter_idx, chapter in enumerate(chapters):
+                if not isinstance(chapter, dict):
+                    continue
+                chapter_name = chapter.get("chapter", "")
+                if not chapter_name:
+                    chapter_name = f"Chapter_{chapter_idx + 1}"
+                subchapters = chapter.get("subchapters", [])
+                for subchapter in subchapters:
+                    if not isinstance(subchapter, dict):
+                        continue
+                    subchapter_name = subchapter.get("subchapter", "")
+                    if not subchapter_name:
+                        continue
+                    if subchapter_name not in subchapters_dict:
+                        subchapters_dict[subchapter_name] = []
+                    if subchapter_name not in subchapter_full_items:
+                        subchapter_full_items[subchapter_name] = []
+                    if subchapter_name not in subchapter_item_count:
+                        subchapter_item_count[subchapter_name] = 0
+                        subchapter_skipped_count[subchapter_name] = 0
                     
-                    if item_name and extractions:
-                        # Filter out records with type "figure" or "e-figure"
-                        original_count = len(extractions)
-                        filtered_extractions = [
-                            ext for ext in extractions
-                            if isinstance(ext, dict) and ext.get("type") not in ["figure", "e-figure"]
-                        ]
-                        removed_count = original_count - len(filtered_extractions)
-                        total_removed_figures += removed_count
-                        
-                        if removed_count > 0:
-                            self.logger.info(f"Removed {removed_count} figure record(s) from {item_type} '{item_name}' in subchapter '{subchapter_name}'")
-                        
-                        # Create item data (preserve original structure)
-                        item_data = dict(item)  # Copy all fields from original item
-                        item_data["extractions"] = filtered_extractions
-                        # Ensure we have a consistent name field
-                        if "paragraph" not in item_data and "Paragraph" not in item_data:
-                            item_data["paragraph"] = item_name
-                        
-                        # For per-paragraph processing - now includes chapter_name
-                        paragraphs_list.append((chapter_name, subchapter_name, item_data))
-                        # For logging
-                        subchapters_dict[subchapter_name].append(item_name)
-                        # For model context (FULL subchapter for every paragraph)
-                        subchapter_full_items[subchapter_name].append(item_data)
+                    paragraphs = subchapter.get("paragraphs", [])
+                    topics = subchapter.get("topics", [])
+                    items_to_process = paragraphs if paragraphs else topics
+                    item_type = "paragraph" if paragraphs else "topic"
+                    subchapter_has_paragraphs[subchapter_name] = bool(paragraphs)
+                    
+                    if not items_to_process:
+                        self.logger.warning(f"Subchapter '{subchapter_name}' has no {item_type}s - skipping")
+                        continue
+                    
+                    for item in items_to_process:
+                        if not isinstance(item, dict):
+                            continue
+                        item_name = item.get("paragraph", "") or item.get("Paragraph", "") or item.get("topic", "") or item.get("Topic", "")
+                        extractions = item.get("extractions", [])
+                        if item_name and extractions:
+                            original_count = len(extractions)
+                            filtered_extractions = [
+                                ext for ext in extractions
+                                if isinstance(ext, dict) and ext.get("type") not in ["figure", "e-figure"]
+                            ]
+                            removed_count = original_count - len(filtered_extractions)
+                            total_removed_figures += removed_count
+                            if removed_count > 0:
+                                self.logger.info(f"Removed {removed_count} figure record(s) from {item_type} '{item_name}' in subchapter '{subchapter_name}'")
+                            
+                            if not filtered_extractions:
+                                self.logger.warning(f"  Skipping {item_type} '{item_name}' in subchapter '{subchapter_name}' (no content after filtering)")
+                                subchapter_skipped_count[subchapter_name] += 1
+                                continue
+                            
+                            item_data = dict(item)
+                            item_data["extractions"] = filtered_extractions
+                            if "paragraph" not in item_data and "Paragraph" not in item_data:
+                                item_data["paragraph"] = item_name
+                            paragraphs_list.append((chapter_name, subchapter_name, item_data))
+                            subchapters_dict[subchapter_name].append(item_name)
+                            subchapter_full_items[subchapter_name].append(item_data)
+                            subchapter_item_count[subchapter_name] += 1
+                        else:
+                            if not item_name:
+                                self.logger.warning(f"  Skipping unnamed {item_type} in subchapter '{subchapter_name}'")
+                            elif not extractions:
+                                self.logger.warning(f"  Skipping {item_type} '{item_name}' in subchapter '{subchapter_name}' (no extractions)")
+                            subchapter_skipped_count[subchapter_name] += 1
+            
+            # Log summary for subchapters
+            self.logger.info("=" * 80)
+            self.logger.info("SUBCHAPTER PROCESSING SUMMARY")
+            self.logger.info("=" * 80)
+            for subchapter_name in sorted(subchapter_item_count.keys()):
+                processed = subchapter_item_count[subchapter_name]
+                skipped = subchapter_skipped_count.get(subchapter_name, 0)
+                total = processed + skipped
+                if total == 0:
+                    self.logger.warning(f"  Subchapter '{subchapter_name}': NO ITEMS FOUND - will be skipped")
+                elif skipped > 0:
+                    self.logger.warning(f"  Subchapter '{subchapter_name}': {processed} items processed, {skipped} items skipped (no content)")
+                else:
+                    self.logger.info(f"  Subchapter '{subchapter_name}': {processed} items processed successfully")
+            self.logger.info("=" * 80)
         
         # Log total removed records
         if total_removed_figures > 0:
@@ -1289,32 +1427,48 @@ class MultiPartPostProcessor:
         else:
             self.logger.info("No figure/e-figure records found in OCR JSON")
         
-        if not paragraphs_list:
+        process_list = topics_list if is_ocr_extraction_paragraph else paragraphs_list
+        if not process_list:
             self.logger.error("No paragraphs/topics found in OCR JSON")
             return None
         
-        # Count unique subchapters
-        unique_subchapters = set(subchapter_name for _, subchapter_name, _ in paragraphs_list)
+        total_items = len(process_list)
+        item_label = "topics" if is_ocr_extraction_paragraph else "paragraphs"
+        unique_subchapters = set(subchapter_name for _, subchapter_name, _ in process_list)
         
         self.logger.info("=" * 80)
-        self.logger.info("DOCUMENT PROCESSING - PROCESSING BY PARAGRAPH")
+        self.logger.info("DOCUMENT PROCESSING - PROCESSING BY " + item_label.upper())
         self.logger.info("=" * 80)
-        self.logger.info(f"Found {len(paragraphs_list)} paragraphs to process")
+        self.logger.info(f"Found {total_items} {item_label} to process")
         self.logger.info(f"Found {len(unique_subchapters)} unique subchapters")
         self.logger.info("")
         
-        # Log subchapters and their paragraphs
+        # Log subchapters and their items
         subchapter_idx_map = {}
-        for idx, subchapter_name in enumerate(sorted(unique_subchapters), 1):
+        # Also log subchapters that have no items (from original JSON)
+        all_subchapters_in_json = set()
+        for chapter in chapters:
+            if isinstance(chapter, dict):
+                for subchapter in chapter.get("subchapters", []):
+                    if isinstance(subchapter, dict):
+                        subchapter_name = subchapter.get("subchapter", "")
+                        if subchapter_name:
+                            all_subchapters_in_json.add(subchapter_name)
+        
+        # Log all subchapters (including those with no items)
+        for idx, subchapter_name in enumerate(sorted(all_subchapters_in_json), 1):
             subchapter_idx_map[subchapter_name] = idx
-            paragraph_names = subchapters_dict[subchapter_name]
-            self.logger.info(f"  Subchapter {idx}: '{subchapter_name}' - {len(paragraph_names)} paragraphs")
-            for paragraph_idx, paragraph_name in enumerate(paragraph_names, 1):
-                self.logger.info(f"    Paragraph {paragraph_idx}: '{paragraph_name}'")
+            names = subchapters_dict.get(subchapter_name, [])
+            if names:
+                self.logger.info(f"  Subchapter {idx}: '{subchapter_name}' - {len(names)} {item_label}")
+                for pi, name in enumerate(names, 1):
+                    self.logger.info(f"    {name}")
+            else:
+                self.logger.warning(f"  Subchapter {idx}: '{subchapter_name}' - NO {item_label.upper()} FOUND (will be skipped)")
         self.logger.info("=" * 80)
         
         if progress_callback:
-            progress_callback(f"Found {len(paragraphs_list)} paragraphs in {len(unique_subchapters)} subchapters to process")
+            progress_callback(f"Found {total_items} {item_label} in {len(unique_subchapters)} subchapters to process")
         
         # Prepare base directory and filename for JSON files
         base_dir = os.path.dirname(ocr_json_path) or os.getcwd()
@@ -1349,7 +1503,7 @@ class MultiPartPostProcessor:
                 "model": model_name,
                 "processing_status": "in_progress",
                 "paragraphs_processed": 0,
-                "total_paragraphs": len(paragraphs_list)
+                "total_paragraphs": total_items
             },
             "points": [],
             "raw_responses": []  # Store all raw responses to ensure nothing is lost
@@ -1364,57 +1518,72 @@ class MultiPartPostProcessor:
             self.logger.error(f"Failed to initialize output file: {e}")
             return None
         
-        # Process each paragraph individually
+        # Process each item (topic or paragraph) individually
         all_responses = []
-        # Store paragraph/subchapter info for each response to maintain correct mapping
-        response_paragraph_info = []  # List of paragraph_info dicts, one per response
+        response_paragraph_info = []  # List of { chapter, subchapter, paragraph } per response
         
-        for paragraph_idx, (chapter_name_for_paragraph, subchapter_name, paragraph_data) in enumerate(paragraphs_list, 1):
-            # Get paragraph name (try paragraph field first, then topic as fallback)
-            paragraph_name = paragraph_data.get("paragraph", "") or paragraph_data.get("Paragraph", "") or paragraph_data.get("topic", "") or paragraph_data.get("Topic", "")
-            extractions = paragraph_data.get("extractions", [])
+        for paragraph_idx, item in enumerate(process_list, 1):
+            if is_ocr_extraction_paragraph:
+                chapter_name_for_paragraph, subchapter_name, topic_info = item
+                paragraph_name = topic_info["topic"]
+                input_json = topic_info["input_json"]
+                paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
+                paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
+                paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
+                paragraph_json_text = json.dumps(input_json, ensure_ascii=False, indent=2)
+                num_extractions = len(input_json["chapters"][0]["subchapters"][0]["topics"][0].get("extractions", []))
+            else:
+                chapter_name_for_paragraph, subchapter_name, paragraph_data = item
+                paragraph_name = paragraph_data.get("paragraph", "") or paragraph_data.get("Paragraph", "") or paragraph_data.get("topic", "") or paragraph_data.get("Topic", "")
+                extractions = paragraph_data.get("extractions", [])
+                num_extractions = len(extractions)
+                paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
+                paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
+                paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
+                full_subchapter_items = subchapter_full_items.get(subchapter_name, []) or [paragraph_data]
+                paragraph_json = {
+                    "subchapter": subchapter_name,
+                    "chapter": chapter_name_for_paragraph,
+                    "paragraphs": full_subchapter_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
+                    "topics": full_subchapter_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None
+                }
+                paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
+                paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
             
             self.logger.info("")
             self.logger.info("=" * 80)
-            self.logger.info(f"PROCESSING PARAGRAPH {paragraph_idx}/{len(paragraphs_list)}")
+            self.logger.info(f"PROCESSING {item_label[:-1].upper()} {paragraph_idx}/{total_items}")
             self.logger.info("=" * 80)
             self.logger.info(f"  Chapter: '{chapter_name_for_paragraph}'")
             self.logger.info(f"  Subchapter: '{subchapter_name}'")
-            self.logger.info(f"  Paragraph: '{paragraph_name}'")
-            self.logger.info(f"  Number of extractions: {len(extractions)}")
+            self.logger.info(f"  {'Topic' if is_ocr_extraction_paragraph else 'Paragraph'}: '{paragraph_name}'")
+            self.logger.info(f"  Number of extractions: {num_extractions}")
+            
+            # Log paragraph names for OCR Extraction Paragraph format
+            if is_ocr_extraction_paragraph:
+                try:
+                    # Extract paragraph names from input_json
+                    input_json_data = topic_info.get("input_json", {})
+                    topics_in_json = input_json_data.get("chapters", [{}])[0].get("subchapters", [{}])[0].get("topics", [{}])
+                    if topics_in_json:
+                        extractions_in_topic = topics_in_json[0].get("extractions", [])
+                        if extractions_in_topic:
+                            self.logger.info(f"  Paragraphs in this topic ({len(extractions_in_topic)}):")
+                            for para_idx, ext in enumerate(extractions_in_topic, 1):
+                                content_preview = ext.get("content", "")[:80].replace("\n", " ")
+                                self.logger.info(f"    Paragraph {para_idx}: {content_preview}...")
+                except Exception as e:
+                    self.logger.debug(f"Could not extract paragraph names for logging: {e}")
             
             if progress_callback:
-                progress_callback(f"Processing paragraph {paragraph_idx}/{len(paragraphs_list)}: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
+                progress_callback(f"Processing {paragraph_idx}/{total_items}: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
             
-            # Replace placeholders in prompt with current paragraph and subchapter
-            paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name)
-            # Support both {Topic_NAME} and {Paragraph_NAME} for backward compatibility
-            paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name)
-            paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)  # Fallback for old prompts
-            
-            # Build JSON payload for this paragraph:
-            # IMPORTANT: the model should see the FULL subchapter (all paragraphs/topics of this subchapter)
-            # as context, but focus only on the current paragraph defined by {Paragraph_NAME} in the prompt.
-            full_subchapter_items = subchapter_full_items.get(subchapter_name, [])
-            if not full_subchapter_items:
-                # Fallback: at least send the current paragraph if for some reason subchapter list is empty
-                full_subchapter_items = [paragraph_data]
-            
-            paragraph_json = {
-                "subchapter": subchapter_name,
-                "chapter": chapter_name_for_paragraph,
-                # FULL subchapter context (all paragraphs/topics), not just the current paragraph
-                "paragraphs": full_subchapter_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
-                "topics": full_subchapter_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None
-            }
-            # Remove None values
-            paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
-            paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
-            
-            # Log JSON size before sending to model
             json_size = len(paragraph_json_text.encode('utf-8'))
             self.logger.info(f"  JSON payload size: {json_size:,} bytes ({json_size/1024:.2f} KB)")
-            self.logger.info(f"  Sending paragraph JSON to model (full subchapter context with {len(full_subchapter_items)} items)...")
+            if is_ocr_extraction_paragraph:
+                self.logger.info(f"  Sending topic JSON to model (one topic, extractions as array)...")
+            else:
+                self.logger.info(f"  Sending paragraph JSON to model (full subchapter context with {len(full_subchapter_items) if not is_ocr_extraction_paragraph else 0} items)...")
             
             # Process with model (retry up to 3 times if response is empty)
             max_attempts = 3
@@ -1448,13 +1617,59 @@ class MultiPartPostProcessor:
             }
             response_paragraph_info.append(paragraph_info)
             
-            # Immediately add raw response to JSON file (incremental write)
+            # Immediately convert response to points and add to file (incremental conversion)
             try:
                 # Read current file
                 with open(output_path, "r", encoding="utf-8") as f:
                     current_data = json.load(f)
                 
-                # Add raw response entry; also parse response_text to "response" (handles raw JSON and markdown ```json)
+                # Extract JSON blocks from this response
+                blocks = self._extract_json_blocks_from_text(response_text or "")
+                new_points = []  # Initialize to avoid NameError
+                
+                if blocks:
+                    # Convert to points immediately using ThirdStageConverter
+                    from third_stage_converter import ThirdStageConverter
+                    converter = ThirdStageConverter()
+                    
+                    for block in blocks:
+                        try:
+                            flat_rows = converter._flatten_to_points(block)
+                            if flat_rows:
+                                # Add chapter/subchapter/topic info to each point
+                                for row in flat_rows:
+                                    row["chapter"] = chapter_name_for_paragraph
+                                    row["subchapter"] = subchapter_name
+                                    row["topic"] = paragraph_name
+                                    new_points.append(row)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to flatten block for paragraph '{paragraph_name}': {e}")
+                    
+                    if new_points:
+                        # Get current next_free_index for PointId assignment
+                        current_meta = current_data.get("metadata", {})
+                        book_id = int(current_meta.get("book_id") or 1)
+                        chapter_id = int(current_meta.get("chapter_id") or 1)
+                        next_free_idx = int(current_meta.get("next_free_index") or current_meta.get("start_point_index") or 1)
+                        
+                        # Assign PointId to new points
+                        for point in new_points:
+                            point["PointId"] = f"{book_id:03d}{chapter_id:03d}{next_free_idx:04d}"
+                            next_free_idx += 1
+                        
+                        # Add new points to existing points array
+                        if "points" not in current_data:
+                            current_data["points"] = []
+                        current_data["points"].extend(new_points)
+                        
+                        # Update metadata
+                        current_data["metadata"]["next_free_index"] = next_free_idx
+                        current_data["metadata"]["total_points"] = len(current_data["points"])
+                        self.logger.info(f"  ✓ Converted {len(new_points)} points from paragraph '{paragraph_name}' (total points: {len(current_data['points'])})")
+                    else:
+                        self.logger.warning(f"  No points extracted from paragraph '{paragraph_name}'")
+                
+                # Also save raw response for debugging/recovery (optional - can be removed later)
                 raw_response_entry = {
                     "paragraph_index": paragraph_idx,
                     "subchapter": subchapter_name,
@@ -1464,7 +1679,6 @@ class MultiPartPostProcessor:
                     "processed_at": datetime.now().isoformat()
                 }
                 try:
-                    blocks = self._extract_json_blocks_from_text(response_text or "")
                     if len(blocks) == 1:
                         raw_response_entry["response"] = blocks[0]
                     elif len(blocks) > 1:
@@ -1477,19 +1691,22 @@ class MultiPartPostProcessor:
                             raw_response_entry["response"] = None
                 except (json.JSONDecodeError, TypeError, Exception):
                     raw_response_entry["response"] = None
+                
+                if "raw_responses" not in current_data:
+                    current_data["raw_responses"] = []
                 current_data["raw_responses"].append(raw_response_entry)
                 
                 # Update metadata
                 current_data["metadata"]["paragraphs_processed"] = len(current_data["raw_responses"])
                 current_data["metadata"]["processed_at"] = datetime.now().isoformat()
                 
-                # Write back immediately
+                # Write back immediately with converted points
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(current_data, f, ensure_ascii=False, indent=2)
                 
-                self.logger.info(f"  ✓ Added raw response for paragraph '{paragraph_name}' to JSON file immediately")
+                self.logger.info(f"  ✓ Added {len(new_points) if blocks else 0} points and raw response for paragraph '{paragraph_name}' to JSON file immediately")
             except Exception as e:
-                self.logger.error(f"Failed to write raw response for paragraph '{paragraph_name}' to file: {e}", exc_info=True)
+                self.logger.error(f"Failed to convert and write response for paragraph '{paragraph_name}' to file: {e}", exc_info=True)
                 # Continue processing other paragraphs
             
             self.logger.info(f"  ✓ Paragraph '{paragraph_name}' completed")
@@ -1499,484 +1716,47 @@ class MultiPartPostProcessor:
             self.logger.error("No responses produced by Document Processing")
             return None
         
-        # Extract JSON blocks from each response (one per paragraph)
+        # Finalize: Read final file, update metadata, optionally remove raw_responses
         self.logger.info("=" * 80)
-        self.logger.info("EXTRACTING JSON BLOCKS FROM RESPONSES")
+        self.logger.info("FINALIZING DOCUMENT PROCESSING OUTPUT")
         self.logger.info("=" * 80)
-        self.logger.info(f"Extracting JSON blocks from {len(all_responses)} responses (one per paragraph)...")
-        if progress_callback:
-            progress_callback("Extracting JSON from responses...")
-        
-        all_json_blocks = []
-        # Track number of blocks per paragraph to maintain correct mapping after flattening
-        blocks_per_paragraph = []  # List of (paragraph_info, num_blocks) tuples
-        
-        for response_idx, (paragraph_info_stored, response_text) in enumerate(zip(response_paragraph_info, all_responses), 1):
-            subchapter_name = paragraph_info_stored["subchapter"]
-            paragraph_name = paragraph_info_stored["paragraph"]
-            self.logger.info(f"  Paragraph {response_idx}/{len(all_responses)}: '{subchapter_name}' > '{paragraph_name}'")
-            self.logger.debug(f"    Extracting JSON from response ({len(response_text):,} characters)...")
-            
-            paragraph_json_blocks = self._extract_json_blocks_from_text(response_text)
-            if paragraph_json_blocks:
-                all_json_blocks.extend(paragraph_json_blocks)
-                blocks_per_paragraph.append((paragraph_info_stored, len(paragraph_json_blocks)))
-                self.logger.info(f"    ✓ Extracted {len(paragraph_json_blocks)} JSON block(s)")
-            else:
-                blocks_per_paragraph.append((paragraph_info_stored, 0))
-                self.logger.warning(f"    ✗ No JSON blocks found in response")
-        
-        self.logger.info(f"Total JSON blocks extracted: {len(all_json_blocks)}")
-        self.logger.info("=" * 80)
-        
-        # Fallback: if extraction yielded no blocks, try building from saved raw_responses (envelope format)
-        if not all_json_blocks and output_path and os.path.isfile(output_path):
-            try:
-                with open(output_path, "r", encoding="utf-8") as f:
-                    saved_data = json.load(f)
-                raw_list = saved_data.get("raw_responses") or []
-                meta = saved_data.get("metadata") or {}
-                chapter_from_meta = meta.get("chapter", "")
-                if raw_list:
-                    self.logger.info("No blocks from in-memory extraction; building from file raw_responses...")
-                    all_json_blocks = []
-                    response_paragraph_info = []
-                    blocks_per_paragraph = []
-                    for r in raw_list:
-                        if not isinstance(r, dict):
-                            continue
-                        paragraph_info = {
-                            "chapter": chapter_from_meta or r.get("chapter", ""),
-                            "subchapter": r.get("subchapter", ""),
-                            "paragraph": r.get("paragraph", "") or r.get("topic", ""),  # Support both paragraph and topic
-                        }
-                        response_paragraph_info.append(paragraph_info)
-                        # Prefer parsed "response" object when present
-                        parsed_response = r.get("response")
-                        if isinstance(parsed_response, dict):
-                            all_json_blocks.append(parsed_response)
-                            blocks_per_paragraph.append((paragraph_info, 1))
-                        elif isinstance(parsed_response, list):
-                            dict_items = [item for item in parsed_response if isinstance(item, dict)]
-                            all_json_blocks.extend(dict_items)
-                            blocks_per_paragraph.append((paragraph_info, len(dict_items)))
-                        else:
-                            text = r.get("response_text") or ""
-                            blocks = self._extract_json_blocks_from_text(text)
-                            if blocks:
-                                all_json_blocks.extend(blocks)
-                                blocks_per_paragraph.append((paragraph_info, len(blocks)))
-                            else:
-                                blocks_per_paragraph.append((paragraph_info, 0))
-                    if all_json_blocks:
-                        self.logger.info(f"Recovered {len(all_json_blocks)} JSON block(s) from raw_responses")
-            except Exception as e:
-                self.logger.debug(f"Fallback from raw_responses failed: {e}")
-        
-        if not all_json_blocks:
-            self.logger.error("No JSON blocks extracted from any response")
-            return None
-        
-        # Group blocks by subchapter and calculate points per subchapter
-        self.logger.info("=" * 80)
-        self.logger.info("CALCULATING POINTS PER SUBCHAPTER")
-        self.logger.info("=" * 80)
-        from third_stage_converter import ThirdStageConverter
-        converter = ThirdStageConverter()
-        
-        # Group blocks by subchapter
-        blocks_by_subchapter = {}  # subchapter_name -> list of (paragraph_info, blocks)
-        block_start_idx = 0
-        
-        for paragraph_info_stored, num_blocks in blocks_per_paragraph:
-            subchapter_name = paragraph_info_stored["subchapter"]
-            if subchapter_name not in blocks_by_subchapter:
-                blocks_by_subchapter[subchapter_name] = {
-                    "paragraphs": [],
-                    "blocks": []
-                }
-            
-            # Get blocks for this paragraph
-            paragraph_blocks = all_json_blocks[block_start_idx:block_start_idx + num_blocks]
-            block_start_idx += num_blocks
-            
-            blocks_by_subchapter[subchapter_name]["paragraphs"].append(paragraph_info_stored)
-            blocks_by_subchapter[subchapter_name]["blocks"].extend(paragraph_blocks)
-        
-        # Helper function to normalize chapter names for comparison
-        def normalize_name(name: str) -> str:
-            """Normalize chapter name for comparison (strip whitespace, lowercase)"""
-            return name.strip().lower() if name else ""
-        
-        # Create chapter mapping: chapter_name -> chapter_info (normalized for comparison)
-        chapter_mapping = {normalize_name(ch_info["chapter_name"]): ch_info for ch_info in chapters_info}
-        
-        # Track points count for each subchapter
-        # Also track chapter index based on order in OCR JSON
-        points_per_subchapter_list = []  # List of (subchapter_info, num_points) tuples
-        subchapter_to_chapter_index = {}  # Map subchapter to chapter index from OCR JSON
-        
-        # Build mapping: subchapter -> chapter_index based on OCR JSON order
-        current_chapter_idx_for_mapping = 0
-        for chapter_idx, chapter in enumerate(chapters):
-            if not isinstance(chapter, dict):
-                continue
-            subchapters = chapter.get("subchapters", [])
-            for subchapter in subchapters:
-                if not isinstance(subchapter, dict):
-                    continue
-                subchapter_name_from_ocr = subchapter.get("subchapter", "")
-                if subchapter_name_from_ocr:
-                    subchapter_to_chapter_index[subchapter_name_from_ocr] = chapter_idx
-        
-        self.logger.info(f"Built subchapter to chapter index mapping: {subchapter_to_chapter_index}")
-        
-        for subchapter_name, subchapter_data in blocks_by_subchapter.items():
-            subchapter_blocks = subchapter_data["blocks"]
-            paragraphs_info = subchapter_data["paragraphs"]
-            
-            # Get chapter name from first paragraph info (all paragraphs in same subchapter have same chapter)
-            first_paragraph_info = paragraphs_info[0] if paragraphs_info else {}
-            chapter_name_for_subchapter = first_paragraph_info.get("chapter", "")
-            
-            # Try to find chapter index from OCR JSON mapping first (most reliable)
-            chapter_idx_from_ocr = subchapter_to_chapter_index.get(subchapter_name)
-            if chapter_idx_from_ocr is not None and chapter_idx_from_ocr < len(chapters_info):
-                # Use chapter from OCR JSON based on index
-                chapter_info_from_ocr = chapters_info[chapter_idx_from_ocr]
-                chapter_name_for_subchapter = chapter_info_from_ocr["chapter_name"]
-                self.logger.info(
-                    f"Subchapter '{subchapter_name}': Found chapter index {chapter_idx_from_ocr} from OCR JSON, "
-                    f"using chapter '{chapter_name_for_subchapter}' with PointId {chapter_info_from_ocr['start_pointid']}"
-                )
-            elif chapter_name_for_subchapter and normalize_name(chapter_name_for_subchapter) in chapter_mapping:
-                # Chapter name matches, use it
-                self.logger.info(
-                    f"Subchapter '{subchapter_name}': Chapter name '{chapter_name_for_subchapter}' found in mapping"
-                )
-            else:
-                # Fallback: try to find chapter by matching subchapter order with chapter order
-                if chapters_info:
-                    # Use the chapter that contains this subchapter based on order
-                    # This is not perfect but better than using chapter_name_from_input
-                    chapter_name_for_subchapter = chapters_info[0]["chapter_name"]
-                    self.logger.warning(
-                        f"Subchapter '{subchapter_name}': Chapter name '{first_paragraph_info.get('chapter', '')}' not found, "
-                        f"using '{chapter_name_for_subchapter}' as fallback"
-                    )
-                else:
-                    chapter_name_for_subchapter = chapter_name_from_input
-            
-            if not subchapter_blocks:
-                # Create subchapter_info from first paragraph (all paragraphs in same subchapter have same chapter/subchapter)
-                subchapter_info = {
-                    "subchapter": subchapter_name,
-                    "chapter": chapter_name_for_subchapter,
-                    "num_paragraphs": len(paragraphs_info),
-                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
-                }
-                points_per_subchapter_list.append((subchapter_info, 0))
-                self.logger.info(f"  Subchapter '{subchapter_name}': 0 points (no blocks), Chapter: '{chapter_name_for_subchapter}'")
-                continue
-            
-            # Combine blocks for this subchapter
-            subchapter_json_data = self._combine_json_blocks(subchapter_blocks)
-            if not subchapter_json_data:
-                subchapter_info = {
-                    "subchapter": subchapter_name,
-                    "chapter": chapter_name_for_subchapter,
-                    "num_paragraphs": len(paragraphs_info),
-                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
-                }
-                points_per_subchapter_list.append((subchapter_info, 0))
-                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to combine blocks, Chapter: '{chapter_name_for_subchapter}'")
-                continue
-            
-            # Flatten to get point count for this subchapter
-            try:
-                subchapter_flat_rows = converter._flatten_to_points(subchapter_json_data)
-                subchapter_info = {
-                    "subchapter": subchapter_name,
-                    "chapter": chapter_name_for_subchapter,
-                    "num_paragraphs": len(paragraphs_info),
-                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
-                }
-                points_per_subchapter_list.append((subchapter_info, len(subchapter_flat_rows)))
-                self.logger.info(f"  Subchapter '{subchapter_name}': {len(subchapter_flat_rows)} points ({len(paragraphs_info)} paragraphs), Chapter: '{chapter_name_for_subchapter}'")
-            except Exception as e:
-                subchapter_info = {
-                    "subchapter": subchapter_name,
-                    "chapter": chapter_name_for_subchapter,
-                    "num_paragraphs": len(paragraphs_info),
-                    "paragraph_names": [p.get("paragraph", "") for p in paragraphs_info]
-                }
-                self.logger.warning(f"  Subchapter '{subchapter_name}': Failed to count points - {e}, Chapter: '{chapter_name_for_subchapter}'")
-                points_per_subchapter_list.append((subchapter_info, 0))
-        
-        self.logger.info("=" * 80)
-        
-        # Combine all JSON blocks
-        self.logger.info("Combining JSON blocks into final structure...")
-        if progress_callback:
-            progress_callback("Combining JSON blocks...")
-        
-        json_data = self._combine_json_blocks(all_json_blocks)
-        if not json_data:
-            self.logger.error("Failed to extract JSON from responses")
-            return None
-        
-        # Flatten to points using ThirdStageConverter
-        self.logger.info("Flattening hierarchical structure to points...")
-        if progress_callback:
-            progress_callback("Flattening to points...")
-        
-        # Chapter name comes from input JSON (already extracted above)
-        
         try:
-            flat_rows = converter._flatten_to_points(json_data)
-            self.logger.info(f"Extracted {len(flat_rows)} points from Document Processing")
-        except Exception as e:
-            self.logger.error(f"Failed to flatten JSON to points: {e}")
-            flat_rows = []
-        
-        # Fallback: if combined structure yielded no points, flatten each block individually
-        if not flat_rows and all_json_blocks:
-            self.logger.info("No points from combined structure; flattening each block individually...")
-            for idx, block in enumerate(all_json_blocks):
-                if not isinstance(block, dict):
-                    continue
-                if block.get("content") is None and block.get("chapter") is None:
-                    continue
-                try:
-                    block_rows = converter._flatten_to_points(block)
-                    if block_rows:
-                        flat_rows.extend(block_rows)
-                        self.logger.info(f"  Block {idx + 1}: extracted {len(block_rows)} points (total: {len(flat_rows)})")
-                except Exception as e:
-                    self.logger.debug(f"  Block {idx + 1}: flatten failed: {e}")
-        
-        if not flat_rows:
-            self.logger.warning("No points extracted from Document Processing output")
-            return None
-        
-        # Assign PointId and add chapter/subchapter/topic
-        # Use chapter-based PointId mapping if available
-        self.logger.info(f"Assigning PointId and chapter/subchapter/topic to {len(flat_rows)} points...")
-        if progress_callback:
-            progress_callback(f"Assigning PointId to {len(flat_rows)} points...")
-        
-        # Use tracked points per subchapter to maintain correct mapping
-        total_tracked_points = sum(count for _, count in points_per_subchapter_list)
-        self.logger.info("=" * 80)
-        self.logger.info("ASSIGNING POINT IDs AND SUBCHAPTER INFO")
-        self.logger.info("=" * 80)
-        self.logger.info(f"Using tracked points per subchapter for correct mapping:")
-        for info, count in points_per_subchapter_list:
-            self.logger.info(f"  Chapter '{info['chapter']}' > Subchapter '{info['subchapter']}': {count} points")
-        self.logger.info(f"Total tracked points: {total_tracked_points}, Actual flattened points: {len(flat_rows)}")
-        
-        if total_tracked_points != len(flat_rows):
-            self.logger.warning(f"Point count mismatch: tracked {total_tracked_points} but got {len(flat_rows)}. This may affect subchapter mapping accuracy.")
-        
-        # Create chapter mapping: chapter_name -> chapter_info (normalized for comparison)
-        # Note: normalize_name is already defined above
-        chapter_mapping = {normalize_name(ch_info["chapter_name"]): ch_info for ch_info in chapters_info}
-        
-        # Log chapter mapping for debugging
-        self.logger.info("=" * 80)
-        self.logger.info("CHAPTER MAPPING FROM TXT FILE")
-        self.logger.info("=" * 80)
-        for ch_info in chapters_info:
-            normalized = normalize_name(ch_info["chapter_name"])
-            self.logger.info(f"Chapter '{ch_info['chapter_name']}' (normalized: '{normalized}') -> PointId: {ch_info['start_pointid']}")
-        self.logger.info(f"Total chapters in mapping: {len(chapter_mapping)}")
-        
-        # Also create index-based mapping as fallback
-        chapter_index_mapping = {ch_info["chapter_index"]: ch_info for ch_info in chapters_info}
-        
-        # Track current chapter and its PointId settings
-        current_chapter_name = None
-        current_chapter_info = None
-        current_pointid_value = None  # Store as integer for easy increment
-        current_chapter_idx = None
-        point_idx = 0
-        
-        # Track current_index for metadata (extracted from last PointId)
-        current_index = start_point_index  # Default fallback
-        
-        # Assign subchapter info based on tracked points per subchapter (maintains order)
-        # Track which chapter index we're currently processing based on subchapter order
-        current_chapter_index_tracked = None
-        
-        for subchapter_info_stored, num_points in points_per_subchapter_list:
-            subchapter_name = subchapter_info_stored["subchapter"]
-            chapter_name_from_stored = subchapter_info_stored["chapter"]
-            
-            # Get chapter index from OCR JSON mapping - use it directly to get pointid from txt file
-            chapter_idx_from_ocr = subchapter_to_chapter_index.get(subchapter_name)
-            matching_chapter_info = None
-            
-            # Directly use chapter index from OCR JSON to get pointid from txt file (simple approach)
-            if chapter_idx_from_ocr is not None and chapter_idx_from_ocr < len(chapters_info):
-                # Use chapter from OCR JSON based on index - directly from txt file
-                matching_chapter_info = chapters_info[chapter_idx_from_ocr]
-                self.logger.info(
-                    f"Subchapter '{subchapter_name}': Using chapter index {chapter_idx_from_ocr} from OCR JSON, "
-                    f"PointId from txt file (line {chapter_idx_from_ocr + 1}) = {matching_chapter_info['start_pointid']}"
-                )
-            else:
-                # Fallback: if chapter index not found, use first available or default
-                if chapters_info:
-                    matching_chapter_info = chapters_info[0]
-                    self.logger.warning(
-                        f"Subchapter '{subchapter_name}': Chapter index not found, using first chapter PointId: {matching_chapter_info['start_pointid']}"
-                    )
-                else:
-                    # Ultimate fallback
-                    if book_id and chapter_id:
-                        fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
-                    else:
-                        fallback_pointid = f"001001{start_point_index:04d}"
-                    self.logger.warning(f"No chapter mapping available, using fallback: {fallback_pointid}")
-            
-            # Check if we moved to a new chapter
-            if current_chapter_name != chapter_name_from_stored or current_chapter_index_tracked != chapter_idx_from_ocr:
-                
-                if matching_chapter_info:
-                    current_chapter_info = matching_chapter_info
-                    current_chapter_name = chapter_name_from_stored
-                    current_chapter_idx = current_chapter_info["chapter_index"]
-                    current_chapter_index_tracked = chapter_idx_from_ocr
-                    # IMPORTANT: Convert PointId string to integer for incrementing
-                    current_pointid_value = int(current_chapter_info["start_pointid"])
-                    # Extract index (last 4 digits) from PointId for current_index
-                    current_index = int(current_chapter_info["start_pointid"][6:10])
-                    self.logger.info(
-                        f"  ✓ Reset PointId to {current_chapter_info['start_pointid']} for chapter '{chapter_name_from_stored}' (index: {current_chapter_info['chapter_index']})"
-                    )
-                    self.logger.info(
-                        f"  ✓ Extracted index from PointId: {current_index}"
-                    )
-                else:
-                    # Ultimate fallback
-                    if book_id and chapter_id:
-                        fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
-                    else:
-                        fallback_pointid = f"001001{start_point_index:04d}"
-                    current_pointid_value = int(fallback_pointid)
-                    current_index = start_point_index
-                    self.logger.warning(
-                        f"No chapter mapping available, using fallback: {fallback_pointid}"
-                    )
-            
-            self.logger.info(f"  Assigning PointIds for chapter '{chapter_name_from_stored}' > subchapter '{subchapter_name}' ({num_points} points)...")
-            self.logger.info(f"    Starting from PointId {current_pointid_value:010d}")
-            
-            # Assign topic info to points in this range
-            first_point_id_in_subchapter = None
-            for i in range(num_points):
-                if point_idx >= len(flat_rows):
-                    self.logger.warning(f"More points tracked than available in flat_rows. Stopping assignment.")
-                    break
-                
-                row = flat_rows[point_idx]
-                # Use current PointId value directly (as 10-digit string)
-                point_id = f"{current_pointid_value:010d}"
-                row["PointId"] = point_id
-                
-                if first_point_id_in_subchapter is None:
-                    first_point_id_in_subchapter = point_id
-                
-                # Chapter always comes from input JSON (not from model output)
-                row["chapter"] = chapter_name_from_stored
-                
-                # Use subchapter from model output, fallback to stored info only if missing
-                if "subchapter" not in row or not row.get("subchapter"):
-                    row["subchapter"] = subchapter_info_stored.get("subchapter", "")
-                
-                point_idx += 1
-                current_pointid_value += 1  # Simply increment the integer
-            
-            last_point_id_in_subchapter = f"{current_pointid_value - 1:010d}"
-            # Extract index from last PointId used (for metadata tracking) - last 4 digits
-            current_index = int(f"{current_pointid_value - 1:010d}"[6:10])
-            self.logger.info(f"    ✓ Assigned {num_points} PointIds for subchapter '{subchapter_name}': {first_point_id_in_subchapter} to {last_point_id_in_subchapter}")
-            self.logger.info(f"    Next PointId will be: {current_pointid_value:010d}")
-            self.logger.info(f"    Current index (extracted from last PointId): {current_index}")
-            
-            if point_idx >= len(flat_rows):
-                break
-        
-        # Handle any remaining points (shouldn't happen, but safety check)
-        if point_idx < len(flat_rows):
-            self.logger.warning(f"Some points ({len(flat_rows) - point_idx}) were not assigned subchapter info. Using fallback.")
-            # Use last chapter info or fallback
-            if current_chapter_info:
-                current_pointid_value = int(current_chapter_info["start_pointid"]) if current_pointid_value is None else current_pointid_value
-            else:
-                if book_id and chapter_id:
-                    fallback_pointid = f"{book_id:03d}{chapter_id:03d}{start_point_index:04d}"
-                else:
-                    fallback_pointid = f"001001{start_point_index:04d}"
-                current_pointid_value = int(fallback_pointid)
-            
-            for i in range(point_idx, len(flat_rows)):
-                row = flat_rows[i]
-                point_id = f"{current_pointid_value:010d}"
-                row["PointId"] = point_id
-                # Chapter always comes from input JSON
-                row["chapter"] = chapter_name_from_input if chapter_name_from_input else (current_chapter_name if current_chapter_name else "")
-                # Use subchapter from model output, fallback to stored info only if missing
-                if "subchapter" not in row or not row.get("subchapter"):
-                    if points_per_subchapter_list:
-                        last_subchapter_info = points_per_subchapter_list[-1][0]
-                        row["subchapter"] = last_subchapter_info.get("subchapter", "")
-                current_pointid_value += 1
-            
-            # Update current_index from last PointId used
-            current_index = int(f"{current_pointid_value - 1:010d}"[6:10])
-        
-        # Final update: Extract current_index from last PointId used
-        if current_pointid_value is not None:
-            current_index = int(f"{current_pointid_value - 1:010d}"[6:10])
-            self.logger.info(f"Final current_index (extracted from last PointId): {current_index}")
-        
-        self.logger.info("=" * 80)
-        
-        # Final update: Add processed points to existing file (incremental write)
-        next_free_index = start_point_index + len(flat_rows)
-        try:
-            # Read current file
             with open(output_path, "r", encoding="utf-8") as f:
-                current_data = json.load(f)
+                final_data = json.load(f)
             
-            # Update with processed points
-            current_data["points"] = flat_rows
-            current_data["metadata"]["total_points"] = len(flat_rows)
-            current_data["metadata"]["next_free_index"] = next_free_index
-            current_data["metadata"]["processed_at"] = datetime.now().isoformat()
-            # Align with ideal output: remove transient fields
-            for key in ("processing_status", "topics_processed", "total_topics"):
-                current_data["metadata"].pop(key, None)
+            final_meta = final_data.get("metadata", {})
+            final_points = final_data.get("points", [])
+            topics_processed = int(final_meta.get("paragraphs_processed") or final_meta.get("topics_processed") or len(final_data.get("raw_responses", [])))
+            total_topics = int(final_meta.get("total_paragraphs") or final_meta.get("total_topics") or total_items)
             
-            # Remove raw_responses from final file (no longer needed after conversion)
-            if "raw_responses" in current_data:
-                del current_data["raw_responses"]
+            # Update metadata to match sample format
+            final_meta["total_points"] = len(final_points)
+            final_meta["next_free_index"] = final_meta.get("next_free_index") or (final_meta.get("start_point_index", 1) + len(final_points) - 1 if final_points else final_meta.get("start_point_index", 1))
+            final_meta["processing_status"] = "completed"
+            final_meta["topics_processed"] = topics_processed
+            final_meta["total_topics"] = total_topics
+            final_meta["processed_at"] = datetime.now().isoformat()
+            # Remove old keys
+            final_meta.pop("paragraphs_processed", None)
+            final_meta.pop("total_paragraphs", None)
+            
+            # Remove raw_responses from final output (only keep converted points)
+            if "raw_responses" in final_data:
+                del final_data["raw_responses"]
                 self.logger.info("Removed raw_responses from final output file")
             
-            # Write final file
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(current_data, f, ensure_ascii=False, indent=2)
+            final_data["metadata"] = final_meta
             
-            self.logger.info(f"Document Processing completed successfully: {output_path}")
-            self.logger.info(f"✓ All {len(all_responses)} responses saved (including {len(flat_rows)} processed points)")
+            # Write finalized file
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(final_data, f, ensure_ascii=False, indent=2)
+            
+            self.logger.info(f"✓ Document Processing finalized: {len(final_points)} points from {topics_processed}/{total_topics} topics")
             if progress_callback:
-                progress_callback(f"✓ Document Processing completed. {len(flat_rows)} points generated from {len(all_responses)} responses.")
-            return output_path
+                progress_callback(f"✓ Document Processing completed. {len(final_points)} points generated from {topics_processed} responses.")
         except Exception as e:
-            self.logger.error(f"Failed to finalize Document Processing output: {e}")
-            # File still exists with raw responses, return path anyway
-            if os.path.exists(output_path):
-                return output_path
+            self.logger.error(f"Failed to finalize output file: {e}", exc_info=True)
             return None
+        
+        return output_path
 
