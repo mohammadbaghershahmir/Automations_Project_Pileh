@@ -76,11 +76,11 @@ def parse_csv_file(csv_path: str) -> Tuple[List[Dict[str, str]], Optional[str]]:
 
 def get_chapter_topics_from_ocr(ocr_json_path: str, chapter_num: int) -> Dict[str, Any]:
     """
-    Extract all topics from a specific chapter in OCR JSON
+    Extract all topics from OCR JSON
     
     Args:
         ocr_json_path: Path to OCR JSON file
-        chapter_num: Chapter number (1-indexed)
+        chapter_num: Ignored (we now search all chapters/subchapters)
         
     Returns:
         Dictionary with:
@@ -103,38 +103,33 @@ def get_chapter_topics_from_ocr(ocr_json_path: str, chapter_num: int) -> Dict[st
             ocr_data = json.load(f)
         
         chapters = ocr_data.get('chapters', [])
-        
-        # Get chapter by index (1-indexed, so subtract 1)
-        if chapter_num < 1 or chapter_num > len(chapters):
-            result['error'] = f"Chapter {chapter_num} not found (available: 1-{len(chapters)})"
+        if not chapters:
+            result['error'] = "No chapters found in OCR JSON"
             return result
-        
-        chapter_obj = chapters[chapter_num - 1]
-        if not isinstance(chapter_obj, dict):
-            result['error'] = f"Chapter {chapter_num} has invalid structure"
-            return result
-        
-        chapter_name = chapter_obj.get('chapter', '')
-        result['chapter_name'] = chapter_name
-        
-        # Extract topics from all subchapters in this chapter
-        subchapters = chapter_obj.get('subchapters', [])
-        for subchapter_obj in subchapters:
-            if not isinstance(subchapter_obj, dict):
-                continue
-            
-            topics = subchapter_obj.get('topics', [])
-            for topic_obj in topics:
-                if not isinstance(topic_obj, dict):
-                    continue
+
+        # Search through ALL chapters and ALL subchapters for ALL topics
+        for ch in chapters:
+            if not isinstance(ch, dict): continue
+            subchapters = ch.get('subchapters', [])
+            for sub in subchapters:
+                if not isinstance(sub, dict): continue
+                topics = sub.get('topics', [])
+                for topic_obj in topics:
+                    if not isinstance(topic_obj, dict): continue
+                    topic_name = topic_obj.get('topic', '').strip()
+                    if topic_name:
+                        result['topics_map'][topic_name] = topic_obj
+                        result['available_topics'].append(topic_name)
                 
-                topic_name = topic_obj.get('topic', '').strip()
-                if topic_name:
-                    result['topics_map'][topic_name] = topic_obj
-                    result['available_topics'].append(topic_name)
+                if not result['chapter_name']:
+                    result['chapter_name'] = ch.get('chapter', '')
         
-        result['success'] = True
-        logger.info(f"Found {len(result['available_topics'])} topics in chapter {chapter_num} ({chapter_name})")
+        if result['available_topics']:
+            result['success'] = True
+            logger.info(f"Found {len(result['available_topics'])} total topics in OCR JSON")
+            return result
+        
+        result['error'] = "No topics found in OCR JSON"
         
     except FileNotFoundError:
         result['error'] = f"OCR JSON file not found: {ocr_json_path}"
@@ -147,18 +142,16 @@ def get_chapter_topics_from_ocr(ocr_json_path: str, chapter_num: int) -> Dict[st
     return result
 
 
-def extract_topic_content_from_ocr(ocr_json_path: str, topic_names: List[str], chapter_num: Optional[int] = None, exclude_table_type: bool = True) -> Dict[str, Any]:
+def extract_topic_content_from_ocr(ocr_json_path: str, topic_names: List[str], chapter_num: Optional[int] = None, exclude_table_type: bool = False) -> Dict[str, Any]:
     """
-    Extract OCR content for specific topics, optionally filtered by chapter
-    
+    Extract OCR content for specific topics by searching the entire file.
+    Includes all extraction types: paragraphs, tables, figures (nothing left out).
+
     Args:
         ocr_json_path: Path to OCR JSON file
         topic_names: List of topic names to extract
-        chapter_num: Optional chapter number to filter (1-indexed)
-        exclude_table_type: If True, exclude table extractions
-        
-    Returns:
-        Dictionary with extracted content and metadata
+        chapter_num: Ignored (we now search all chapters/subchapters)
+        exclude_table_type: If True, exclude table extractions (default False = include all)
     """
     result = {
         'success': False,
@@ -174,33 +167,18 @@ def extract_topic_content_from_ocr(ocr_json_path: str, topic_names: List[str], c
         
         chapters = ocr_data.get('chapters', [])
         
-        # If chapter_num specified, only search in that chapter
-        if chapter_num:
-            if chapter_num < 1 or chapter_num > len(chapters):
-                result['error'] = f"Chapter {chapter_num} not found"
-                return result
-            chapters_to_search = [chapters[chapter_num - 1]]
-        else:
-            chapters_to_search = chapters
-        
-        # Extract all available topics
+        # Extract ALL available topics from the entire file
         available_topics = []
         topics_map = {}
         
-        for chapter_obj in chapters_to_search:
-            if not isinstance(chapter_obj, dict):
-                continue
-            
+        for chapter_obj in chapters:
+            if not isinstance(chapter_obj, dict): continue
             subchapters = chapter_obj.get('subchapters', [])
             for subchapter_obj in subchapters:
-                if not isinstance(subchapter_obj, dict):
-                    continue
-                
+                if not isinstance(subchapter_obj, dict): continue
                 topics = subchapter_obj.get('topics', [])
                 for topic_obj in topics:
-                    if not isinstance(topic_obj, dict):
-                        continue
-                    
+                    if not isinstance(topic_obj, dict): continue
                     topic_name = topic_obj.get('topic', '').strip()
                     if topic_name:
                         available_topics.append(topic_name)
@@ -227,6 +205,11 @@ def extract_topic_content_from_ocr(ocr_json_path: str, topic_names: List[str], c
             result['error'] = f"Topics not found: {', '.join(missing_topics)}"
             return result
         
+        if not exclude_table_type:
+            logger.info(
+                "[Reference Change] extract_topic_content_from_ocr: استخراج همه موارد (پاراگراف + جدول + شکل) برای تاپیک‌ها: %s",
+                result['matched_topics'],
+            )
         # Extract content from matched topics
         extracted_parts = []
         
@@ -238,20 +221,26 @@ def extract_topic_content_from_ocr(ocr_json_path: str, topic_names: List[str], c
                 logger.warning(f"Topic '{topic_name}' has no extractions")
                 continue
             
-            # Filter extractions
-            filtered_extractions = []
-            for extraction in extractions:
+            # Handle both list and dict structures for extractions — include all (paragraphs, tables, figs, any other key)
+            extraction_list = []
+            if isinstance(extractions, list):
+                extraction_list = extractions
+            elif isinstance(extractions, dict):
+                known_keys = {'paragraphs', 'tables', 'figs'}
+                for key in known_keys:
+                    extraction_list.extend(extractions.get(key, []))
+                for key, val in extractions.items():
+                    if key in known_keys or not isinstance(val, list):
+                        continue
+                    extraction_list.extend(val)
+
+            # Include all extractions (paragraphs, tables, figs) — nothing left out unless exclude_table_type=True
+            for extraction in extraction_list:
                 if not isinstance(extraction, dict):
                     continue
-                
-                if exclude_table_type and extraction.get('type', '').lower() == 'table':
+                if exclude_table_type and extraction.get('type', '').lower() in ['table', 'e-table']:
                     continue
-                
-                filtered_extractions.append(extraction)
-            
-            # Extract text from filtered extractions
-            for extraction in filtered_extractions:
-                extraction_text = extraction.get('Extraction', extraction.get('extraction', ''))
+                extraction_text = extraction.get('content', extraction.get('Extraction', extraction.get('extraction', '')))
                 if extraction_text:
                     extracted_parts.append(extraction_text)
         
@@ -269,113 +258,94 @@ def build_chunks_from_csv(
     csv_path: str,
     old_ocr_json_path: str,
     new_ocr_json_path: str,
-    exclude_table_type: bool = True
+    exclude_table_type: bool = False
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """
-    Build chunks from CSV file for reference change processing
-    
-    Args:
-        csv_path: Path to CSV file with old, cold, new, cnew columns
-        old_ocr_json_path: Path to old reference OCR JSON
-        new_ocr_json_path: Path to new reference OCR JSON
-        exclude_table_type: If True, exclude table extractions
-        
-    Returns:
-        Tuple of (list of chunks, error_message if any)
-        
-    Each chunk is a dict with:
-    {
-        'chunk_id': int,
-        'cold': int,
-        'cnew': int,
-        'old_topics': List[str],
-        'new_topics': List[str],
-        'old_content': str,
-        'new_content': str,
-        'old_chapter_name': str,
-        'new_chapter_name': str
-    }
+    Build chunks from CSV (e.g. tableConvert.com_1dk705.csv):
+    - Rows with cold filled (e.g. 1..23): one chunk per such row. Rows with cold empty are
+      not a separate chunk (they only contribute to "new" side via cnew).
+    - For each chunk: old = this row's "old" topic; new = ALL "new" topics from every row
+      where cnew == this row's cold (e.g. cold=12 → all rows with cnew=12 → 4 new topics).
     """
-    # Parse CSV
+    logger.info(
+        "[Reference Change] build_chunks_from_csv: استفاده از استخراج کامل (همه موارد: پاراگراف، جدول، شکل) | "
+        "exclude_table_type=%s",
+        exclude_table_type,
+    )
     csv_rows, error = parse_csv_file(csv_path)
     if error:
         return [], error
     
-    # Group rows by (cold, cnew) to create chunks
-    chunk_groups = defaultdict(lambda: {'old_topics': [], 'new_topics': [], 'rows': []})
-    
-    for row in csv_rows:
-        key = (row['cold'], row['cnew'])
-        if row['old']:
-            chunk_groups[key]['old_topics'].append(row['old'])
-        if row['new']:
-            chunk_groups[key]['new_topics'].append(row['new'])
-        chunk_groups[key]['rows'].append(row)
+    # Chunks only from rows that have cold (e.g. 23 chunks; rows with cold empty are skipped)
+    cold_rows = [r for r in csv_rows if r.get('cold') is not None]
     
     chunks = []
-    
-    # Build each chunk
-    for chunk_idx, ((cold, cnew), group_data) in enumerate(chunk_groups.items(), 1):
-        old_topics = list(set(group_data['old_topics']))  # Remove duplicates
-        new_topics = list(set(group_data['new_topics']))  # Remove duplicates
-        
-        if not old_topics and not new_topics:
-            logger.warning(f"Chunk {chunk_idx}: Skipping empty chunk (cold={cold}, cnew={cnew})")
-            continue
+    for chunk_idx, row in enumerate(cold_rows, 1):
+        cold_num = row['cold']
+        old_topic = (row.get('old') or '').strip()
+        # In full CSV: find every row where cnew == this row's cold; collect ALL their 'new' topics
+        new_topics = []
+        seen_new = set()
+        for r in csv_rows:
+            if r.get('cnew') != cold_num:
+                continue
+            t = (r.get('new') or '').strip()
+            if t and t not in seen_new:
+                seen_new.add(t)
+                new_topics.append(t)
         
         chunk = {
             'chunk_id': chunk_idx,
-            'cold': cold,
-            'cnew': cnew,
-            'old_topics': old_topics,
+            'cold': cold_num,
+            'cnew': cold_num,
+            'old_topics': [old_topic] if old_topic else [],
             'new_topics': new_topics,
             'old_content': '',
             'new_content': '',
             'old_chapter_name': '',
             'new_chapter_name': ''
         }
-        
-        # Extract old content if topics exist
-        if old_topics and cold:
+        if old_topic:
             old_result = extract_topic_content_from_ocr(
                 old_ocr_json_path,
-                old_topics,
-                chapter_num=cold,
+                [old_topic],
+                chapter_num=cold_num,
                 exclude_table_type=exclude_table_type
             )
-            
             if old_result['success']:
                 chunk['old_content'] = old_result['extracted_content']
-                # Try to get chapter name
-                chapter_info = get_chapter_topics_from_ocr(old_ocr_json_path, cold)
-                if chapter_info['success']:
-                    chunk['old_chapter_name'] = chapter_info['chapter_name']
+                ci = get_chapter_topics_from_ocr(old_ocr_json_path, cold_num or 0)
+                if ci['success']:
+                    chunk['old_chapter_name'] = ci['chapter_name']
             else:
-                logger.warning(f"Chunk {chunk_idx}: Failed to extract old content: {old_result.get('error')}")
                 chunk['old_content'] = f"[ERROR: {old_result.get('error')}]"
-        
-        # Extract new content if topics exist
-        if new_topics and cnew:
+                logger.warning(f"Chunk {chunk_idx}: Failed old content for '{old_topic}'")
+        if new_topics:
             new_result = extract_topic_content_from_ocr(
                 new_ocr_json_path,
                 new_topics,
-                chapter_num=cnew,
+                chapter_num=cold_num,
                 exclude_table_type=exclude_table_type
             )
-            
             if new_result['success']:
                 chunk['new_content'] = new_result['extracted_content']
-                # Try to get chapter name
-                chapter_info = get_chapter_topics_from_ocr(new_ocr_json_path, cnew)
-                if chapter_info['success']:
-                    chunk['new_chapter_name'] = chapter_info['chapter_name']
+                ci = get_chapter_topics_from_ocr(new_ocr_json_path, cold_num or 0)
+                if ci['success']:
+                    chunk['new_chapter_name'] = ci['chapter_name']
             else:
-                logger.warning(f"Chunk {chunk_idx}: Failed to extract new content: {new_result.get('error')}")
                 chunk['new_content'] = f"[ERROR: {new_result.get('error')}]"
-        
+                logger.warning(f"Chunk {chunk_idx}: Failed new content for {len(new_topics)} topics")
         chunks.append(chunk)
+        old_ok = not (chunk['old_content'] or '').startswith("[ERROR:")
+        new_ok = not (chunk['new_content'] or '').startswith("[ERROR:")
+        status = "OK" if (old_ok and new_ok) else "ERROR"
+        logger.info(
+            f"Chunk {chunk_idx}/{len(cold_rows)}: cold={cold_num} | old=1 topic, new={len(new_topics)} topics | {status}"
+        )
     
-    logger.info(f"Built {len(chunks)} chunks from CSV")
+    logger.info(f"Built {len(chunks)} chunks from CSV (cold rows only: {len(cold_rows)}; total CSV rows: {len(csv_rows)})")
+    for c in chunks:
+        logger.info(f"  Chunk {c['chunk_id']}: {c.get('old_topics', [])} -> {c.get('new_topics', [])}")
     return chunks, None
 
 

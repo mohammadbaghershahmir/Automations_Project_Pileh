@@ -156,7 +156,7 @@ class StageSettingsManager:
             default: Default provider if not set
             
         Returns:
-            Provider name ("google" or "deepseek") or default
+            Provider name ("google", "deepseek", or "openrouter") or default
         """
         return self.get_stage_setting(stage_name, 'provider', default)
     
@@ -171,8 +171,8 @@ class StageSettingsManager:
         Returns:
             True if set successfully, False otherwise
         """
-        if provider not in ["google", "deepseek"]:
-            self.logger.warning(f"Invalid provider: {provider}. Must be 'google' or 'deepseek'")
+        if provider not in ["google", "deepseek", "openrouter"]:
+            self.logger.warning(f"Invalid provider: {provider}. Must be 'google', 'deepseek', or 'openrouter'")
             return False
         return self.set_stage_setting(stage_name, 'provider', provider)
     

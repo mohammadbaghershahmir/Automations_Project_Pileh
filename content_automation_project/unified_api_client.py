@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Dict, Any, Callable
 from api_layer import GeminiAPIClient, APIKeyManager, APIConfig
 from deepseek_api_client import DeepSeekAPIClient
+from openrouter_api_client import OpenRouterAPIClient
 from stage_settings_manager import StageSettingsManager
 
 
@@ -19,6 +20,7 @@ class UnifiedAPIClient:
     STAGE_API_MAPPING = {
         "pre_ocr_topic": "google",
         "ocr_extraction": "google",
+        "ocr_extraction_paragraph": "google",
         "document_processing": "deepseek",
         "stage_1": "deepseek",
         "stage_2": "deepseek",
@@ -35,11 +37,16 @@ class UnifiedAPIClient:
         "stage_y": "deepseek",
         "stage_z": "deepseek",
         "reference_change_rag": "google",
+        "reference_change": "openrouter",
     }
     
-    def __init__(self, google_api_key_manager: Optional[APIKeyManager] = None,
-                 deepseek_api_key_manager: Optional[APIKeyManager] = None,
-                 stage_settings_manager: Optional[StageSettingsManager] = None):
+    def __init__(
+        self,
+        google_api_key_manager: Optional[APIKeyManager] = None,
+        deepseek_api_key_manager: Optional[APIKeyManager] = None,
+        openrouter_api_key_manager: Optional[APIKeyManager] = None,
+        stage_settings_manager: Optional[StageSettingsManager] = None,
+    ):
         """
         Initialize Unified API Client
         
@@ -50,9 +57,10 @@ class UnifiedAPIClient:
         """
         self.logger = logging.getLogger(__name__)
         
-        # Initialize both clients
+        # Initialize clients
         self.google_client = GeminiAPIClient(google_api_key_manager or APIKeyManager())
         self.deepseek_client = DeepSeekAPIClient(deepseek_api_key_manager or APIKeyManager())
+        self.openrouter_client = OpenRouterAPIClient(openrouter_api_key_manager or APIKeyManager())
         
         # Initialize stage settings manager
         self.stage_settings = stage_settings_manager or StageSettingsManager()
@@ -82,7 +90,7 @@ class UnifiedAPIClient:
             stage_name: Stage name (if None, uses current stage)
             
         Returns:
-            GeminiAPIClient or DeepSeekAPIClient instance
+            GeminiAPIClient, DeepSeekAPIClient, or OpenRouterAPIClient instance
         """
         stage = stage_name or self._current_stage
         
@@ -104,6 +112,9 @@ class UnifiedAPIClient:
         if api_provider == "deepseek":
             self.logger.info(f"✓ Using DeepSeek API for stage: {stage}")
             return self.deepseek_client
+        if api_provider == "openrouter":
+            self.logger.info(f"✓ Using OpenRouter API for stage: {stage}")
+            return self.openrouter_client
         else:
             self.logger.info(f"✓ Using Google API for stage: {stage}")
             return self.google_client
@@ -141,6 +152,9 @@ class UnifiedAPIClient:
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient) and (model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name):
             model_name = APIConfig.DEFAULT_DEEPSEEK_MODEL
+        # Default model for OpenRouter if caller passed Gemini default
+        if isinstance(client, OpenRouterAPIClient) and (model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name):
+            model_name = APIConfig.DEFAULT_OPENROUTER_MODEL
         
         self.logger.info(f"[UnifiedAPIClient] Initializing {model_name} for stage: {stage}")
         result = client.initialize_text_client(model_name, api_key)
@@ -190,6 +204,10 @@ class UnifiedAPIClient:
                 model_name = APIConfig.DEFAULT_DEEPSEEK_MODEL
             max_tokens = min(max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
             self.logger.info(f"[UnifiedAPIClient] Processing text with DeepSeek model: {model_name} (stage: {stage})")
+        elif isinstance(client, OpenRouterAPIClient):
+            if model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name:
+                model_name = APIConfig.DEFAULT_OPENROUTER_MODEL
+            self.logger.info(f"[UnifiedAPIClient] Processing text with OpenRouter model: {model_name} (stage: {stage})")
         else:
             self.logger.info(f"[UnifiedAPIClient] Processing text with Google model: {model_name} (stage: {stage})")
         return client.process_text(text, system_prompt, model_name, temperature, max_tokens, api_key)

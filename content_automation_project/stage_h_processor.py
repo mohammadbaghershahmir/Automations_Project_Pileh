@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
@@ -147,8 +148,9 @@ class StageHProcessor(BaseStageProcessor):
         
         _progress(f"Loaded {len(stage_f_records)} records from Stage F")
         
-        # Divide Stage J data into parts of 120 records each
-        PART_SIZE = 120
+        # Divide Stage J data into parts (smaller size for Stage H due to large output per flashcard)
+        # Each flashcard has 7 fields (Qtext, Choice1-4, Correct) so we need smaller parts
+        PART_SIZE = 100  # Reduced from 100 to avoid max_tokens limit
         total_records = len(stage_j_records_for_prompt)
         num_parts = math.ceil(total_records / PART_SIZE)
         
@@ -201,8 +203,41 @@ IMPORTANT:
 
 Return ONLY valid JSON, no additional text."""
         
-        # Process each part separately
-        all_part_responses = []
+        # Prepare paths: incremental parts file (like document processing) and raw TXT
+        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
+        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
+        parts_path = os.path.join(base_dir, f"{base_name}_stage_h_parts.json")
+        txt_path = os.path.join(base_dir, f"{base_name}_stage_h.txt")
+        
+        # Initialize incremental parts file (write per-part immediately after each response)
+        initial_parts_data = {
+            "metadata": {
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "source_stage_j": os.path.basename(stage_j_path),
+                "source_stage_f": os.path.basename(stage_f_path),
+                "model_used": model_name,
+                "num_parts": num_parts,
+                "part_size": PART_SIZE,
+                "processing_status": "in_progress",
+            },
+            "parts": [],
+        }
+        try:
+            with open(parts_path, "w", encoding="utf-8") as f:
+                json.dump(initial_parts_data, f, ensure_ascii=False, indent=2)
+            _progress(f"Initialized incremental parts file: {os.path.basename(parts_path)}")
+        except Exception as e:
+            self.logger.error(f"Failed to create parts file: {e}")
+            return None
+        
+        # Open TXT for appending raw responses (backup)
+        txt_file_handle = None
+        try:
+            txt_file_handle = open(txt_path, "w", encoding="utf-8")
+        except Exception as e:
+            self.logger.warning(f"Could not open TXT file for raw responses: {e}")
+        
         max_retries = 3
         
         for part_num, part_data in enumerate(stage_j_parts, 1):
@@ -219,12 +254,33 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
             part_response = None
             for attempt in range(max_retries):
                 try:
+                    # Stage H needs more tokens per part because each flashcard has 7 fields
+                    # Calculate max_tokens: PART_SIZE * avg_tokens_per_flashcard * safety_factor
+                    # Each flashcard: ~200-300 tokens (Qtext + 4 choices + metadata)
+                    # Safety factor: 1.5x to handle variations
+                    estimated_tokens_per_flashcard = 250
+                    stage_h_max_tokens = min(
+                        int(len(part_data) * estimated_tokens_per_flashcard * 1.5),
+                        APIConfig.DEFAULT_MAX_TOKENS * 2  # Cap at 2x default (32768 for gemini-2.5)
+                    )
+                    # Cap by provider: DeepSeek 4096, OpenRouter/GLM 65536 (GLM-5 supports ~131K)
+                    if hasattr(self.api_client, 'get_client_for_stage'):
+                        from deepseek_api_client import DeepSeekAPIClient
+                        from openrouter_api_client import OpenRouterAPIClient
+                        client = self.api_client.get_client_for_stage()
+                        if isinstance(client, DeepSeekAPIClient):
+                            stage_h_max_tokens = min(stage_h_max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
+                        elif isinstance(client, OpenRouterAPIClient):
+                            stage_h_max_tokens = min(stage_h_max_tokens, getattr(APIConfig, 'DEFAULT_OPENROUTER_MAX_TOKENS', 65536))
+                    
+                    self.logger.info(f"Part {part_num}: Using max_tokens={stage_h_max_tokens} for {len(part_data)} records")
+                    
                     part_response = self.api_client.process_text(
                         text=part_prompt,
                         system_prompt=None,
                         model_name=model_name,
                         temperature=APIConfig.DEFAULT_TEMPERATURE,
-                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                        max_tokens=stage_h_max_tokens
                     )
                     if part_response:
                         _progress(f"Part {part_num} response received ({len(part_response)} characters)")
@@ -241,78 +297,89 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
             if not part_response:
                 self.logger.error(f"No response from model for Part {part_num}")
                 _progress(f"Error: No response for Part {part_num}. Skipping this part.")
+                # Still append empty part to keep part numbers in sync
+                try:
+                    with open(parts_path, "r", encoding="utf-8") as f:
+                        current_data = json.load(f)
+                    current_data["parts"].append({"part_num": part_num, "response_text": "", "data": None})
+                    with open(parts_path, "w", encoding="utf-8") as f:
+                        json.dump(current_data, f, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    self.logger.warning(f"Failed to append empty part to parts file: {e}")
                 continue
             
-            all_part_responses.append({
-                "part_num": part_num,
-                "response": part_response
-            })
-        
-        if not all_part_responses:
-            self.logger.error("No responses received from any part")
-            return None
-        
-        # Save raw responses to TXT file
-        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
-        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
-        txt_path = os.path.join(base_dir, f"{base_name}_stage_h.txt")
-        
-        try:
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                for i, part_info in enumerate(all_part_responses):
-                    if i > 0:
-                        f.write("\n\n")
-                    f.write(part_info['response'])
-            _progress(f"Saved raw model responses to: {txt_path}")
-        except Exception as e:
-            self.logger.warning(f"Failed to save TXT file: {e}")
-        
-        # Extract JSON from all responses
-        all_part_data_lists = []
-        for part_info in all_part_responses:
-            part_num = part_info['part_num']
-            part_response = part_info['response']
+            # Save raw response to TXT immediately
+            if txt_file_handle:
+                try:
+                    if part_num > 1:
+                        txt_file_handle.write("\n\n")
+                    txt_file_handle.write(part_response)
+                    txt_file_handle.flush()
+                except Exception as e:
+                    self.logger.warning(f"Failed to write Part {part_num} to TXT: {e}")
             
+            # Convert to JSON immediately (like document processing) and add to parts file
             _progress(f"Extracting JSON from Part {part_num} response...")
             part_output = self.extract_json_from_response(part_response)
             if not part_output:
-                # Try loading from text directly
                 _progress(f"Trying to extract Part {part_num} JSON from text...")
                 part_output = self.load_txt_as_json_from_text(part_response)
             
+            part_data_list = None
             if part_output:
                 part_data_list = self.get_data_from_json(part_output)
                 if part_data_list:
-                    all_part_data_lists.append({
-                        "part_num": part_num,
-                        "data": part_data_list,
-                        "count": len(part_data_list)
-                    })
                     _progress(f"Part {part_num}: Extracted {len(part_data_list)} records")
                 else:
                     self.logger.warning(f"Part {part_num}: No data extracted from JSON")
             else:
                 self.logger.warning(f"Part {part_num}: Failed to extract JSON")
+            
+            # Append to incremental parts file immediately
+            try:
+                with open(parts_path, "r", encoding="utf-8") as f:
+                    current_data = json.load(f)
+                current_data["parts"].append({
+                    "part_num": part_num,
+                    "response_text": part_response,
+                    "data": part_data_list,
+                })
+                current_data["metadata"]["parts_processed"] = len(current_data["parts"])
+                current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+                with open(parts_path, "w", encoding="utf-8") as f:
+                    json.dump(current_data, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"  ✓ Added Part {part_num} to parts file immediately ({len(part_data_list) if part_data_list else 0} records)")
+            except Exception as e:
+                self.logger.error(f"Failed to write Part {part_num} to parts file: {e}", exc_info=True)
         
-        # Combine all outputs
-        _progress("Combining JSON from all parts...")
+        if txt_file_handle:
+            try:
+                txt_file_handle.close()
+            except Exception:
+                pass
+            _progress(f"Saved raw model responses to: {txt_path}")
+        
+        # Build combined_model_data from parts file (no re-parsing at end)
+        _progress("Combining JSON from parts file...")
+        try:
+            with open(parts_path, "r", encoding="utf-8") as f:
+                parts_data = json.load(f)
+        except Exception as e:
+            self.logger.error(f"Failed to read parts file: {e}")
+            return None
+        
         combined_model_data = []
-        for part_info in all_part_data_lists:
-            combined_model_data.extend(part_info['data'])
+        part_counts = []
+        for p in parts_data.get("parts", []):
+            data = p.get("data")
+            if data:
+                combined_model_data.extend(data)
+                part_counts.append(f"Part {p['part_num']}: {len(data)}")
         
-        part_counts = [f"Part {p['part_num']}: {p['count']}" for p in all_part_data_lists]
-        _progress(f"Extracted {len(combined_model_data)} records from combined model output ({', '.join(part_counts)})")
-        
-        if not combined_model_data:
-            self.logger.error("Failed to extract JSON from model responses")
-            # Try loading from TXT file as fallback
-            _progress("Trying to load JSON from TXT file as fallback...")
-            model_output = self.load_txt_as_json(txt_path)
-            if model_output:
-                combined_model_data = self.get_data_from_json(model_output)
+        _progress(f"Extracted {len(combined_model_data)} records from parts file ({', '.join(part_counts)})")
         
         if not combined_model_data:
-            self.logger.error("Failed to extract JSON from model responses")
+            self.logger.error("No JSON data extracted from any part")
             return None
         
         model_data = combined_model_data
@@ -380,7 +447,6 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
             base_filename = f"ac{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
         else:
             # Fallback if no chapter name: use timestamp to avoid overwriting
-            from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             base_filename = f"ac{book_id:03d}{chapter_id:03d}+{timestamp}.json"
             self.logger.warning(f"No chapter name found, using timestamp in filename: {timestamp}")
@@ -406,11 +472,13 @@ Stage J Data - Part {part_num}/{num_parts} (without Imp and Type columns):
             "source_stage_f": os.path.basename(stage_f_path),
             "model_used": model_name,
             "stage_h_txt_file": os.path.basename(txt_path),
+            "stage_h_parts_file": os.path.basename(parts_path),
             "total_records": len(flashcard_records),
             "records_with_flashcards": matched_count,
             "num_parts": num_parts,
             "part_size": PART_SIZE,
-            "division_method": "dynamic_by_part_size"
+            "division_method": "dynamic_by_part_size",
+            "incremental_write": True,
         }
         
         # Save JSON

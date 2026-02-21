@@ -14,14 +14,14 @@ def similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 
-def find_matching_topic(topic_name: str, available_topics: List[str], threshold: float = 0.6) -> Optional[str]:
+def find_matching_topic(topic_name: str, available_topics: List[str], threshold: float = 0.8) -> Optional[str]:
     """
     Find matching topic from available topics using fuzzy matching
     
     Args:
         topic_name: Topic name to search for
         available_topics: List of available topic names
-        threshold: Minimum similarity threshold (default: 0.6)
+        threshold: Minimum similarity threshold (default: 0.8 - increased for precision)
     
     Returns:
         Matching topic name or None if no match found
@@ -29,7 +29,7 @@ def find_matching_topic(topic_name: str, available_topics: List[str], threshold:
     if not topic_name or not available_topics:
         return None
     
-    topic_name_clean = topic_name.strip()
+    topic_name_clean = topic_name.strip().lower()
     best_match = None
     best_score = 0.0
     
@@ -37,17 +37,22 @@ def find_matching_topic(topic_name: str, available_topics: List[str], threshold:
         if not available_topic:
             continue
         
+        available_topic_clean = available_topic.strip().lower()
+        
         # Exact match (case-insensitive)
-        if topic_name_clean.lower() == available_topic.lower():
+        if topic_name_clean == available_topic_clean:
             return available_topic
         
         # Fuzzy match
-        score = similarity(topic_name_clean, available_topic)
-        if score > best_score and score >= threshold:
+        score = similarity(topic_name_clean, available_topic_clean)
+        if score > best_score:
             best_score = score
             best_match = available_topic
     
-    return best_match if best_score >= threshold else None
+    if best_score >= threshold:
+        return best_match
+    
+    return None
 
 
 def extract_topics_from_ocr_json(

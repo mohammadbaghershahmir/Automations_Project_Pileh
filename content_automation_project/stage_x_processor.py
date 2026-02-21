@@ -585,22 +585,6 @@ class StageXProcessor(BaseStageProcessor):
     ) -> Optional[str]:
         """Process extracted PDF text and return raw response text."""
         try:
-            import google.generativeai as genai
-            
-            # Ensure text_client is using the correct model
-            # Recreate client if model changed
-            if (not hasattr(self.api_client, '_current_model_name') or 
-                self.api_client._current_model_name != model_name):
-                # Get API key
-                key = self.api_client.key_manager.get_next_key()
-                if not key:
-                    self.logger.error("No API key available")
-                    return None
-                genai.configure(api_key=key)
-                self.api_client.text_client = genai.GenerativeModel(model_name)
-                self.api_client._current_model_name = model_name
-                self.logger.info(f"Recreated text_client with model: {model_name}")
-            
             # Determine maximum tokens based on model (same logic as api_layer.py)
             # gemini-2.5-pro: up to 32768 tokens
             # gemini-2.5-flash: up to 32768 tokens
@@ -618,19 +602,15 @@ class StageXProcessor(BaseStageProcessor):
                 model_max_tokens = 32768
             
             self.logger.info(f"Model: {model_name}, Max tokens for model: {model_max_tokens}")
-            
-            generation_config = genai.types.GenerationConfig(
+
+            # Send extracted text as user content, prompt as system instruction (works for Google/DeepSeek/OpenRouter)
+            return self.api_client.process_text(
+                text=extracted_text,
+                system_prompt=prompt,
+                model_name=model_name,
                 temperature=temperature,
-                max_output_tokens=model_max_tokens,
+                max_tokens=model_max_tokens,
             )
-
-            response = self.api_client.text_client.generate_content(
-                prompt,
-                generation_config=generation_config,
-                stream=False
-            )
-
-            return response.text if hasattr(response, 'text') and response.text else None
         except Exception as e:
             self.logger.error(f"Text processing (pages {start_page}-{end_page}) failed: {e}")
             return None

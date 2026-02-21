@@ -29,8 +29,11 @@ class StageVProcessor(BaseStageProcessor):
         ocr_extraction_json_path: str,
         prompt_1: str,
         model_name_1: str,
-        prompt_2: str,
-        model_name_2: str,
+        provider_1: str = "deepseek",
+        prompt_2: str = "",
+        model_name_2: str = "deepseek-reasoner",
+        provider_2: str = "deepseek",
+        stage_settings_manager: Optional[Any] = None,
         output_dir: Optional[str] = None,
         progress_callback: Optional[Callable[[str], None]] = None
     ) -> Optional[str]:
@@ -198,6 +201,12 @@ class StageVProcessor(BaseStageProcessor):
         
         full_stage_j_json = json.dumps(stage_j_records_for_prompt, ensure_ascii=False, indent=2)
         
+        # Update stage settings for Step 1 (so correct API provider is used)
+        if stage_settings_manager:
+            stage_settings_manager.set_stage_provider("stage_v", provider_1)
+            stage_settings_manager.set_stage_model("stage_v", model_name_1)
+            self.logger.info(f"Stage V Step 1: Using provider={provider_1}, model={model_name_1}")
+        
         # ========== STEP 1: Generate Initial Test Questions (per Topic) ==========
         _progress("=" * 60)
         _progress("STEP 1: Generating initial test questions (per Topic, with full Stage J)...")
@@ -279,6 +288,12 @@ class StageVProcessor(BaseStageProcessor):
             return None
         
         step1_output = step1_combined_path
+        
+        # Update stage settings for Step 2 (so correct API provider is used)
+        if stage_settings_manager:
+            stage_settings_manager.set_stage_provider("stage_v", provider_2)
+            stage_settings_manager.set_stage_model("stage_v", model_name_2)
+            self.logger.info(f"Stage V Step 2: Using provider={provider_2}, model={model_name_2}")
         
         # ========== STEP 2: Refine Questions and Add QId (per Topic) ==========
         _progress("=" * 60)

@@ -61,8 +61,16 @@ class APIConfig:
         "deepseek-reasoner-v2",    # نسخه V2 برای استدلال
     ]
     
+    # OpenRouter models (e.g. for Reference Change stage and Document Processing)
+    OPENROUTER_TEXT_MODELS = [
+        "z-ai/glm-5",
+        "opencounter/opencounter",
+        "opencounter",
+    ]
+    DEFAULT_OPENROUTER_MODEL = "z-ai/glm-5"
+    
     # All available text models (combined)
-    ALL_TEXT_MODELS = TEXT_MODELS + DEEPSEEK_TEXT_MODELS
+    ALL_TEXT_MODELS = TEXT_MODELS + DEEPSEEK_TEXT_MODELS + OPENROUTER_TEXT_MODELS
     
     # Available Gemini TTS voices
     TTS_VOICES = [
@@ -87,6 +95,8 @@ class APIConfig:
     # gemini-1.5-flash: up to 8192 tokens
     DEFAULT_MAX_TOKENS = 16384  # Maximum for gemini-2.5 models
     DEFAULT_DEEPSEEK_MAX_TOKENS = 4096  # Maximum for DeepSeek API (hard limit)
+    # OpenRouter (e.g. z-ai/glm-5): GLM-5 supports up to 131K output tokens
+    DEFAULT_OPENROUTER_MAX_TOKENS = 65536  # Safe default for OpenRouter/GLM (model limit ~131K)
 
 
 class APIKeyManager:

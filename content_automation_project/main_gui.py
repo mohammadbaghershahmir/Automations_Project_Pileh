@@ -70,9 +70,10 @@ class ContentAutomationGUI:
         self.pdf_processor = PDFProcessor()
         self.prompt_manager = PromptManager()
         
-        # Initialize API key managers for Google and DeepSeek
+        # Initialize API key managers for Google, DeepSeek, and OpenRouter
         self.google_api_key_manager = APIKeyManager()
         self.deepseek_api_key_manager = APIKeyManager()
+        self.openrouter_api_key_manager = APIKeyManager()
         
         # Initialize API key file path variables (will be set in setup_api_section if not exists)
         # These are created here to ensure they exist before UI setup
@@ -88,6 +89,11 @@ class ContentAutomationGUI:
                 self.deepseek_api_key_file_var = ctk.StringVar()
             self.deepseek_api_key_file_var.set("deepseek_api_keys.csv")
             self.deepseek_api_key_manager.load_from_csv("deepseek_api_keys.csv")
+        if os.path.exists("openrouter_api_keys.csv"):
+            if not hasattr(self, 'openrouter_api_key_file_var'):
+                self.openrouter_api_key_file_var = ctk.StringVar()
+            self.openrouter_api_key_file_var.set("openrouter_api_keys.csv")
+            self.openrouter_api_key_manager.load_from_csv("openrouter_api_keys.csv")
         
         # Initialize stage settings manager
         self.stage_settings_manager = StageSettingsManager()
@@ -96,6 +102,7 @@ class ContentAutomationGUI:
         self.api_client = UnifiedAPIClient(
             google_api_key_manager=self.google_api_key_manager,
             deepseek_api_key_manager=self.deepseek_api_key_manager,
+            openrouter_api_key_manager=self.openrouter_api_key_manager,
             stage_settings_manager=self.stage_settings_manager
         )
         self.multi_part_processor = MultiPartProcessor(self.api_client)
@@ -170,6 +177,10 @@ class ContentAutomationGUI:
         # Tab 2: OCR Extraction
         self.tab_ocr_extraction = self.main_tabview.add("OCR Extraction")
         self.setup_ocr_extraction_ui(self.tab_ocr_extraction)
+        
+        # Tab 2.5: OCR Extraction Paragraph
+        self.tab_ocr_extraction_paragraph = self.main_tabview.add("OCR Extraction Paragraph")
+        self.setup_ocr_extraction_paragraph_ui(self.tab_ocr_extraction_paragraph)
         
         # Tab 3: Document Processing (for tabview access)
         self.tab_stages_1_4 = self.main_tabview.add("Document Processing")
@@ -360,6 +371,52 @@ class ContentAutomationGUI:
             deepseek_api_keys_status_label_tab = ctk.CTkLabel(deepseek_key_frame, text="No DeepSeek API keys loaded", 
                                                       font=ctk.CTkFont(size=10), text_color="gray")
             deepseek_api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # OpenRouter API Key CSV file selection
+        openrouter_key_frame = ctk.CTkFrame(api_frame)
+        openrouter_key_frame.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(openrouter_key_frame, text="OpenRouter API Key CSV File:", 
+                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Only create StringVar if it doesn't exist (for main view)
+        if not hasattr(self, 'openrouter_api_key_file_var'):
+            self.openrouter_api_key_file_var = ctk.StringVar()
+        openrouter_api_key_entry = ctk.CTkEntry(openrouter_key_frame, textvariable=self.openrouter_api_key_file_var, width=400)
+        openrouter_api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
+        
+        ctk.CTkButton(openrouter_key_frame, text="Browse", command=self.browse_openrouter_api_key_file, 
+                     width=80).pack(side="right", padx=(5, 10), pady=(0, 5))
+        
+        ctk.CTkLabel(openrouter_key_frame, text="CSV format: account;project;api_key (Used for Reference Change & Document Processing)", 
+                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # OpenRouter API keys status - only create for main view
+        if not hasattr(self, 'openrouter_api_keys_status_label') or parent == self.main_stages_1_4_frame:
+            if not hasattr(self, 'openrouter_api_keys_status_label'):
+                # Check if keys were already loaded in __init__
+                if hasattr(self, 'openrouter_api_key_manager') and len(self.openrouter_api_key_manager.api_keys) > 0:
+                    num_keys = len(self.openrouter_api_key_manager.api_keys)
+                    status_text = f"Loaded {num_keys} OpenRouter API key(s) - Will be used in rotation"
+                    status_color = "green"
+                else:
+                    status_text = "No OpenRouter API keys loaded"
+                    status_color = "gray"
+                self.openrouter_api_keys_status_label = ctk.CTkLabel(openrouter_key_frame, text=status_text, 
+                                                          font=ctk.CTkFont(size=10), text_color=status_color)
+                self.openrouter_api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        else:
+            # For tabview, create a separate label that syncs with main
+            if hasattr(self, 'openrouter_api_key_manager') and len(self.openrouter_api_key_manager.api_keys) > 0:
+                num_keys = len(self.openrouter_api_key_manager.api_keys)
+                status_text = f"Loaded {num_keys} OpenRouter API key(s) - Will be used in rotation"
+                status_color = "green"
+            else:
+                status_text = "No OpenRouter API keys loaded"
+                status_color = "gray"
+            openrouter_api_keys_status_label_tab = ctk.CTkLabel(openrouter_key_frame, text=status_text, 
+                                                      font=ctk.CTkFont(size=10), text_color=status_color)
+            openrouter_api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
     
     def add_stage_settings_section(self, parent, stage_name: str, 
                                    api_provider: str = "auto",
@@ -386,19 +443,26 @@ class ContentAutomationGUI:
         stage_provider = self.stage_settings_manager.get_stage_provider(stage_name, api_provider)
         stage_model = self.stage_settings_manager.get_stage_model(stage_name)
         stage_api_key = self.stage_settings_manager.get_stage_api_key(stage_name)
+        # Force Reference Change to show OpenRouter by default (so changes are visible even if Google was saved before)
+        if stage_name == "reference_change" and api_provider == "openrouter":
+            stage_provider = "openrouter"
+            if not (stage_model and stage_model in APIConfig.OPENROUTER_TEXT_MODELS):
+                stage_model = APIConfig.DEFAULT_OPENROUTER_MODEL
         
         # Determine available models based on current provider
         def get_models_for_provider(provider):
             if provider == "deepseek":
                 return APIConfig.DEEPSEEK_TEXT_MODELS
-            else:
-                return APIConfig.TEXT_MODELS
+            if provider == "openrouter":
+                return APIConfig.OPENROUTER_TEXT_MODELS
+            return APIConfig.TEXT_MODELS
         
         def get_default_model_for_provider(provider):
             if provider == "deepseek":
                 return APIConfig.DEFAULT_DEEPSEEK_MODEL
-            else:
-                return APIConfig.DEFAULT_TEXT_MODEL
+            if provider == "openrouter":
+                return APIConfig.DEFAULT_OPENROUTER_MODEL
+            return APIConfig.DEFAULT_TEXT_MODEL
         
         # Settings frame
         settings_frame = ctk.CTkFrame(parent)
@@ -418,8 +482,11 @@ class ContentAutomationGUI:
         if not hasattr(self, provider_var_name):
             setattr(self, provider_var_name, ctk.StringVar(value=stage_provider))
         provider_var = getattr(self, provider_var_name)
+        # Ensure Reference Change tab shows OpenRouter (sync combo to stage_provider)
+        if stage_name == "reference_change":
+            provider_var.set(stage_provider)
         
-        provider_combo = ctk.CTkComboBox(provider_frame, values=["google", "deepseek"], 
+        provider_combo = ctk.CTkComboBox(provider_frame, values=["google", "deepseek", "openrouter"], 
                                          variable=provider_var, width=400,
                                          command=lambda choice: self._on_provider_changed(
                                              stage_name, choice, model_var, model_combo, api_key_var
@@ -430,7 +497,7 @@ class ContentAutomationGUI:
         model_frame = ctk.CTkFrame(settings_frame)
         model_frame.pack(fill="x", padx=10, pady=5)
         
-        provider_label = "DeepSeek" if stage_provider == "deepseek" else "Google"
+        provider_label = "DeepSeek" if stage_provider == "deepseek" else ("OpenRouter" if stage_provider == "openrouter" else "Google")
         ctk.CTkLabel(model_frame, text=f"{provider_label} Model:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=5, pady=2)
         
@@ -439,13 +506,17 @@ class ContentAutomationGUI:
             # Use stage model if available, otherwise use default for current provider
             if stage_model and (
                 (stage_provider == "deepseek" and stage_model in APIConfig.DEEPSEEK_TEXT_MODELS) or
-                (stage_provider == "google" and stage_model in APIConfig.TEXT_MODELS)
+                (stage_provider == "google" and stage_model in APIConfig.TEXT_MODELS) or
+                # For OpenRouter allow any model string (user may type any OpenRouter model id)
+                (stage_provider == "openrouter" and isinstance(stage_model, str) and stage_model.strip())
             ):
                 initial_model = stage_model
             else:
                 initial_model = get_default_model_for_provider(stage_provider)
             setattr(self, model_var_name, ctk.StringVar(value=initial_model))
         model_var = getattr(self, model_var_name)
+        if stage_name == "reference_change" and stage_provider == "openrouter":
+            model_var.set(APIConfig.DEFAULT_OPENROUTER_MODEL)
         
         model_combo = ctk.CTkComboBox(model_frame, values=get_models_for_provider(stage_provider), 
                                      variable=model_var, width=400)
@@ -474,7 +545,7 @@ class ContentAutomationGUI:
         api_key_frame = ctk.CTkFrame(settings_frame)
         api_key_frame.pack(fill="x", padx=10, pady=5)
         
-        provider_label_key = "DeepSeek" if stage_provider == "deepseek" else "Google"
+        provider_label_key = "DeepSeek" if stage_provider == "deepseek" else ("OpenRouter" if stage_provider == "openrouter" else "Google")
         api_key_label = ctk.CTkLabel(api_key_frame, text=f"{provider_label_key} API Key (Optional - overrides CSV keys):", 
                     font=ctk.CTkFont(size=12, weight="bold"))
         api_key_label.pack(anchor="w", padx=5, pady=2)
@@ -521,6 +592,9 @@ class ContentAutomationGUI:
         if provider == "deepseek":
             available_models = APIConfig.DEEPSEEK_TEXT_MODELS
             default_model = APIConfig.DEFAULT_DEEPSEEK_MODEL
+        elif provider == "openrouter":
+            available_models = APIConfig.OPENROUTER_TEXT_MODELS
+            default_model = APIConfig.DEFAULT_OPENROUTER_MODEL
         else:
             available_models = APIConfig.TEXT_MODELS
             default_model = APIConfig.DEFAULT_TEXT_MODEL
@@ -536,13 +610,13 @@ class ContentAutomationGUI:
         # Update API key label
         api_key_label = getattr(self, f"{stage_name}_api_key_label", None)
         if api_key_label:
-            provider_label = "DeepSeek" if provider == "deepseek" else "Google"
+            provider_label = "DeepSeek" if provider == "deepseek" else ("OpenRouter" if provider == "openrouter" else "Google")
             api_key_label.configure(text=f"{provider_label} API Key (Optional - overrides CSV keys):")
         
         # Update model label
         model_label = getattr(self, f"{stage_name}_model_label", None)
         if model_label:
-            provider_label = "DeepSeek" if provider == "deepseek" else "Google"
+            provider_label = "DeepSeek" if provider == "deepseek" else ("OpenRouter" if provider == "openrouter" else "Google")
             model_label.configure(text=f"{provider_label} Model:")
     
     def setup_pre_ocr_topic_ui(self, parent):
@@ -1040,6 +1114,29 @@ class ContentAutomationGUI:
                 )
                 messagebox.showerror("Error", "Failed to load DeepSeek API keys from file")
     
+    def browse_openrouter_api_key_file(self):
+        """Browse for OpenRouter API key CSV file"""
+        filename = filedialog.askopenfilename(
+            title="Select OpenRouter API Key CSV File",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if filename:
+            self.openrouter_api_key_file_var.set(filename)
+            # Load OpenRouter API keys
+            if self.openrouter_api_key_manager.load_from_csv(filename):
+                num_keys = len(self.openrouter_api_key_manager.api_keys)
+                self.openrouter_api_keys_status_label.configure(
+                    text=f"Loaded {num_keys} OpenRouter API key(s) - Will be used in rotation",
+                    text_color="green"
+                )
+                self.update_status(f"Loaded {num_keys} OpenRouter API key(s) from: {os.path.basename(filename)}")
+            else:
+                self.openrouter_api_keys_status_label.configure(
+                    text="X Failed to load OpenRouter API keys",
+                    text_color="red"
+                )
+                messagebox.showerror("Error", "Failed to load OpenRouter API keys from file")
+    
     
     def browse_multiple_pre_ocr_pdfs(self):
         """Browse and select multiple PDF files"""
@@ -1152,8 +1249,8 @@ class ContentAutomationGUI:
             'stage_e_model_var',
             'stage_j_model_var',
             'stage_h_model_var',
-            'stage_v_model1_var',
-            'stage_v_model2_var',
+            'stage_v_step1_model_var',
+            'stage_v_step2_model_var',
             'stage_l_model_var',
             'stage_x_pdf_model_var',
             'stage_x_change_model_var',
@@ -1602,6 +1699,44 @@ class ContentAutomationGUI:
             if hasattr(self, 'ocr_extraction_prompt_type_var') and self.ocr_extraction_prompt_type_var.get() == "default":
                 try:
                     self.ocr_extraction_prompt_text.configure(state="disabled")
+                except Exception:
+                    pass
+    
+    def on_ocr_extraction_paragraph_prompt_type_change(self):
+        """Switch between default and custom prompt for OCR Extraction Paragraph."""
+        if not hasattr(self, 'ocr_extraction_paragraph_prompt_type_var') \
+           or not hasattr(self, 'ocr_extraction_paragraph_default_prompt_combo') \
+           or not hasattr(self, 'ocr_extraction_paragraph_prompt_text'):
+            return
+        mode = self.ocr_extraction_paragraph_prompt_type_var.get()
+        if mode == "default":
+            self.ocr_extraction_paragraph_default_prompt_combo.configure(state="normal")
+            selected_name = self.ocr_extraction_paragraph_default_prompt_var.get()
+            self.on_ocr_extraction_paragraph_default_prompt_selected(selected_name)
+            try:
+                self.ocr_extraction_paragraph_prompt_text.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self.ocr_extraction_paragraph_default_prompt_combo.configure(state="disabled")
+            try:
+                self.ocr_extraction_paragraph_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+    
+    def on_ocr_extraction_paragraph_default_prompt_selected(self, selected_name: str):
+        """When default OCR Extraction Paragraph prompt combobox changes, fill the prompt textbox."""
+        prompt_text = self.prompt_manager.get_prompt(selected_name)
+        if prompt_text and hasattr(self, 'ocr_extraction_paragraph_prompt_text'):
+            try:
+                self.ocr_extraction_paragraph_prompt_text.configure(state="normal")
+            except Exception:
+                pass
+            self.ocr_extraction_paragraph_prompt_text.delete("1.0", tk.END)
+            self.ocr_extraction_paragraph_prompt_text.insert("1.0", prompt_text)
+            if hasattr(self, 'ocr_extraction_paragraph_prompt_type_var') and self.ocr_extraction_paragraph_prompt_type_var.get() == "default":
+                try:
+                    self.ocr_extraction_paragraph_prompt_text.configure(state="disabled")
                 except Exception:
                     pass
     
@@ -2592,7 +2727,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             inner_model_frame,
-            text="Document Processing uses DeepSeek API. Select a DeepSeek model for second-stage processing.",
+            text="Select provider and model in Stage Settings above (DeepSeek, OpenRouter, or Google).",
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 5))
@@ -3059,52 +3194,6 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=15, pady=(0, 10))
-        
-        # Model selection for second stage
-        model_frame = ctk.CTkFrame(main_frame)
-        model_frame.pack(fill="x", pady=(0, 20))
-        
-        ctk.CTkLabel(
-            model_frame,
-            text="Second-Stage Model Selection",
-            font=ctk.CTkFont(size=18, weight="bold"),
-        ).pack(pady=(15, 10))
-        
-        inner_model_frame = ctk.CTkFrame(model_frame)
-        inner_model_frame.pack(fill="x", padx=15, pady=(0, 10))
-        
-        ctk.CTkLabel(
-            inner_model_frame,
-            text="Select model for second-stage (per-Topic) processing:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Only create if doesn't exist
-        # Document Processing uses DeepSeek API, so show DeepSeek models
-        if not hasattr(self, 'second_stage_model_var'):
-            self.second_stage_model_var = ctk.StringVar(value=self.model_var.get() if hasattr(self, 'model_var') else "deepseek-reasoner")
-        if not hasattr(self, 'second_stage_model_combo'):
-            self.second_stage_model_combo = ctk.CTkComboBox(
-                inner_model_frame,
-                values=APIConfig.DEEPSEEK_TEXT_MODELS,
-                variable=self.second_stage_model_var,
-                width=400,
-            )
-            self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
-        else:
-            # If exists, repack it in the new location
-            try:
-                self.second_stage_model_combo.pack_forget()
-            except:
-                pass
-            self.second_stage_model_combo.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        ctk.CTkLabel(
-            inner_model_frame,
-            text="Model will be used for Document Processing (per-Topic processing).",
-            font=ctk.CTkFont(size=10),
-            text_color="gray",
-        ).pack(anchor="w", padx=10, pady=(0, 5))
 
         #
         # --- PointId Settings ---
@@ -3259,6 +3348,11 @@ class ContentAutomationGUI:
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Stage Settings (Provider + Model), same position as OCR Extraction: after input sections, before Process
+        self.document_processing_provider_var, self.document_processing_model_var, self.document_processing_api_key_var = self.add_stage_settings_section(
+            main_frame, "document_processing", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         #
         # --- Progress & control buttons ---
@@ -3444,13 +3538,23 @@ class ContentAutomationGUI:
                 delay_seconds = 5
                 self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
             
-            # Validate API keys (for Stage 2, uses DeepSeek)
-            if not self.deepseek_api_key_manager.api_keys:
-                self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
-                return
-            
-            # Set stage for Stage 2 (uses DeepSeek API)
-            self.api_client.set_stage("stage_2")
+            # Get provider and validate API keys (Document Processing: DeepSeek, OpenRouter, or Google)
+            provider = self.document_processing_provider_var.get() if hasattr(self, 'document_processing_provider_var') else "deepseek"
+            if provider == "openrouter":
+                if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load OpenRouter API keys first (API Configuration)"))
+                    return
+            elif provider == "deepseek":
+                if not self.deepseek_api_key_manager.api_keys:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
+                    return
+            else:
+                if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
+                    return
+
+            # Set stage so api_client uses Document Processing provider/model (like OCR Extraction / OCR Extraction Paragraph)
+            self.api_client.set_stage("document_processing")
             
             # PointId handling - Load all pointids from txt file once
             all_pointids_from_txt = []
@@ -3497,11 +3601,16 @@ class ContentAutomationGUI:
                         self.root.after(0, lambda: messagebox.showerror("Error", "Start PointId format is invalid."))
                         return
             
-            model_name = self.get_default_model()
+            # Use Document Processing stage model (from Stage Settings)
+            model_name = (self.document_processing_model_var.get() or "").strip() if hasattr(self, 'document_processing_model_var') else ""
+            if not model_name:
+                model_name = self.get_default_model()
             total_files = len(self.document_processing_selected_files)
             completed = 0
             failed = 0
-            
+
+            self.logger.info(f"[Document Processing] Provider: {provider}, Model: {model_name}")
+
             # Reset progress bar
             self.root.after(0, lambda: self.document_processing_progress_bar.set(0))
             
@@ -4115,6 +4224,217 @@ class ContentAutomationGUI:
         if not hasattr(self, 'ocr_extraction_output_var'):
             self.ocr_extraction_output_var = ctk.StringVar()
         output_entry = ctk.CTkEntry(output_frame, textvariable=self.ocr_extraction_output_var, 
+                                    width=400, state="readonly")
+        output_entry.pack(fill="x", padx=10, pady=(0, 10))
+    
+    def setup_ocr_extraction_paragraph_ui(self, parent):
+        """Setup UI for OCR Extraction Paragraph"""
+        main_frame = ctk.CTkScrollableFrame(parent)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Navigation button to return to main view
+        nav_frame = ctk.CTkFrame(main_frame)
+        nav_frame.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            nav_frame,
+            text="← Back to Main View",
+            command=self.show_main_view,
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=12),
+            fg_color="gray",
+            hover_color="darkgray"
+        ).pack(side="left", padx=10, pady=5)
+        
+        # Title
+        title = ctk.CTkLabel(main_frame, text="OCR Extraction Paragraph", 
+                            font=ctk.CTkFont(size=24, weight="bold"))
+        title.pack(pady=(0, 20))
+        
+        # Description
+        desc = ctk.CTkLabel(
+            main_frame, 
+            text="Extract OCR content from PDF per Subchapter paragraphs using topics from Pre-OCR Topic Extraction.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+        
+        # Batch processing section
+        batch_frame = ctk.CTkFrame(main_frame)
+        batch_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(batch_frame, text="Batch Processing:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        batch_btn_frame = ctk.CTkFrame(batch_frame)
+        batch_btn_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Option 1: Select folder and auto-match
+        ctk.CTkButton(batch_btn_frame, text="Select Folder (Auto-Match)", 
+                     command=self.select_folder_and_match_ocr_paragraph_pairs, 
+                     width=200).pack(side="left", padx=5)
+        
+        # Option 2: Manual add pairs (fallback)
+        ctk.CTkButton(batch_btn_frame, text="Add Pair Manually", 
+                     command=self.add_ocr_extraction_paragraph_pair_manual, 
+                     width=150).pack(side="left", padx=5)
+        
+        # Delay setting
+        delay_frame = ctk.CTkFrame(batch_btn_frame)
+        delay_frame.pack(side="left", padx=10)
+        ctk.CTkLabel(delay_frame, text="Delay (seconds):").pack(side="left", padx=5)
+        if not hasattr(self, 'ocr_extraction_paragraph_delay_var'):
+            self.ocr_extraction_paragraph_delay_var = ctk.StringVar(value="5")
+        delay_entry = ctk.CTkEntry(delay_frame, textvariable=self.ocr_extraction_paragraph_delay_var, width=60)
+        delay_entry.pack(side="left", padx=5)
+        
+        # Pairs list with status
+        if not hasattr(self, 'ocr_extraction_paragraph_pairs_list_frame'):
+            self.ocr_extraction_paragraph_pairs_list_frame = ctk.CTkFrame(main_frame)
+        self.ocr_extraction_paragraph_pairs_list_frame.pack(fill="both", expand=True, pady=10)
+        
+        ctk.CTkLabel(self.ocr_extraction_paragraph_pairs_list_frame, text="Selected Pairs:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Scrollable frame for pairs list
+        if not hasattr(self, 'ocr_extraction_paragraph_pairs_list_scroll'):
+            self.ocr_extraction_paragraph_pairs_list_scroll = ctk.CTkScrollableFrame(self.ocr_extraction_paragraph_pairs_list_frame, height=200)
+        self.ocr_extraction_paragraph_pairs_list_scroll.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # Progress bar
+        if not hasattr(self, 'ocr_extraction_paragraph_progress_bar'):
+            self.ocr_extraction_paragraph_progress_bar = ctk.CTkProgressBar(main_frame)
+        self.ocr_extraction_paragraph_progress_bar.pack(fill="x", padx=10, pady=5)
+        self.ocr_extraction_paragraph_progress_bar.set(0)
+        
+        # Progress label
+        if not hasattr(self, 'ocr_extraction_paragraph_progress_label'):
+            self.ocr_extraction_paragraph_progress_label = ctk.CTkLabel(main_frame, text="Ready", 
+                                                             font=ctk.CTkFont(size=12))
+        self.ocr_extraction_paragraph_progress_label.pack(pady=5)
+        
+        # Variables for pairs tracking
+        if not hasattr(self, 'ocr_extraction_paragraph_selected_pairs'):
+            self.ocr_extraction_paragraph_selected_pairs = []
+        
+        # Prompt Section
+        prompt_frame = ctk.CTkFrame(main_frame)
+        prompt_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            prompt_frame,
+            text="Prompt for OCR Extraction Paragraph:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=10, pady=5)
+        
+        # OCR Extraction Paragraph prompt mode (default vs custom)
+        ocr_mode_frame = ctk.CTkFrame(prompt_frame)
+        ocr_mode_frame.pack(fill="x", padx=10, pady=(0, 5))
+        if not hasattr(self, 'ocr_extraction_paragraph_prompt_type_var'):
+            self.ocr_extraction_paragraph_prompt_type_var = ctk.StringVar(value="default")
+        ctk.CTkRadioButton(
+            ocr_mode_frame,
+            text="Use Default Prompt",
+            variable=self.ocr_extraction_paragraph_prompt_type_var,
+            value="default",
+            command=self.on_ocr_extraction_paragraph_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        ctk.CTkRadioButton(
+            ocr_mode_frame,
+            text="Use Custom Prompt",
+            variable=self.ocr_extraction_paragraph_prompt_type_var,
+            value="custom",
+            command=self.on_ocr_extraction_paragraph_prompt_type_change,
+        ).pack(side="left", padx=(0, 10), pady=5)
+        
+        # Default OCR Extraction Paragraph prompt combobox
+        ocr_default_frame = ctk.CTkFrame(prompt_frame)
+        ocr_default_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            ocr_default_frame,
+            text="Default OCR Extraction Paragraph Prompt:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", pady=(0, 5))
+        
+        ocr_prompt_names = self.prompt_manager.get_prompt_names()
+        preferred_ocr_name = "OCR Extraction Paragraph Prompt"
+        if preferred_ocr_name in ocr_prompt_names:
+            ocr_default_value = preferred_ocr_name
+        else:
+            ocr_default_value = ocr_prompt_names[0] if ocr_prompt_names else ""
+        if not hasattr(self, 'ocr_extraction_paragraph_default_prompt_var'):
+            self.ocr_extraction_paragraph_default_prompt_var = ctk.StringVar(value=ocr_default_value)
+        self.ocr_extraction_paragraph_default_prompt_combo = ctk.CTkComboBox(
+            ocr_default_frame,
+            values=ocr_prompt_names,
+            variable=self.ocr_extraction_paragraph_default_prompt_var,
+            width=400,
+            command=self.on_ocr_extraction_paragraph_default_prompt_selected,
+        )
+        self.ocr_extraction_paragraph_default_prompt_combo.pack(anchor="w", pady=(0, 5))
+        
+        # Textbox for OCR Extraction Paragraph prompt (default-filled or custom)
+        if not hasattr(self, 'ocr_extraction_paragraph_prompt_text'):
+            self.ocr_extraction_paragraph_prompt_text = ctk.CTkTextbox(prompt_frame, height=140, font=self.farsi_text_font)
+        else:
+            try:
+                self.ocr_extraction_paragraph_prompt_text.pack_forget()
+            except Exception:
+                pass
+        self.ocr_extraction_paragraph_prompt_text.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Load default prompt
+        self.on_ocr_extraction_paragraph_prompt_type_change()
+        if hasattr(self, 'ocr_extraction_paragraph_default_prompt_var'):
+            default_prompt_name = self.ocr_extraction_paragraph_default_prompt_var.get()
+            if default_prompt_name:
+                self.on_ocr_extraction_paragraph_default_prompt_selected(default_prompt_name)
+        
+        # Stage Settings (Provider, Model and API Key)
+        self.ocr_extraction_paragraph_provider_var, self.ocr_extraction_paragraph_model_var, self.ocr_extraction_paragraph_api_key_var = self.add_stage_settings_section(
+            main_frame, "ocr_extraction_paragraph", api_provider="google", default_model="gemini-2.5-pro"
+        )
+        
+        # Process Button
+        process_frame = ctk.CTkFrame(main_frame)
+        process_frame.pack(fill="x", pady=10)
+        
+        # Process All button for batch processing
+        if not hasattr(self, 'ocr_extraction_paragraph_process_all_btn'):
+            self.ocr_extraction_paragraph_process_all_btn = ctk.CTkButton(
+                process_frame,
+                text="Process All Pairs",
+                command=self.process_multiple_ocr_extraction_paragraphs,
+                width=200,
+                height=40,
+                font=ctk.CTkFont(size=14, weight="bold"),
+                fg_color="green",
+                hover_color="darkgreen"
+            )
+        self.ocr_extraction_paragraph_process_all_btn.pack(side="left", padx=10, pady=10)
+        
+        # Status Label
+        if not hasattr(self, 'ocr_extraction_paragraph_status_label'):
+            self.ocr_extraction_paragraph_status_label = ctk.CTkLabel(
+                process_frame,
+                text="Ready",
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+        self.ocr_extraction_paragraph_status_label.pack(side="left", padx=10, pady=10)
+        
+        # Output File Path
+        output_frame = ctk.CTkFrame(main_frame)
+        output_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(output_frame, text="Output JSON File:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+        
+        if not hasattr(self, 'ocr_extraction_paragraph_output_var'):
+            self.ocr_extraction_paragraph_output_var = ctk.StringVar()
+        output_entry = ctk.CTkEntry(output_frame, textvariable=self.ocr_extraction_paragraph_output_var, 
                                     width=400, state="readonly")
         output_entry.pack(fill="x", padx=10, pady=(0, 10))
     
@@ -5012,17 +5332,21 @@ class ContentAutomationGUI:
                 
                 # Validate inputs (for single file mode - backward compatibility)
                 if not hasattr(self, 'stage_e_stage4_var'):
-                    messagebox.showerror("Error", "Single file mode not available. Please use batch processing mode (Process All Pairs).")
+                    messagebox.showerror("Error", "Single file mode not available. Please use batch processing mode:\n1. Click 'Select Folder (Auto-Match)' or 'Add Pair Manually'\n2. Add Stage 4 JSON + OCR Extraction JSON pairs\n3. Click 'Process All Pairs'")
                     return
                 
                 stage4_path = self.stage_e_stage4_var.get().strip()
                 ocr_extraction_json_path = self.stage_e_ocr_extraction_json_var.get().strip() if hasattr(self, 'stage_e_ocr_extraction_json_var') else ""
                 prompt = self.stage_e_prompt_text.get("1.0", tk.END).strip()
-                # Always use default model from main view settings
-                model_name = self.get_default_model()
+                
+                # Use Stage E specific model and provider (like OCR Extraction)
+                provider = self.stage_e_provider_var.get() if hasattr(self, 'stage_e_provider_var') else "deepseek"
+                model_name = self.stage_e_model_var.get() if hasattr(self, 'stage_e_model_var') else self.get_default_model()
+                if not model_name:
+                    model_name = self.get_default_model()
                 
                 if not stage4_path or not os.path.exists(stage4_path):
-                    messagebox.showerror("Error", "Please select a valid Content Processing JSON file")
+                    messagebox.showerror("Error", "Please select a valid Stage 4 JSON file.\n\nNote: Single file mode is deprecated. Please use batch processing:\n1. Click 'Select Folder (Auto-Match)' or 'Add Pair Manually'\n2. Add Stage 4 JSON + OCR Extraction JSON pairs\n3. Click 'Process All Pairs'")
                     return
                 
                 if not ocr_extraction_json_path or not os.path.exists(ocr_extraction_json_path):
@@ -5033,13 +5357,27 @@ class ContentAutomationGUI:
                     messagebox.showerror("Error", "Please enter a prompt for image notes generation")
                     return
                 
-                # Validate API keys
-                if not self.deepseek_api_key_manager.api_keys:
-                    messagebox.showerror("Error", "Please load DeepSeek API keys first")
-                    return
+                # Validate API keys based on provider
+                if provider == "openrouter":
+                    if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
+                        messagebox.showerror("Error", "Please load OpenRouter API keys first (API Configuration)")
+                        return
+                elif provider == "deepseek":
+                    if not self.deepseek_api_key_manager.api_keys:
+                        messagebox.showerror("Error", "Please load DeepSeek API keys first")
+                        return
+                else:  # google
+                    if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
+                        messagebox.showerror("Error", "Please load Google API keys first")
+                        return
                 
-                # Set stage for Stage E (uses DeepSeek API)
+                # Set stage for Stage E and update stage settings to use current provider/model
                 self.api_client.set_stage("stage_e")
+                # Temporarily update stage settings to ensure correct provider/model is used
+                if hasattr(self, 'stage_settings_manager'):
+                    self.stage_settings_manager.set_stage_provider("stage_e", provider)
+                    self.stage_settings_manager.set_stage_model("stage_e", model_name)
+                self.logger.info(f"[Stage E] Using provider: {provider}, model: {model_name}")
                 
                 def progress_callback(msg: str):
                     self.root.after(0, lambda: self.stage_e_status_label.configure(text=msg))
@@ -5159,16 +5497,33 @@ class ContentAutomationGUI:
                 delay_seconds = 5
                 self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
             
-            # Validate API keys
-            if not self.deepseek_api_key_manager.api_keys:
-                self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
-                return
+            # Get provider and model from Stage E settings (like OCR Extraction)
+            provider = self.stage_e_provider_var.get() if hasattr(self, 'stage_e_provider_var') else "deepseek"
+            model_name = self.stage_e_model_var.get() if hasattr(self, 'stage_e_model_var') else self.get_default_model()
+            if not model_name:
+                model_name = self.get_default_model()
             
-            # Set stage for Stage E (uses DeepSeek API)
+            # Validate API keys based on provider
+            if provider == "openrouter":
+                if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load OpenRouter API keys first (API Configuration)"))
+                    return
+            elif provider == "deepseek":
+                if not self.deepseek_api_key_manager.api_keys:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
+                    return
+            else:  # google
+                if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
+                    return
+            
+            # Set stage for Stage E and update stage settings to use current provider/model
             self.api_client.set_stage("stage_e")
-            
-            # Get model
-            model_name = self.get_default_model()
+            # Temporarily update stage settings to ensure correct provider/model is used
+            if hasattr(self, 'stage_settings_manager'):
+                self.stage_settings_manager.set_stage_provider("stage_e", provider)
+                self.stage_settings_manager.set_stage_model("stage_e", model_name)
+            self.logger.info(f"[Stage E Batch] Using provider: {provider}, model: {model_name}")
             total_pairs = len(self.stage_e_selected_pairs)
             completed = 0
             failed = 0
@@ -5984,6 +6339,301 @@ class ContentAutomationGUI:
             if not (p['pdf_path'] == pdf_path and p['topic_file_path'] == topic_path)
         ]
         frame_widget.destroy()
+    
+    def select_folder_and_match_ocr_paragraph_pairs(self):
+        """Select a folder and automatically match PDFs with Topic files for OCR Extraction Paragraph"""
+        folder_path = filedialog.askdirectory(title="Select Folder Containing PDFs and Topic Files")
+        if not folder_path:
+            return
+        
+        # Find all PDFs and Topic files
+        pdf_files = []
+        topic_files = []
+        
+        for file in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file)
+            if os.path.isfile(file_path):
+                if file.lower().endswith('.pdf'):
+                    pdf_files.append(file_path)
+                elif file.lower().endswith('.json') and file.startswith('t') and len(file) >= 10:
+                    topic_files.append(file_path)
+        
+        if not pdf_files:
+            messagebox.showwarning("Warning", "No PDF files found in selected folder")
+            return
+        
+        if not topic_files:
+            messagebox.showwarning("Warning", "No Topic files (t*.json) found in selected folder")
+            return
+        
+        # Clear existing pairs
+        self.ocr_extraction_paragraph_selected_pairs = []
+        for widget in self.ocr_extraction_paragraph_pairs_list_scroll.winfo_children():
+            widget.destroy()
+        
+        # Match PDFs with Topic files (reuse same matching logic)
+        matched_pairs = []
+        unmatched_pdfs = []
+        
+        for pdf_path in pdf_files:
+            pdf_name = os.path.basename(pdf_path)
+            pdf_name_without_ext = os.path.splitext(pdf_name)[0]
+            matched_topic = None
+            
+            # Strategy 1: Match by PDF name suffix
+            expected_suffix = f"_{pdf_name_without_ext}.json"
+            for topic_path in topic_files:
+                topic_basename = os.path.basename(topic_path)
+                if topic_basename.endswith(expected_suffix) and topic_basename.startswith('t'):
+                    matched_topic = topic_path
+                    break
+            
+            # Strategy 2: Try to extract book_id and chapter_id from PDF filename
+            if not matched_topic:
+                book_id, chapter_id = self._extract_book_chapter_from_pdf_name(pdf_name)
+                if book_id is not None and chapter_id is not None:
+                    expected_prefix = f"t{book_id:03d}{chapter_id:03d}"
+                    expected_format = f"{expected_prefix}_{pdf_name_without_ext}.json"
+                    for topic_path in topic_files:
+                        topic_basename = os.path.basename(topic_path)
+                        if topic_basename == expected_format:
+                            matched_topic = topic_path
+                            break
+                    
+                    if not matched_topic:
+                        for topic_path in topic_files:
+                            topic_basename = os.path.basename(topic_path)
+                            if topic_basename.startswith(expected_prefix) and topic_basename.endswith('.json'):
+                                matched_topic = topic_path
+                                break
+            
+            # Strategy 3: Try matching by metadata as fallback
+            if not matched_topic:
+                matched_topic = self._find_matching_topic_file_by_metadata(pdf_path, topic_files)
+            
+            if matched_topic:
+                matched_pairs.append((pdf_path, matched_topic))
+            else:
+                unmatched_pdfs.append(pdf_path)
+        
+        # Add matched pairs to UI
+        for pdf_path, topic_path in matched_pairs:
+            self._add_ocr_paragraph_pair_to_ui(pdf_path, topic_path)
+        
+        # Show summary
+        summary = f"Auto-Matching Complete!\n\n" \
+                 f"PDFs found: {len(pdf_files)}\n" \
+                 f"Topic files found: {len(topic_files)}\n" \
+                 f"Matched pairs: {len(matched_pairs)}\n" \
+                 f"Unmatched PDFs: {len(unmatched_pdfs)}"
+        
+        if unmatched_pdfs:
+            summary += f"\n\nUnmatched PDFs:\n" + "\n".join([os.path.basename(p) for p in unmatched_pdfs[:5]])
+            if len(unmatched_pdfs) > 5:
+                summary += f"\n... and {len(unmatched_pdfs) - 5} more"
+        
+        messagebox.showinfo("Auto-Matching Results", summary)
+        self.logger.info(f"Auto-matched {len(matched_pairs)} pairs from folder (Paragraph): {folder_path}")
+    
+    def _add_ocr_paragraph_pair_to_ui(self, pdf_path: str, topic_path: str):
+        """Add a matched pair to the OCR Extraction Paragraph UI list"""
+        pair_frame = ctk.CTkFrame(self.ocr_extraction_paragraph_pairs_list_scroll)
+        pair_frame.pack(fill="x", padx=5, pady=2)
+        
+        # PDF name
+        pdf_name = os.path.basename(pdf_path)
+        pdf_label = ctk.CTkLabel(pair_frame, text=f"PDF: {pdf_name}", 
+                                font=ctk.CTkFont(size=10))
+        pdf_label.pack(side="left", padx=5)
+        
+        # Topic file name
+        topic_name = os.path.basename(topic_path)
+        topic_label = ctk.CTkLabel(pair_frame, text=f"Topic: {topic_name}", 
+                                  font=ctk.CTkFont(size=10))
+        topic_label.pack(side="left", padx=5)
+        
+        # Status label
+        status_label = ctk.CTkLabel(pair_frame, text="Pending", 
+                                   text_color="gray", font=ctk.CTkFont(size=11))
+        status_label.pack(side="right", padx=5)
+        
+        # Remove button
+        remove_btn = ctk.CTkButton(pair_frame, text="X", width=30, height=20,
+                                  command=lambda pf=pdf_path, tf=topic_path, w=pair_frame: 
+                                  self.remove_ocr_extraction_paragraph_pair(pf, tf, w))
+        remove_btn.pack(side="right", padx=2)
+        
+        self.ocr_extraction_paragraph_selected_pairs.append({
+            'pdf_path': pdf_path,
+            'topic_file_path': topic_path,
+            'status_label': status_label,
+            'frame': pair_frame,
+            'output_path': None
+        })
+    
+    def add_ocr_extraction_paragraph_pair_manual(self):
+        """Add a PDF + Topic file pair manually for OCR Extraction Paragraph"""
+        # Browse PDF
+        pdf_path = filedialog.askopenfilename(
+            title="Select PDF File",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        )
+        if not pdf_path:
+            return
+        
+        # Browse Topic file
+        topic_path = filedialog.askopenfilename(
+            title="Select Pre-OCR Topic File (t*.json)",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        if not topic_path:
+            return
+        
+        self._add_ocr_paragraph_pair_to_ui(pdf_path, topic_path)
+        self.logger.info(f"Added manual pair (Paragraph): PDF={os.path.basename(pdf_path)}, Topic={os.path.basename(topic_path)}")
+    
+    def remove_ocr_extraction_paragraph_pair(self, pdf_path: str, topic_path: str, frame_widget):
+        """Remove a pair from the OCR Extraction Paragraph selection list"""
+        self.ocr_extraction_paragraph_selected_pairs = [
+            p for p in self.ocr_extraction_paragraph_selected_pairs 
+            if not (p['pdf_path'] == pdf_path and p['topic_file_path'] == topic_path)
+        ]
+        frame_widget.destroy()
+    
+    def process_multiple_ocr_extraction_paragraphs(self):
+        """Process multiple PDF + Topic file pairs for OCR Extraction Paragraph"""
+        def worker():
+            try:
+                if not self.ocr_extraction_paragraph_selected_pairs:
+                    self.root.after(0, lambda: messagebox.showwarning("Warning", "Please add at least one PDF + Topic pair"))
+                    return
+                
+                # Disable button
+                self.root.after(0, lambda: self.ocr_extraction_paragraph_process_all_btn.configure(
+                    state="disabled", text="Processing..."))
+                
+                # Get prompt
+                prompt = self.ocr_extraction_paragraph_prompt_text.get("1.0", tk.END).strip()
+                if not prompt:
+                    default_prompt = self.prompt_manager.get_prompt("OCR Extraction Paragraph Prompt")
+                    if default_prompt:
+                        prompt = default_prompt
+                        self.logger.info("Using default OCR Extraction Paragraph prompt from prompts.json")
+                    else:
+                        self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt"))
+                        return
+                
+                # Get delay
+                try:
+                    delay_seconds = int(self.ocr_extraction_paragraph_delay_var.get())
+                except ValueError:
+                    delay_seconds = 5
+                    self.logger.warning(f"Invalid delay value, using default: {delay_seconds} seconds")
+                
+                # Validate API keys
+                if not self.google_api_key_manager.api_keys:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
+                    return
+                
+                # Set stage for OCR Extraction Paragraph (uses Google API)
+                self.api_client.set_stage("ocr_extraction_paragraph")
+                
+                # Use OCR Extraction Paragraph model (Google API models)
+                model_name = self.ocr_extraction_paragraph_model_var.get() if hasattr(self, 'ocr_extraction_paragraph_model_var') else "gemini-2.5-pro"
+                total_pairs = len(self.ocr_extraction_paragraph_selected_pairs)
+                completed = 0
+                failed = 0
+                
+                # Reset progress bar
+                self.root.after(0, lambda: self.ocr_extraction_paragraph_progress_bar.set(0))
+                
+                # Process each pair
+                for idx, pair_info in enumerate(self.ocr_extraction_paragraph_selected_pairs):
+                    pdf_path = pair_info['pdf_path']
+                    topic_file_path = pair_info['topic_file_path']
+                    status_label = pair_info['status_label']
+                    pdf_name = os.path.basename(pdf_path)
+                    topic_name = os.path.basename(topic_file_path)
+                    
+                    # Update status to processing
+                    self.root.after(0, lambda sl=status_label: 
+                                   sl.configure(text="Processing...", text_color="blue"))
+                    
+                    self.root.after(0, lambda idx=idx, total=total_pairs, pdf=pdf_name: 
+                                   self.ocr_extraction_paragraph_progress_label.configure(
+                                       text=f"Processing pair {idx+1}/{total}: {pdf}"))
+                    
+                    # Progress bar
+                    progress = idx / total_pairs
+                    self.root.after(0, lambda p=progress: self.ocr_extraction_paragraph_progress_bar.set(p))
+                    
+                    try:
+                        # Progress callback for this pair
+                        def progress_callback(msg: str):
+                            self.root.after(0, lambda m=msg: 
+                                           self.ocr_extraction_paragraph_status_label.configure(text=m))
+                        
+                        # Process the pair using paragraph method
+                        output_dir = self.get_default_output_dir(pdf_path)
+                        final_output_path = self.multi_part_processor.process_ocr_extraction_paragraph_with_topics(
+                            pdf_path=pdf_path,
+                            topic_file_path=topic_file_path,
+                            base_prompt=prompt,
+                            model_name=model_name,
+                            temperature=0.7,
+                            progress_callback=progress_callback,
+                            output_dir=output_dir
+                        )
+                        
+                        if final_output_path and os.path.exists(final_output_path):
+                            pair_info['output_path'] = final_output_path
+                            completed += 1
+                            self.root.after(0, lambda sl=status_label, pdf=pdf_name, op=final_output_path: 
+                                           sl.configure(text="Completed", text_color="green"))
+                            self.logger.info(f"Completed (Paragraph): {pdf_name} + {topic_name} -> {final_output_path}")
+                        else:
+                            failed += 1
+                            self.root.after(0, lambda sl=status_label, pdf=pdf_name: 
+                                           sl.configure(text="Failed", text_color="red"))
+                            self.logger.error(f"Failed (Paragraph): {pdf_name} + {topic_name}")
+                    
+                    except Exception as e:
+                        failed += 1
+                        self.root.after(0, lambda sl=status_label, pdf=pdf_name: 
+                                       sl.configure(text="Error", text_color="red"))
+                        self.logger.error(f"Error processing (Paragraph) {pdf_name} + {topic_name}: {e}", exc_info=True)
+                    
+                    # Delay before next pair (except for the last one)
+                    if idx < total_pairs - 1:
+                        self.root.after(0, lambda d=delay_seconds: 
+                                       self.ocr_extraction_paragraph_progress_label.configure(
+                                           text=f"Waiting {d} seconds before next pair..."))
+                        time.sleep(delay_seconds)
+                
+                # Final update
+                self.root.after(0, lambda: self.ocr_extraction_paragraph_progress_bar.set(1.0))
+                self.root.after(0, lambda c=completed, f=failed: 
+                               self.ocr_extraction_paragraph_progress_label.configure(
+                                   text=f"Batch processing completed! {c} succeeded, {f} failed"))
+                
+                # Show summary
+                summary = f"Batch Processing Complete!\n\n" \
+                         f"Total: {total_pairs}\n" \
+                         f"Completed: {completed}\n" \
+                         f"Failed: {failed}"
+                self.root.after(0, lambda s=summary: messagebox.showinfo("Batch Processing Complete", s))
+                
+            except Exception as e:
+                error_msg = f"Batch processing error: {str(e)}"
+                self.logger.error(error_msg, exc_info=True)
+                self.root.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
+            finally:
+                # Re-enable button
+                self.root.after(0, lambda: self.ocr_extraction_paragraph_process_all_btn.configure(
+                    state="normal", text="Process All Pairs"))
+        
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
     
     def _add_document_processing_file_to_ui(self, file_path: str):
         """Add a JSON file to the Document Processing UI list"""
@@ -8524,13 +9174,6 @@ class ContentAutomationGUI:
         ctk.CTkLabel(ocr_extraction_frame, text="Note: If not specified, OCR Extraction JSON will be auto-detected from Stage J directory for each pair.", 
                     font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
         
-        # Stage Settings (Provider, Model and API Key)
-        # Note: Stage V uses two models (Step 1 and Step 2)
-        # We'll add settings for the main stage, but individual model selections remain in Step 1 and Step 2
-        self.stage_v_provider_var, self.stage_v_model_var, self.stage_v_api_key_var = self.add_stage_settings_section(
-            main_frame, "stage_v", api_provider="deepseek", default_model="deepseek-reasoner"
-        )
-        
         # Pairs Section
         pairs_frame = ctk.CTkFrame(main_frame)
         pairs_frame.pack(fill="x", pady=10)
@@ -8644,27 +9287,10 @@ class ContentAutomationGUI:
         # Apply initial default/custom state and fill textbox
         self.on_stage_v_prompt1_type_change()
         
-        # Step 1 Model Selection
-        model1_frame = ctk.CTkFrame(step1_frame)
-        model1_frame.pack(fill="x", padx=10, pady=5)
-        
-        ctk.CTkLabel(model1_frame, text="Model for Step 1:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=5)
-        
-        default_model = "gemini-2.5-pro"
-        if hasattr(self, 'model_var') and self.model_var:
-            default_model = self.model_var.get()
-        
-        if not hasattr(self, 'stage_v_model1_var'):
-            self.stage_v_model1_var = ctk.StringVar(value=default_model)
-        if not hasattr(self, 'stage_v_model1_combo'):
-            self.stage_v_model1_combo = ctk.CTkComboBox(
-                model1_frame,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.stage_v_model1_var,
-                width=300
-            )
-        self.stage_v_model1_combo.pack(side="left", padx=5)
+        # Step 1: Provider + Model (like document processing)
+        self.stage_v_step1_provider_var, self.stage_v_step1_model_var, self.stage_v_step1_api_key_var = self.add_stage_settings_section(
+            step1_frame, "stage_v_step1", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Step 2 Section
         step2_frame = ctk.CTkFrame(main_frame)
@@ -8735,23 +9361,10 @@ class ContentAutomationGUI:
         # Apply initial default/custom state and fill textbox
         self.on_stage_v_prompt2_type_change()
         
-        # Step 2 Model Selection
-        model2_frame = ctk.CTkFrame(step2_frame)
-        model2_frame.pack(fill="x", padx=10, pady=5)
-        
-        ctk.CTkLabel(model2_frame, text="Model for Step 2:", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=5)
-        
-        if not hasattr(self, 'stage_v_model2_var'):
-            self.stage_v_model2_var = ctk.StringVar(value=default_model)
-        if not hasattr(self, 'stage_v_model2_combo'):
-            self.stage_v_model2_combo = ctk.CTkComboBox(
-                model2_frame,
-                values=APIConfig.TEXT_MODELS,
-                variable=self.stage_v_model2_var,
-                width=300
-            )
-        self.stage_v_model2_combo.pack(side="left", padx=5)
+        # Step 2: Provider + Model (like document processing)
+        self.stage_v_step2_provider_var, self.stage_v_step2_model_var, self.stage_v_step2_api_key_var = self.add_stage_settings_section(
+            step2_frame, "stage_v_step2", api_provider="deepseek", default_model="deepseek-reasoner"
+        )
         
         # Delay Setting
         delay_frame = ctk.CTkFrame(main_frame)
@@ -9095,6 +9708,26 @@ class ContentAutomationGUI:
             )
             status_label.pack(side="right", padx=10, pady=5)
             
+            # Change/Select Word button (for manual pairing when auto-pair fails)
+            def _on_change_word(p):
+                path = filedialog.askopenfilename(
+                    title="Select Word file for this pair",
+                    filetypes=[("Word Documents", "*.docx *.doc"), ("All files", "*.*")]
+                )
+                if path and os.path.exists(path):
+                    p['word_path'] = path
+                    self._update_stage_v_pairs_ui()
+            
+            change_word_btn = ctk.CTkButton(
+                info_frame,
+                text="Change Word" if pair.get('word_path') else "Select Word",
+                width=100,
+                height=24,
+                font=ctk.CTkFont(size=10),
+                command=lambda p=pair: _on_change_word(p)
+            )
+            change_word_btn.pack(side="right", padx=5, pady=5)
+            
             # OCR info
             ocr_label = ctk.CTkLabel(
                 pair_frame,
@@ -9174,9 +9807,26 @@ class ContentAutomationGUI:
                         self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a prompt for Step 2"))
                         return
                 
-                # Get models
-                model_1 = self.stage_v_model1_var.get() if hasattr(self, 'stage_v_model1_var') else "gemini-2.5-pro"
-                model_2 = self.stage_v_model2_var.get() if hasattr(self, 'stage_v_model2_var') else "gemini-2.5-pro"
+                # Get provider and model for Step 1 and Step 2
+                provider_1 = self.stage_v_step1_provider_var.get() if hasattr(self, 'stage_v_step1_provider_var') else "deepseek"
+                model_1 = self.stage_v_step1_model_var.get() if hasattr(self, 'stage_v_step1_model_var') else "deepseek-reasoner"
+                provider_2 = self.stage_v_step2_provider_var.get() if hasattr(self, 'stage_v_step2_provider_var') else "deepseek"
+                model_2 = self.stage_v_step2_model_var.get() if hasattr(self, 'stage_v_step2_model_var') else "deepseek-reasoner"
+                
+                # Validate API keys for providers used
+                for pname, prov in [("Step 1", provider_1), ("Step 2", provider_2)]:
+                    if prov == "openrouter":
+                        if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
+                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"Please load OpenRouter API keys first (API Configuration) for {p}"))
+                            return
+                    elif prov == "deepseek":
+                        if not self.deepseek_api_key_manager.api_keys:
+                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"Please load DeepSeek API keys first for {p}"))
+                            return
+                    else:  # google
+                        if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
+                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"Please load Google API keys first for {p}"))
+                            return
                 
                 # Get delay
                 try:
@@ -9224,15 +9874,18 @@ class ContentAutomationGUI:
                             self.root.after(0, lambda m=msg:
                                            self.stage_v_status_label.configure(text=m))
                         
-                        # Process Stage V
+                        # Process Stage V (pass providers so correct API is used per step)
                         output_path = self.stage_v_processor.process_stage_v(
                             stage_j_path=stage_j_path,
                             word_file_path=word_path,
                             ocr_extraction_json_path=ocr_extraction_path,
                             prompt_1=prompt_1,
                             model_name_1=model_1,
+                            provider_1=provider_1,
                             prompt_2=prompt_2,
                             model_name_2=model_2,
+                            provider_2=provider_2,
+                            stage_settings_manager=getattr(self, 'stage_settings_manager', None),
                             output_dir=self.get_default_output_dir(stage_j_path),
                             progress_callback=progress_callback
                         )
@@ -12727,7 +13380,7 @@ class ContentAutomationGUI:
                 self.ref_change_prompt_text.insert("1.0", default_prompt)
         # Stage Settings (Provider, Model and API Key)
         self.ref_change_provider_var, self.ref_change_model_var, self.ref_change_api_key_var = self.add_stage_settings_section(
-            main_frame, "reference_change", api_provider="google", default_model="gemini-2.5-pro"
+            main_frame, "reference_change", api_provider="openrouter", default_model="z-ai/glm-5"
         )
         
         # Run button and status
@@ -12915,13 +13568,15 @@ class ContentAutomationGUI:
         
         # Get prompt
         prompt_str = self.ref_change_prompt_text.get("1.0", tk.END).strip() if hasattr(self, 'ref_change_prompt_text') else ""
-        if not prompt_str or "{OLD_TEXT}" not in prompt_str or "{NEW_TEXT}" not in prompt_str:
-            messagebox.showwarning("Missing Prompt", "Please enter a prompt that includes {OLD_TEXT} and {NEW_TEXT}, or use 'Load default prompt'.")
-            return
+
         
-        # Get provider and model
-        provider = self.ref_change_provider_var.get() if hasattr(self, 'ref_change_provider_var') else "google"
-        model_name = self.ref_change_model_var.get() if hasattr(self, 'ref_change_model_var') else APIConfig.DEFAULT_TEXT_MODEL
+        # Get provider and model (default: OpenRouter z-ai/glm-5 for this stage)
+        provider = self.ref_change_provider_var.get() if hasattr(self, 'ref_change_provider_var') else "openrouter"
+        model_name = self.ref_change_model_var.get() if hasattr(self, 'ref_change_model_var') else None
+        if not model_name or not model_name.strip():
+            model_name = APIConfig.DEFAULT_OPENROUTER_MODEL if provider == "openrouter" else APIConfig.DEFAULT_TEXT_MODEL
+        else:
+            model_name = model_name.strip()
         
         # Save provider and model to settings
         if hasattr(self, 'ref_change_provider_var'):
@@ -12945,10 +13600,11 @@ class ContentAutomationGUI:
                 # Import CSV processor
                 from reference_change_csv_processor import build_chunks_from_csv, create_chunks_json
                 
-                # Build chunks from CSV
+                # Build chunks from CSV (all content: paragraphs, tables, figures — nothing left out)
                 self._update_status("\n" + "-" * 60)
                 self._update_status("Step 1: Building chunks from CSV file...")
-                chunks, error = build_chunks_from_csv(csv_path, old_path, new_path, exclude_table_type=True)
+                self._update_status("[تغییرات جدید] استخراج کامل: پاراگراف + جدول + شکل (exclude_table_type=False)")
+                chunks, error = build_chunks_from_csv(csv_path, old_path, new_path, exclude_table_type=False)
                 
                 if error:
                     error_msg = f"Failed to build chunks: {error}"
@@ -12968,15 +13624,23 @@ class ContentAutomationGUI:
                 
                 self.ref_change_progress_bar.set(0.2)
                 self._update_status(f"✓ Successfully built {len(chunks)} chunks")
-                self._update_status("\nChunk Details:")
+                self._update_status("\n--- Chunks (summary) ---")
+                for chunk in chunks:
+                    old_t = (chunk['old_topics'][0][:30] + '...') if chunk['old_topics'] and len(chunk['old_topics'][0]) > 30 else (chunk['old_topics'][0] if chunk['old_topics'] else '-')
+                    new_t = (chunk['new_topics'][0][:30] + '...') if chunk['new_topics'] and len(chunk['new_topics'][0]) > 30 else (chunk['new_topics'][0] if chunk['new_topics'] else '-')
+                    old_err = chunk['old_content'].startswith("[ERROR:") if chunk.get('old_content') else False
+                    new_err = chunk['new_content'].startswith("[ERROR:") if chunk.get('new_content') else False
+                    st = "OK" if not (old_err or new_err) else "ERROR"
+                    self._update_status(
+                        f"  Chunk {chunk['chunk_id']}: cold={chunk['cold']} cnew={chunk['cnew']} | "
+                        f"old={old_t} -> new={new_t} | "
+                        f"len {len(chunk.get('old_content') or '')}/{len(chunk.get('new_content') or '')} | {st}"
+                    )
+                self._update_status("\n--- Chunk details ---")
                 for chunk in chunks:
                     self._update_status(f"  Chunk {chunk['chunk_id']}:")
-                    self._update_status(f"    - Old Chapter {chunk['cold']} ({chunk['old_chapter_name']}): {len(chunk['old_topics'])} topics")
-                    if chunk['old_topics']:
-                        self._update_status(f"      Topics: {', '.join(chunk['old_topics'])}")
-                    self._update_status(f"    - New Chapter {chunk['cnew']} ({chunk['new_chapter_name']}): {len(chunk['new_topics'])} topics")
-                    if chunk['new_topics']:
-                        self._update_status(f"      Topics: {', '.join(chunk['new_topics'])}")
+                    self._update_status(f"    - Old (cold={chunk['cold']}): {chunk['old_chapter_name'] or '-'} | topics: {', '.join(chunk['old_topics']) if chunk['old_topics'] else 'None'}")
+                    self._update_status(f"    - New (cnew={chunk['cnew']}): {chunk['new_chapter_name'] or '-'} | topics: {', '.join(chunk['new_topics']) if chunk['new_topics'] else 'None'}")
                     self._update_status(f"    - Old content length: {len(chunk['old_content'])} chars")
                     self._update_status(f"    - New content length: {len(chunk['new_content'])} chars")
                 
@@ -12984,56 +13648,227 @@ class ContentAutomationGUI:
                 chunks_json = create_chunks_json(chunks)
                 self._update_status(f"\n✓ Created chunks JSON structure with {len(chunks)} chunks")
                 
-                # Get API key if provided
+                # Get API key (UI, saved stage setting, or CSV file)
                 api_key = None
                 if hasattr(self, 'ref_change_api_key_var') and self.ref_change_api_key_var.get().strip():
                     api_key = self.ref_change_api_key_var.get().strip()
+                if not api_key and hasattr(self, 'stage_settings_manager'):
+                    api_key = self.stage_settings_manager.get_stage_api_key("reference_change") or ""
+                    if api_key:
+                        api_key = api_key.strip()
                 
-                # Initialize API client
-                self.api_client.set_stage("reference_change")
-                if not self.api_client.initialize_text_client(model_name, api_key=api_key):
-                    error_msg = "Failed to initialize API client"
-                    self._update_status(f"ERROR: {error_msg}")
-                    self.ref_change_status_label.configure(text=f"Error: {error_msg}")
-                    self.ref_change_progress_bar.set(0)
-                    return
+                if provider == "openrouter":
+                    # If no API key from UI/stage settings, try CSV file (rotation)
+                    if not api_key and hasattr(self, 'openrouter_api_key_manager'):
+                        api_key = self.openrouter_api_key_manager.get_next_key()
+                    if not api_key:
+                        error_msg = "OpenRouter API Key is required. Please set it in Stage Settings (OpenRouter API Key) or load from CSV file (API Configuration section)."
+                        self._update_status(f"ERROR: {error_msg}")
+                        self.ref_change_status_label.configure(text=f"Error: {error_msg}")
+                        self.ref_change_progress_bar.set(0)
+                        messagebox.showerror("Error", error_msg)
+                        return
+                    num_keys = len(self.openrouter_api_key_manager.api_keys) if hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys else 0
+                    if num_keys > 0:
+                        self._update_status(f"\n✓ Using OpenRouter (Model: {model_name}) - {num_keys} API key(s) available for rotation")
+                    else:
+                        self._update_status(f"\n✓ Using OpenRouter (Model: {model_name}) with provided API key")
+                else:
+                    # Initialize Google/DeepSeek API client
+                    self.api_client.set_stage("reference_change")
+                    if not self.api_client.initialize_text_client(model_name, api_key=api_key):
+                        error_msg = "Failed to initialize API client"
+                        self._update_status(f"ERROR: {error_msg}")
+                        self.ref_change_status_label.configure(text=f"Error: {error_msg}")
+                        self.ref_change_progress_bar.set(0)
+                        return
+                    self._update_status(f"\n✓ API client initialized (Model: {model_name})")
                 
-                self._update_status(f"\n✓ API client initialized (Model: {model_name})")
+                # Output path for incremental save
+                out_path = self.ref_change_output_path_var.get().strip() if hasattr(self, 'ref_change_output_path_var') else ""
+                if not out_path:
+                    csv_dir = os.path.dirname(csv_path)
+                    csv_basename = os.path.splitext(os.path.basename(csv_path))[0]
+                    out_path = os.path.join(csv_dir, f"reference_change_{csv_basename}.json")
+                if out_path and not out_path.lower().endswith(".json"):
+                    out_path = out_path.rstrip(".") + ".json"
                 
                 # Process each chunk
                 self._update_status("\n" + "-" * 60)
                 self._update_status("Step 2: Processing chunks with model...")
+                status_prefix = self.ref_change_status_text.get("1.0", tk.END).rstrip()
                 all_results = []
+                
+                def _build_merged(results):
+                    merged = {"added": [], "removed": [], "merged": [], "split": [], "unchanged": []}
+                    for cr in results:
+                        if isinstance(cr, dict) and 'error' not in cr:
+                            for key in merged.keys():
+                                if key in cr and isinstance(cr[key], list):
+                                    merged[key].extend(cr[key])
+                    return merged
+                
+                def _build_final_output_only(results):
+                    """Build list of { chunk_id, changes } per chunk; changes = [ { change_description, change_type, reference_location }, ... ]."""
+                    out = []
+                    for r in results:
+                        chunk_id = r.get("chunk_id", len(out) + 1) if isinstance(r, dict) else (len(out) + 1)
+                        if not isinstance(r, dict):
+                            out.append({"chunk_id": chunk_id, "changes": []})
+                            continue
+                        raw = {k: v for k, v in r.items() if k not in ("chunk_id", "chunk_metadata")}
+                        raw_list = raw.get("items", raw.get("data", raw.get("changes", [])))
+                        if not isinstance(raw_list, list):
+                            raw_list = [raw_list] if raw_list is not None else []
+                        changes = []
+                        for x in raw_list:
+                            if not isinstance(x, dict):
+                                continue
+                            changes.append({
+                                "change_description": x.get("change_description", ""),
+                                "change_type": x.get("change_type"),
+                                "reference_location": x.get("reference_location", "")
+                            })
+                        out.append({"chunk_id": chunk_id, "changes": changes})
+                    return out
+                
+                def _save_ref_change_result(path, chunks_list, results, mod_name, ch_json, merged):
+                    if not path:
+                        return
+                    try:
+                        obj = _build_final_output_only(results)
+                        with open(path, "w", encoding="utf-8") as f:
+                            json.dump(obj, f, ensure_ascii=False, indent=2)
+                    except Exception as e:
+                        self.logger.warning(f"Incremental save failed: {e}")
+                
+                def _set_status_current_chunk(chunk_idx, total, result_dict):
+                    if not hasattr(self, 'ref_change_status_text'):
+                        return
+                    self.ref_change_status_text.configure(state="normal")
+                    self.ref_change_status_text.delete("1.0", tk.END)
+                    chunk_display = json.dumps(result_dict, ensure_ascii=False, indent=2)
+                    if len(chunk_display) > 3500:
+                        chunk_display = chunk_display[:3500] + "\n... [truncated]"
+                    self.ref_change_status_text.insert("1.0", status_prefix + "\n\n--- Current chunk result (" + str(chunk_idx) + "/" + str(total) + ") ---\n" + chunk_display)
+                    self.ref_change_status_text.see("end")
+                    self.ref_change_status_text.configure(state="disabled")
                 
                 for chunk_idx, chunk in enumerate(chunks, 1):
                     self.ref_change_progress_bar.set(0.2 + (chunk_idx / len(chunks)) * 0.7)
                     self.ref_change_status_label.configure(text=f"Processing chunk {chunk_idx}/{len(chunks)}...")
-                    self._update_status(f"\nProcessing Chunk {chunk_idx}/{len(chunks)}:")
-                    self._update_status(f"  Old topics: {', '.join(chunk['old_topics']) if chunk['old_topics'] else 'None'}")
-                    self._update_status(f"  New topics: {', '.join(chunk['new_topics']) if chunk['new_topics'] else 'None'}")
                     self.root.update_idletasks()
                     
-                    # Prepare prompt with chunk content
+                    if chunk_idx == 1:
+                        self.logger.info("Reference change: chunk 1 — using JSON file upload (saving input JSON for verification)")
+                        self._update_status("\n[Reference change] Chunk 1: saving input JSON and uploading to model...")
+                    
+                    # Prepare JSON file with chunk content
                     old_content = chunk['old_content'] or "[No old content]"
                     new_content = chunk['new_content'] or "[No new content]"
-                    final_prompt = prompt_str.replace("{OLD_TEXT}", old_content).replace("{NEW_TEXT}", new_content)
                     
-                    # Call model
-                    response_text = self.api_client.process_text(
-                        text=final_prompt,
-                        system_prompt=None,
-                        model_name=model_name,
-                        temperature=0.7,
-                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
-                        api_key=api_key
-                    )
+                    json_data = {
+                        "old_content": old_content,
+                        "new_content": new_content
+                    }
+                    
+                    # Save first chunk JSON for verification (before any API call)
+                    if chunk_idx == 1:
+                        save_dir = os.path.dirname(csv_path) if csv_path else (os.path.dirname(out_path) if out_path else os.getcwd())
+                        if not save_dir or not os.path.isdir(save_dir):
+                            save_dir = os.getcwd()
+                        first_chunk_path = os.path.join(save_dir, "ref_change_chunk_1_input.json")
+                        try:
+                            with open(first_chunk_path, 'w', encoding='utf-8') as f1:
+                                json.dump(json_data, f1, ensure_ascii=False, indent=2)
+                            abs_path = os.path.abspath(first_chunk_path)
+                            self.logger.info(f"First chunk input JSON saved for verification: {abs_path}")
+                            self._update_status(f"\n[DEBUG] First chunk input JSON saved: {abs_path}")
+                        except Exception as e1:
+                            self.logger.exception(f"Could not save first chunk JSON: {e1}")
+                            self._update_status(f"\n[WARNING] First chunk JSON save failed: {e1}")
+                    
+                    response_text = None
+                    if provider == "openrouter":
+                        # OpenRouter API: https://openrouter.ai/docs/quickstart
+                        import requests
+                        try:
+                            user_content = prompt_str + "\n\n--- Input JSON ---\n" + json.dumps(json_data, ensure_ascii=False, indent=2)
+                            resp = requests.post(
+                                "https://openrouter.ai/api/v1/chat/completions",
+                                headers={
+                                    "Authorization": f"Bearer {api_key}",
+                                    "Content-Type": "application/json",
+                                    "HTTP-Referer": "https://content-automation.local",
+                                    "X-Title": "Content Automation Reference Change",
+                                },
+                                json={
+                                    "model": model_name,
+                                    "messages": [{"role": "user", "content": user_content}],
+                                    "temperature": 0.7,
+                                    "max_tokens": APIConfig.DEFAULT_MAX_TOKENS,
+                                },
+                                timeout=300,
+                            )
+                            resp.raise_for_status()
+                            data = resp.json()
+                            response_text = (data.get("choices") or [{}])[0].get("message", {}).get("content") or None
+                            self.logger.info(f"OpenRouter chunk {chunk_idx}: response received (model={model_name})")
+                        except Exception as e:
+                            self.logger.error(f"OpenRouter request failed for chunk {chunk_idx}: {e}")
+                            response_text = None
+                    else:
+                        # Gemini: upload JSON file and generate
+                        import tempfile
+                        temp_json_path = None
+                        try:
+                            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
+                                json.dump(json_data, f, ensure_ascii=False, indent=2)
+                                temp_json_path = f.name
+                            
+                            import google.generativeai as genai
+                            genai.configure(api_key=api_key or self.api_client.key_manager.get_next_key())
+                            json_file = genai.upload_file(path=temp_json_path)
+                            self.logger.info(f"Uploaded JSON file for chunk {chunk_idx}: {os.path.basename(temp_json_path)}")
+                            
+                            while json_file.state.name == "PROCESSING":
+                                self.logger.info(f"Waiting for JSON file to be processed for chunk {chunk_idx}...")
+                                time.sleep(2)
+                                json_file = genai.get_file(json_file.name)
+                            
+                            if json_file.state.name == "FAILED":
+                                raise Exception("JSON file processing failed")
+                            
+                            from google.generativeai import types
+                            generation_config = types.GenerationConfig(
+                                temperature=0.7,
+                                max_output_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                            )
+                            model = genai.GenerativeModel(model_name)
+                            content_parts = [prompt_str, json_file]
+                            response = model.generate_content(
+                                content_parts,
+                                generation_config=generation_config
+                            )
+                            response_text = response.text if hasattr(response, 'text') else None
+                        except Exception as e:
+                            self.logger.error(f"Failed to process chunk {chunk_idx} with JSON file: {e}")
+                            response_text = None
+                        finally:
+                            if temp_json_path and os.path.exists(temp_json_path):
+                                try:
+                                    os.unlink(temp_json_path)
+                                except Exception:
+                                    pass
                     
                     if not response_text:
-                        self._update_status(f"  ⚠ Warning: No response from model for chunk {chunk_idx}")
-                        all_results.append({
+                        result = {
                             "chunk_id": chunk['chunk_id'],
                             "error": "No response from model"
-                        })
+                        }
+                        all_results.append(result)
+                        _set_status_current_chunk(chunk_idx, len(chunks), result)
+                        _save_ref_change_result(out_path, chunks, all_results, model_name, chunks_json, _build_merged(all_results))
                         continue
                     
                     # Extract JSON from response
@@ -13048,6 +13883,12 @@ class ContentAutomationGUI:
                         if not result:
                             result = json.loads(response_text)
                         
+                        # Ensure result is a dict for consistent handling (model may return a list)
+                        if isinstance(result, list):
+                            result = {"items": result}
+                        elif not isinstance(result, dict):
+                            result = {"data": result}
+                        
                         # Add chunk metadata
                         result['chunk_id'] = chunk['chunk_id']
                         result['chunk_metadata'] = {
@@ -13057,73 +13898,39 @@ class ContentAutomationGUI:
                             'new_topics': chunk['new_topics']
                         }
                         all_results.append(result)
-                        self._update_status(f"  ✓ Chunk {chunk_idx} processed successfully")
+                        _set_status_current_chunk(chunk_idx, len(chunks), result)
+                        _save_ref_change_result(out_path, chunks, all_results, model_name, chunks_json, _build_merged(all_results))
                         
                     except Exception as e:
                         self.logger.error(f"Failed to extract JSON from chunk {chunk_idx} response: {e}")
-                        all_results.append({
+                        result = {
                             "chunk_id": chunk['chunk_id'],
                             "raw_response": response_text,
                             "error": f"Could not parse as JSON: {str(e)}"
-                        })
-                        self._update_status(f"  ⚠ Warning: Failed to parse JSON for chunk {chunk_idx}")
+                        }
+                        all_results.append(result)
+                        _set_status_current_chunk(chunk_idx, len(chunks), result)
+                        _save_ref_change_result(out_path, chunks, all_results, model_name, chunks_json, _build_merged(all_results))
                 
-                # Combine all results
-                self.ref_change_progress_bar.set(0.95)
-                self._update_status("\n" + "-" * 60)
-                self._update_status("Step 3: Combining results...")
-                
-                final_result = {
-                    "metadata": {
-                        "total_chunks": len(chunks),
-                        "processed_chunks": len(all_results),
-                        "model": model_name,
-                        "chunks_json": chunks_json
-                    },
-                    "chunk_results": all_results
-                }
-                
-                # Try to merge results if they have standard structure
+                # Final result: only chunk_id + model output per chunk (no metadata, no chunks_json, no merged)
+                final_result = _build_final_output_only(all_results)
                 try:
-                    merged = {
-                        "added": [],
-                        "removed": [],
-                        "merged": [],
-                        "split": [],
-                        "unchanged": []
-                    }
-                    
-                    for chunk_result in all_results:
-                        if isinstance(chunk_result, dict) and 'error' not in chunk_result:
-                            for key in merged.keys():
-                                if key in chunk_result and isinstance(chunk_result[key], list):
-                                    merged[key].extend(chunk_result[key])
-                    
-                    final_result["merged_results"] = merged
-                    self._update_status("✓ Results merged successfully")
+                    with open(out_path, "w", encoding="utf-8") as f:
+                        json.dump(final_result, f, ensure_ascii=False, indent=2)
                 except Exception as e:
-                    self.logger.warning(f"Failed to merge results: {e}")
-                    self._update_status(f"⚠ Warning: Could not merge results: {str(e)}")
+                    self.logger.error(f"Failed to save final result: {e}")
                 
                 self.ref_change_progress_bar.set(1.0)
                 self.ref_change_status_label.configure(text="Done")
                 self._update_status("\n" + "=" * 60)
                 self._update_status("✓ Processing completed successfully!")
                 self._update_status("=" * 60)
+                self._update_status(f"\n✓ Results saved to: {os.path.abspath(out_path)}")
+                self.ref_change_status_label.configure(text=f"Saved: {os.path.basename(out_path)}")
+                if hasattr(self, 'ref_change_output_path_var'):
+                    self.ref_change_output_path_var.set(out_path)
                 
-                # Save result if output path specified
-                out_path = self.ref_change_output_path_var.get().strip() if hasattr(self, 'ref_change_output_path_var') else ""
-                if out_path:
-                    try:
-                        with open(out_path, "w", encoding="utf-8") as f:
-                            json.dump(final_result, f, ensure_ascii=False, indent=2)
-                        self._update_status(f"\n✓ Results saved to: {os.path.basename(out_path)}")
-                        self.ref_change_status_label.configure(text=f"Saved: {os.path.basename(out_path)}")
-                    except Exception as e:
-                        self.logger.error(f"Failed to save result: {e}")
-                        self._update_status(f"\n⚠ Warning: Failed to save results: {str(e)}")
-                
-                # Display result
+                # Display result (same structure as saved file)
                 self.ref_change_result_text.configure(state="normal")
                 self.ref_change_result_text.delete("1.0", tk.END)
                 self.ref_change_result_text.insert("1.0", json.dumps(final_result, ensure_ascii=False, indent=2))
@@ -14823,7 +15630,14 @@ class ContentAutomationGUI:
 
 
 def main():
-    """Main entry point for the application"""
+    """Main entry point. Always run with cwd = folder containing this file (project root)."""
+    _run_dir = os.path.dirname(os.path.abspath(__file__))
+    if os.getcwd() != _run_dir:
+        os.chdir(_run_dir)
+    import logging
+    _log = logging.getLogger(__name__)
+    _log.info(f"App project root (cwd): {_run_dir}")
+    print(f"[Content Automation] Project root: {os.getcwd()}", flush=True)
     app = ContentAutomationGUI()
     app.run()
 

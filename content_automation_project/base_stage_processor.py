@@ -110,30 +110,36 @@ class BaseStageProcessor:
                     self.logger.info(f"  JSON array length: {len(json_obj)}")
             except json.JSONDecodeError as e:
                 self.logger.warning(f"JSON parse failed: {e}. Trying fallback extraction...")
-                # Try fallback extraction - find largest valid JSON object/array
-                start_obj = json_str.find("{")
-                start_arr = json_str.find("[")
-                
-                if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
-                    end_obj = json_str.rfind("}")
-                    if end_obj > start_obj:
-                        try:
-                            candidate = json_str[start_obj:end_obj + 1]
-                            json_obj = json.loads(candidate)
-                            json_blocks.append(json_obj)
-                            self.logger.debug("Successfully parsed JSON using fallback extraction (object)")
-                        except json.JSONDecodeError:
-                            self.logger.warning(f"Fallback extraction failed for JSON object")
-                elif start_arr != -1:
-                    end_arr = json_str.rfind("]")
-                    if end_arr > start_arr:
-                        try:
-                            candidate = json_str[start_arr:end_arr + 1]
-                            json_obj = json.loads(candidate)
-                            json_blocks.append(json_obj)
-                            self.logger.debug("Successfully parsed JSON using fallback extraction (array)")
-                        except json.JSONDecodeError:
-                            self.logger.warning(f"Fallback extraction failed for JSON array")
+                # Try fallback extraction - use balanced bracket matching
+                json_obj = self._extract_json_with_balanced_brackets(json_str)
+                if json_obj:
+                    json_blocks.append(json_obj)
+                    self.logger.info("Successfully parsed JSON using balanced bracket matching")
+                else:
+                    # Try simple fallback - find largest valid JSON object/array
+                    start_obj = json_str.find("{")
+                    start_arr = json_str.find("[")
+                    
+                    if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+                        end_obj = json_str.rfind("}")
+                        if end_obj > start_obj:
+                            try:
+                                candidate = json_str[start_obj:end_obj + 1]
+                                json_obj = json.loads(candidate)
+                                json_blocks.append(json_obj)
+                                self.logger.debug("Successfully parsed JSON using fallback extraction (object)")
+                            except json.JSONDecodeError:
+                                self.logger.warning(f"Fallback extraction failed for JSON object")
+                    elif start_arr != -1:
+                        end_arr = json_str.rfind("]")
+                        if end_arr > start_arr:
+                            try:
+                                candidate = json_str[start_arr:end_arr + 1]
+                                json_obj = json.loads(candidate)
+                                json_blocks.append(json_obj)
+                                self.logger.debug("Successfully parsed JSON using fallback extraction (array)")
+                            except json.JSONDecodeError:
+                                self.logger.warning(f"Fallback extraction failed for JSON array")
         
         if json_blocks:
             self.logger.info(f"Extracted {len(json_blocks)} JSON block(s) from response")
@@ -141,6 +147,168 @@ class BaseStageProcessor:
             self.logger.warning("No JSON blocks found in response")
         
         return json_blocks
+    
+    def _extract_json_with_balanced_brackets(self, text: str) -> Optional[Dict | List]:
+        """
+        Extract JSON using balanced bracket matching to handle incomplete JSON.
+        This method finds the largest valid JSON object/array by matching brackets.
+        Handles incomplete JSON by finding the last complete item in an array.
+        
+        Args:
+            text: Text containing JSON (possibly incomplete)
+            
+        Returns:
+            Parsed JSON object/array or None on error
+        """
+        if not text or not text.strip():
+            return None
+        
+        # Find start of JSON (first { or [)
+        start_obj = text.find('{')
+        start_arr = text.find('[')
+        
+        if start_obj == -1 and start_arr == -1:
+            return None
+        
+        # Determine which to use (prefer object if both exist and object comes first)
+        if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+            # Extract JSON object
+            end_pos = self._find_balanced_json_end(text, start_obj, '{', '}')
+            if end_pos != -1:
+                candidate = text[start_obj:end_pos + 1]
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    # Try to fix common issues
+                    # Remove trailing commas before closing braces/brackets
+                    import re
+                    candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
+                    # Fix unclosed strings (common in truncated JSON)
+                    candidate = re.sub(r':\s*"([^"]*)$', r': ""', candidate)
+                    candidate = re.sub(r':\s*"([^"]*)\n', r': ""', candidate)
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        return None
+        elif start_arr != -1:
+            # Extract JSON array - handle incomplete arrays
+            end_pos = self._find_balanced_json_end(text, start_arr, '[', ']')
+            if end_pos != -1:
+                candidate = text[start_arr:end_pos + 1]
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    # Try to fix common issues
+                    import re
+                    candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
+                    # Fix unclosed strings
+                    candidate = re.sub(r':\s*"([^"]*)$', r': ""', candidate)
+                    candidate = re.sub(r':\s*"([^"]*)\n', r': ""', candidate)
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        # If still fails, try to extract partial array (find last complete item)
+                        # This handles cases where JSON is truncated mid-item
+                        return self._extract_partial_json_array(text, start_arr)
+        
+        return None
+    
+    def _extract_partial_json_array(self, text: str, start_pos: int) -> Optional[List]:
+        """
+        Extract partial JSON array by finding the last complete item.
+        Useful when JSON is truncated mid-item.
+        
+        Args:
+            text: Text containing JSON array
+            start_pos: Position where array starts
+            
+        Returns:
+            List of complete items or None
+        """
+        if start_pos < 0 or start_pos >= len(text):
+            return None
+        
+        # Find all complete objects in the array
+        items = []
+        i = start_pos + 1  # Skip opening [
+        n = len(text)
+        
+        while i < n:
+            # Skip whitespace
+            while i < n and text[i] in ' \n\t\r':
+                i += 1
+            
+            if i >= n or text[i] == ']':
+                break
+            
+            # Try to find a complete object
+            if text[i] == '{':
+                obj_end = self._find_balanced_json_end(text, i, '{', '}')
+                if obj_end != -1:
+                    try:
+                        obj_str = text[i:obj_end + 1]
+                        obj = json.loads(obj_str)
+                        items.append(obj)
+                        i = obj_end + 1
+                        # Skip comma
+                        while i < n and text[i] in ' \n\t\r,':
+                            i += 1
+                        continue
+                    except json.JSONDecodeError:
+                        pass
+            
+            # If we can't find a complete object, break
+            break
+        
+        if items:
+            self.logger.info(f"Extracted {len(items)} complete items from partial JSON array")
+            return items
+        
+        return None
+    
+    def _find_balanced_json_end(self, text: str, start: int, open_char: str, close_char: str) -> int:
+        """
+        Find the index of the matching closing bracket/brace, respecting strings and nesting.
+        open_char is '{' or '[', close_char is '}' or ']'.
+        Returns -1 if not found.
+        """
+        depth = 0
+        i = start
+        in_string = False
+        escape_next = False
+        quote_char = None
+        n = len(text)
+        
+        while i < n:
+            c = text[i]
+            if escape_next:
+                escape_next = False
+                i += 1
+                continue
+            if c == '\\' and in_string:
+                escape_next = True
+                i += 1
+                continue
+            if c in ('"', "'") and not escape_next:
+                if not in_string:
+                    in_string = True
+                    quote_char = c
+                elif c == quote_char:
+                    in_string = False
+                i += 1
+                continue
+            if in_string:
+                i += 1
+                continue
+            if c == open_char:
+                depth += 1
+            elif c == close_char:
+                depth -= 1
+                if depth == 0:
+                    return i
+            i += 1
+        
+        return -1
     
     def extract_json_from_response(self, response_text: str) -> Optional[Dict | List]:
         """
@@ -174,8 +342,16 @@ class BaseStageProcessor:
                 self.logger.info(f"Extracted {len(json_blocks)} JSON blocks from response using document processing method, returning first block")
                 return json_blocks[0]
         
-        # No JSON blocks found - return None (no fallback to old method)
-        self.logger.warning("Failed to extract JSON from response using document processing method")
+        # No JSON blocks found - try ThirdStageConverter as fallback
+        self.logger.warning("Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...")
+        try:
+            json_obj = self.converter._extract_json_from_response(response_text)
+            if json_obj:
+                self.logger.info("Successfully extracted JSON using ThirdStageConverter fallback")
+                return json_obj
+        except Exception as e:
+            self.logger.warning(f"ThirdStageConverter fallback also failed: {e}")
+        
         return None
     
     def extract_json_from_response_google(self, response_text: str) -> Optional[Dict | List]:

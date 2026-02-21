@@ -348,8 +348,6 @@ class MultiPartProcessor:
             Response text or None if failed
         """
         try:
-            import google.generativeai as genai
-            
             # Determine maximum tokens based on model (same logic as api_layer.py)
             # gemini-2.5-pro: up to 32768 tokens
             # gemini-2.5-flash: up to 32768 tokens
@@ -367,24 +365,19 @@ class MultiPartProcessor:
                 model_max_tokens = 32768
             
             self.logger.info(f"[Document Processing] Model: {model_name}, Max tokens for model: {model_max_tokens}")
-            
-            generation_config = genai.types.GenerationConfig(
+
+            # Send extracted text as user content, prompt as system instruction
+            self.logger.info(
+                f"[Document Processing] Sending request via api_client (model={model_name}) "
+                f"(pages {start_page}-{end_page})"
+            )
+            return self.api_client.process_text(
+                text=extracted_text,
+                system_prompt=prompt,
+                model_name=model_name,
                 temperature=temperature,
-                max_output_tokens=model_max_tokens,
+                max_tokens=model_max_tokens,
             )
-
-            # Combine prompt with extracted text
-            full_content = f"{prompt}\n\n--- PDF Content ---\n{extracted_text}"
-            
-            self.logger.info(f"[Document Processing] Sending request to model: {model_name} (pages {start_page}-{end_page})")
-            
-            response = self.api_client.text_client.generate_content(
-                full_content,
-                generation_config=generation_config,
-                stream=False
-            )
-
-            return response.text if hasattr(response, 'text') and response.text else None
         except Exception as e:
             self.logger.error(f"Text processing (pages {start_page}-{end_page}) failed: {e}")
             return None
@@ -467,20 +460,6 @@ class MultiPartProcessor:
             ""
         )
         
-        # Extract text from PDF once (will be reused for each subchapter)
-        if progress_callback:
-            progress_callback("Extracting text from PDF...")
-        
-        from pdf_processor import PDFProcessor
-        pdf_proc = PDFProcessor()
-        extracted_text = pdf_proc.extract_text(pdf_path)
-        
-        if not extracted_text:
-            self.logger.error("Failed to extract text from PDF")
-            return None
-        
-        total_pages = pdf_proc.count_pages(pdf_path)
-        
         # Set stage if using UnifiedAPIClient (for API routing)
         if hasattr(self.api_client, 'set_stage'):
             self.api_client.set_stage("ocr_extraction")
@@ -489,6 +468,65 @@ class MultiPartProcessor:
         if not self.api_client.initialize_text_client(model_name):
             self.logger.error("Failed to initialize text client")
             return None
+
+        # For Google/Gemini we can upload the PDF (model sees images/tables/layout).
+        # For DeepSeek/OpenRouter, we fall back to local PDF text extraction and send text.
+        pdf_file = None
+        extracted_pdf_text = None
+        use_pdf_upload = False
+        try:
+            from api_layer import GeminiAPIClient
+            if hasattr(self.api_client, "get_client_for_stage"):
+                use_pdf_upload = isinstance(self.api_client.get_client_for_stage(), GeminiAPIClient)
+        except Exception:
+            use_pdf_upload = False
+
+        from pdf_processor import PDFProcessor
+        pdf_proc = PDFProcessor()
+
+        if use_pdf_upload:
+            if progress_callback:
+                progress_callback("Uploading PDF file to Gemini...")
+            import google.generativeai as genai
+            import time as _time
+            try:
+                # Get API key from client to configure genai
+                api_key = None
+                if hasattr(self.api_client, 'key_manager'):
+                    api_key = self.api_client.key_manager.get_next_key()
+                if api_key:
+                    genai.configure(api_key=api_key)
+                    self.logger.info("Configured genai with API key from key_manager")
+                else:
+                    self.logger.warning("No API key found in key_manager, upload might fail")
+
+                pdf_file = genai.upload_file(path=pdf_path)
+                self.logger.info(f"Uploaded PDF file: {os.path.basename(pdf_path)}")
+                if progress_callback:
+                    progress_callback("PDF uploaded. Waiting for processing...")
+
+                while pdf_file.state.name == "PROCESSING":
+                    self.logger.info("Waiting for PDF to be processed by Gemini...")
+                    _time.sleep(2)
+                    pdf_file = genai.get_file(pdf_file.name)
+
+                if pdf_file.state.name == "FAILED":
+                    self.logger.error("PDF file processing failed on Gemini")
+                    return None
+                self.logger.info(f"PDF file ready for processing: {pdf_file.state.name}")
+            except Exception as e:
+                self.logger.error(f"Failed to upload PDF to Gemini: {e}")
+                return None
+        else:
+            if progress_callback:
+                progress_callback("Extracting text from PDF (non-Gemini provider)...")
+            extracted_pdf_text = pdf_proc.extract_text(pdf_path)
+            if not extracted_pdf_text:
+                self.logger.error("Failed to extract PDF text for non-Gemini provider")
+                return None
+        
+        # Get total pages from PDF
+        total_pages = pdf_proc.count_pages(pdf_path)
         
         # Initialize output JSON file immediately (incremental writing)
         # Generate unique filename with PDF name: OCR Extraction_{pdf_name}.json
@@ -557,12 +595,7 @@ class MultiPartProcessor:
                 topics_str = ""  # Empty string if no topics
             subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME}", topics_str)
             
-            # Process PDF text with replaced prompt
-            full_content = f"{subchapter_prompt}\n\n--- PDF Content ---\n{extracted_text}"
-            
             try:
-                import google.generativeai as genai
-                
                 # Determine max tokens based on model
                 if '2.5' in model_name or '2.0' in model_name:
                     model_max_tokens = 32768
@@ -570,22 +603,33 @@ class MultiPartProcessor:
                     model_max_tokens = 8192
                 else:
                     model_max_tokens = 32768
-                
-                generation_config = genai.types.GenerationConfig(
-                    temperature=temperature,
-                    max_output_tokens=model_max_tokens,
-                )
-                
+
                 if progress_callback:
                     progress_callback(f"Calling model for Subchapter: {subchapter_name}...")
-                
-                response = self.api_client.text_client.generate_content(
-                    full_content,
-                    generation_config=generation_config,
-                    stream=False
-                )
-                
-                response_text = response.text if hasattr(response, 'text') and response.text else None
+
+                response_text = None
+                if use_pdf_upload:
+                    # Gemini path: prompt + actual PDF file (best quality)
+                    content_parts = [subchapter_prompt, pdf_file]
+                    generation_config = genai.types.GenerationConfig(
+                        temperature=temperature,
+                        max_output_tokens=model_max_tokens,
+                    )
+                    response = self.api_client.text_client.generate_content(
+                        content_parts,
+                        generation_config=generation_config,
+                        stream=False
+                    )
+                    response_text = response.text if hasattr(response, 'text') and response.text else None
+                else:
+                    # Non-Gemini path (DeepSeek/OpenRouter): send extracted text + prompt
+                    response_text = self.api_client.process_text(
+                        text=extracted_pdf_text or "",
+                        system_prompt=subchapter_prompt,
+                        model_name=model_name,
+                        temperature=temperature,
+                        max_tokens=model_max_tokens,
+                    )
                 
                 if not response_text:
                     self.logger.warning(f"No response for subchapter: {subchapter_name}")
@@ -940,6 +984,14 @@ class MultiPartProcessor:
                     if subchapters and len(subchapters) > 0:
                         # Return first subchapter as-is
                         return subchapters[0]
+                    else:
+                        # chapters structure exists but subchapters is empty
+                        # Create a proper subchapter structure with the known name
+                        self.logger.warning(f"Model returned chapters structure with empty subchapters for '{subchapter_name}', creating fallback structure")
+                        return {
+                            "subchapter": subchapter_name,
+                            "topics": []
+                        }
             
             # Check for subchapters structure
             elif "subchapters" in json_data:
@@ -947,15 +999,37 @@ class MultiPartProcessor:
                 if subchapters and len(subchapters) > 0:
                     # Return first subchapter as-is
                     return subchapters[0]
+                else:
+                    # subchapters key exists but is empty
+                    self.logger.warning(f"Model returned empty subchapters for '{subchapter_name}', creating fallback structure")
+                    return {
+                        "subchapter": subchapter_name,
+                        "topics": []
+                    }
             
             # Check if it's a single subchapter
             elif "subchapter" in json_data:
                 return json_data
             
+            # Check if it has topics directly (model returned subchapter content without wrapper)
+            elif "topics" in json_data:
+                # Wrap it with subchapter name
+                json_data["subchapter"] = json_data.get("subchapter", subchapter_name)
+                return json_data
+            
             # If it's a dict but doesn't match above structures, return as-is
             return json_data
         
-        # If it's a list, return None (we expect dict structure)
+        # If it's a list, try to find subchapter data in the list
+        if isinstance(json_data, list) and len(json_data) > 0:
+            first_item = json_data[0]
+            if isinstance(first_item, dict):
+                if "subchapter" in first_item:
+                    return first_item
+                elif "topics" in first_item:
+                    first_item["subchapter"] = first_item.get("subchapter", subchapter_name)
+                    return first_item
+        
         return None
     
     def _generate_unique_ocr_filename(self, pdf_name: str) -> str:
@@ -979,8 +1053,482 @@ class MultiPartProcessor:
         
         filename = f"OCR Extraction_{sanitized_pdf_name}.json"
         return filename
+    
+    def process_ocr_extraction_paragraph_with_topics(
+        self,
+        pdf_path: str,
+        topic_file_path: str,
+        base_prompt: str,
+        model_name: str,
+        temperature: float = 0.7,
+        progress_callback: Optional[Callable[[str], None]] = None,
+        output_dir: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Process OCR Extraction Paragraph: For each Subchapter, send PDF + prompt with topics list
+        and ending topic marker.
+        
+        Process:
+        1. Load Pre-OCR Topic file
+        2. For each Subchapter:
+           - Replace {SUBCHAPTER_NAME} in prompt with subchapter name
+           - Replace {TOPIC_NAME} with list of Topics for this Subchapter
+           - Replace {TOPIC_NAME_ENDING} with first Topic of the NEXT Subchapter (end marker)
+           - Send PDF + prompt to model
+           - Extract JSON response with topics and extractions
+        3. Combine all outputs by Subchapter order
+        4. Save as "OCR Extraction Paragraph_{pdf_name}.json"
+        
+        Args:
+            pdf_path: Path to PDF file
+            topic_file_path: Path to Pre-OCR Topic file (t{book}{chapter}.json)
+            base_prompt: Prompt template with {SUBCHAPTER_NAME}, {TOPIC_NAME} and {TOPIC_NAME_ENDING} placeholders
+            model_name: Gemini model name
+            temperature: Temperature for generation
+            progress_callback: Optional callback for progress updates
+            output_dir: Optional output directory
+            
+        Returns:
+            Path to final JSON file, or None on error
+        """
+        if not os.path.exists(pdf_path):
+            self.logger.error(f"PDF file not found: {pdf_path}")
+            return None
+        
+        if not os.path.exists(topic_file_path):
+            self.logger.error(f"Topic file not found: {topic_file_path}")
+            return None
+        
+        # Update output_dir if provided
+        if output_dir:
+            self.output_dir = Path(output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.info(f"Using output directory: {self.output_dir}")
+        
+        if progress_callback:
+            progress_callback("Starting OCR Extraction Paragraph with topics...")
+        
+        # Load Pre-OCR Topic file
+        try:
+            with open(topic_file_path, 'r', encoding='utf-8') as f:
+                topic_data = json.load(f)
+        except Exception as e:
+            self.logger.error(f"Failed to load topic file: {e}")
+            return None
+        
+        # Extract data from topic file
+        topics_list = topic_data.get("data", [])
+        if not topics_list:
+            self.logger.error("Topic file has no data")
+            return None
+        
+        metadata = topic_data.get("metadata", {})
+        book_id = metadata.get("book_id", 105)
+        chapter_id = metadata.get("chapter_id", 3)
+        # Try different field names for chapter
+        chapter_name = (
+            metadata.get("chapter", "") or 
+            metadata.get("Chapter", "") or 
+            metadata.get("chapter_name", "") or
+            metadata.get("Chapter_Name", "") or
+            ""
+        )
+        
+        # Set stage if using UnifiedAPIClient (for API routing)
+        if hasattr(self.api_client, 'set_stage'):
+            self.api_client.set_stage("ocr_extraction_paragraph")
+        
+        # Initialize model
+        if not self.api_client.initialize_text_client(model_name):
+            self.logger.error("Failed to initialize text client")
+            return None
 
+        # For Google/Gemini we can upload the PDF (model sees images/tables/layout).
+        # For DeepSeek/OpenRouter, we fall back to local PDF text extraction and send text.
+        pdf_file = None
+        extracted_pdf_text = None
+        use_pdf_upload = False
+        try:
+            from api_layer import GeminiAPIClient
+            if hasattr(self.api_client, "get_client_for_stage"):
+                use_pdf_upload = isinstance(self.api_client.get_client_for_stage(), GeminiAPIClient)
+        except Exception:
+            use_pdf_upload = False
 
+        from pdf_processor import PDFProcessor
+        pdf_proc = PDFProcessor()
+
+        if use_pdf_upload:
+            if progress_callback:
+                progress_callback("Uploading PDF file to Gemini...")
+            import google.generativeai as genai
+            import time as _time
+            try:
+                api_key = None
+                if hasattr(self.api_client, 'key_manager'):
+                    api_key = self.api_client.key_manager.get_next_key()
+                if api_key:
+                    genai.configure(api_key=api_key)
+                    self.logger.info("Configured genai with API key from key_manager")
+                else:
+                    self.logger.warning("No API key found in key_manager, upload might fail")
+
+                pdf_file = genai.upload_file(path=pdf_path)
+                self.logger.info(f"Uploaded PDF file: {os.path.basename(pdf_path)}")
+                if progress_callback:
+                    progress_callback("PDF uploaded. Waiting for processing...")
+
+                while pdf_file.state.name == "PROCESSING":
+                    self.logger.info("Waiting for PDF to be processed by Gemini...")
+                    _time.sleep(2)
+                    pdf_file = genai.get_file(pdf_file.name)
+
+                if pdf_file.state.name == "FAILED":
+                    self.logger.error("PDF file processing failed on Gemini")
+                    return None
+                self.logger.info(f"PDF file ready for processing: {pdf_file.state.name}")
+            except Exception as e:
+                self.logger.error(f"Failed to upload PDF to Gemini: {e}")
+                return None
+        else:
+            if progress_callback:
+                progress_callback("Extracting text from PDF (non-Gemini provider)...")
+            extracted_pdf_text = pdf_proc.extract_text(pdf_path)
+            if not extracted_pdf_text:
+                self.logger.error("Failed to extract PDF text for non-Gemini provider")
+                return None
+        
+        # Get total pages from PDF
+        total_pages = pdf_proc.count_pages(pdf_path)
+        
+        # Initialize output JSON file immediately (incremental writing)
+        # Generate unique filename with PDF name: OCR Extraction Paragraph_{pdf_name}.json
+        pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+        output_filename = self._generate_unique_ocr_paragraph_filename(pdf_basename)
+        final_json_path = self.output_dir / output_filename
+        
+        # Create initial structure with empty subchapters
+        initial_output = {
+            "metadata": {
+                "source_pdf": os.path.basename(pdf_path),
+                "source_topic_file": os.path.basename(topic_file_path),
+                "total_pages": total_pages,
+                "total_subchapters": 0,
+                "total_topics": 0,
+                "processed_at": datetime.now().isoformat(),
+                "model": model_name,
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "chapter": chapter_name
+            },
+            "chapters": [{
+                "chapter": chapter_name,
+                "subchapters": []
+            }]
+        }
+        
+        # Write initial file
+        try:
+            with open(final_json_path, "w", encoding="utf-8") as f:
+                json.dump(initial_output, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Initialized OCR Extraction Paragraph JSON file: {final_json_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize output file: {e}")
+            return None
+        
+        # Process each Subchapter
+        total_subchapters = len(topics_list)
+        all_subchapters = []  # Keep track for final metadata update
+        
+        for subchapter_idx, subchapter_item in enumerate(topics_list, 1):
+            subchapter_name = subchapter_item.get("Subchapter", "")
+            topics = subchapter_item.get("Topics", [])
+            
+            if not subchapter_name:
+                self.logger.warning(f"Subchapter item {subchapter_idx} has no Subchapter name, skipping")
+                continue
+            
+            # Process even if no topics (send empty string for topics)
+            if not topics or not isinstance(topics, list):
+                self.logger.info(f"Subchapter '{subchapter_name}' has no Topics, processing with empty topics")
+                topics = []
+            
+            num_topics = len(topics) if topics else 0
+            if progress_callback:
+                progress_callback(f"Processing Subchapter {subchapter_idx}/{total_subchapters}: {subchapter_name} ({num_topics} topics)")
+            
+            # Replace {SUBCHAPTER_NAME} in prompt (both curly and square bracket variants)
+            subchapter_prompt = base_prompt.replace("{SUBCHAPTER_NAME}", subchapter_name)
+            subchapter_prompt = subchapter_prompt.replace("[SUBCHAPTER_NAME]", subchapter_name)
+            
+            # Replace {TOPIC_NAME} with list of Topics for this Subchapter
+            if topics:
+                topics_str = ", ".join(topics)
+                topics_or_str = " or ".join(topics)
+            else:
+                topics_str = ""
+                topics_or_str = ""
+            subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME}", topics_str)
+            
+            # Replace [TOPIC_NAME] or [TOPIC_NAME] or [TOPIC_NAME] pattern with actual topic names
+            # First try to replace the full "or" pattern
+            import re
+            # Match patterns like [TOPIC_NAME] or [TOPIC_NAME] or [TOPIC_NAME] (any number of repetitions)
+            bracket_topic_or_pattern = r'\[TOPIC_NAME\](?:\s+or\s+\[TOPIC_NAME\])*'
+            subchapter_prompt = re.sub(bracket_topic_or_pattern, topics_or_str, subchapter_prompt)
+            # Replace any remaining standalone [TOPIC_NAME]
+            subchapter_prompt = subchapter_prompt.replace("[TOPIC_NAME]", topics_str)
+            
+            # Replace {TOPIC_NAME_ENDING} with first Topic of the NEXT Subchapter
+            # This serves as an end marker for the current subchapter
+            topic_name_ending = ""
+            if subchapter_idx < total_subchapters:  # Not the last subchapter
+                next_subchapter_item = topics_list[subchapter_idx]  # subchapter_idx is 1-based, so this is the next item
+                next_topics = next_subchapter_item.get("Topics", [])
+                if next_topics and isinstance(next_topics, list) and len(next_topics) > 0:
+                    topic_name_ending = next_topics[0]
+                else:
+                    # If next subchapter has no topics, use the next subchapter name itself
+                    topic_name_ending = next_subchapter_item.get("Subchapter", "")
+            else:
+                # Last subchapter - no ending marker, instruct model to process till end
+                topic_name_ending = "END_OF_CHAPTER"
+            
+            subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME_ENDING}", topic_name_ending)
+            subchapter_prompt = subchapter_prompt.replace("[TOPIC_NAME_ENDING]", topic_name_ending)
+            
+            self.logger.info(f"Subchapter: {subchapter_name}, Topics: {topics_str}, Ending Topic: {topic_name_ending}")
+            
+            try:
+                # Determine max tokens based on model
+                if '2.5' in model_name or '2.0' in model_name:
+                    model_max_tokens = 32768
+                elif '1.5' in model_name:
+                    model_max_tokens = 8192
+                else:
+                    model_max_tokens = 32768
+
+                if progress_callback:
+                    progress_callback(f"Calling model for Subchapter: {subchapter_name}...")
+
+                response_text = None
+                if use_pdf_upload:
+                    # Gemini path: prompt + actual PDF file
+                    content_parts = [subchapter_prompt, pdf_file]
+                    generation_config = genai.types.GenerationConfig(
+                        temperature=temperature,
+                        max_output_tokens=model_max_tokens,
+                    )
+                    response = self.api_client.text_client.generate_content(
+                        content_parts,
+                        generation_config=generation_config,
+                        stream=False
+                    )
+                    response_text = response.text if hasattr(response, 'text') and response.text else None
+                else:
+                    # Non-Gemini path (DeepSeek/OpenRouter): send extracted text + prompt
+                    response_text = self.api_client.process_text(
+                        text=extracted_pdf_text or "",
+                        system_prompt=subchapter_prompt,
+                        model_name=model_name,
+                        temperature=temperature,
+                        max_tokens=model_max_tokens,
+                    )
+                
+                if not response_text:
+                    self.logger.warning(f"No response for subchapter: {subchapter_name}")
+                    continue
+                
+                self.logger.info(f"Received response for subchapter '{subchapter_name}' ({len(response_text)} characters)")
+                
+                # Extract JSON from response immediately
+                try:
+                    subchapter_json = self.base_processor.extract_json_from_response_google(response_text)
+                    if not subchapter_json:
+                        subchapter_json = self.base_processor.load_txt_as_json_from_text_google(response_text)
+                    if not subchapter_json:
+                        subchapter_json = self._extract_json_from_persian_text(response_text)
+                    
+                    if not subchapter_json:
+                        self.logger.warning(f"Failed to extract JSON from response for subchapter '{subchapter_name}'")
+                        subchapter_json = {
+                            "subchapter": subchapter_name,
+                            "raw_response": response_text,
+                            "extraction_failed": True
+                        }
+                    
+                    # Extract subchapter from JSON
+                    extracted_subchapter = self._get_subchapter_from_json(subchapter_json, subchapter_name)
+                    if not extracted_subchapter:
+                        if isinstance(subchapter_json, dict):
+                            extracted_subchapter = subchapter_json
+                        else:
+                            extracted_subchapter = {
+                                "subchapter": subchapter_name,
+                                "data": subchapter_json
+                            }
+                    
+                    # Add to list for tracking
+                    all_subchapters.append(extracted_subchapter)
+                    
+                    # Extract chapter name from model response
+                    if isinstance(extracted_subchapter, dict):
+                        chapter_from_response = (
+                            extracted_subchapter.get("chapter", "") or
+                            extracted_subchapter.get("Chapter", "") or
+                            ""
+                        )
+                        
+                        if not chapter_from_response and isinstance(subchapter_json, dict):
+                            if "chapters" in subchapter_json:
+                                chapters_list = subchapter_json.get("chapters", [])
+                                if chapters_list and len(chapters_list) > 0:
+                                    chapter_from_response = (
+                                        chapters_list[0].get("chapter", "") or
+                                        chapters_list[0].get("Chapter", "") or
+                                        ""
+                                    )
+                        
+                        if chapter_from_response and chapter_from_response.strip():
+                            chapter_name = chapter_from_response.strip()
+                            self.logger.info(f"Extracted chapter name from model response: {chapter_name}")
+                    
+                    # Immediately add to JSON file (incremental write)
+                    try:
+                        with open(final_json_path, "r", encoding="utf-8") as f:
+                            current_data = json.load(f)
+                        
+                        if "chapters" in current_data and len(current_data["chapters"]) > 0:
+                            current_data["chapters"][0]["subchapters"].append(extracted_subchapter)
+                            
+                            current_data["metadata"]["total_subchapters"] = len(current_data["chapters"][0]["subchapters"])
+                            if isinstance(extracted_subchapter, dict) and "topics" in extracted_subchapter:
+                                if isinstance(extracted_subchapter["topics"], list):
+                                    current_data["metadata"]["total_topics"] += len(extracted_subchapter["topics"])
+                            
+                            if chapter_name and chapter_name.strip():
+                                current_data["metadata"]["chapter"] = chapter_name
+                                current_data["chapters"][0]["chapter"] = chapter_name
+                            
+                            with open(final_json_path, "w", encoding="utf-8") as f:
+                                json.dump(current_data, f, ensure_ascii=False, indent=2)
+                            
+                            self.logger.info(f"✓ Added subchapter '{subchapter_name}' to Paragraph JSON file immediately")
+                        else:
+                            self.logger.warning(f"Unexpected JSON structure in output file")
+                    except Exception as e:
+                        self.logger.error(f"Failed to write subchapter '{subchapter_name}' to file: {e}", exc_info=True)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing subchapter '{subchapter_name}': {str(e)}")
+                    extracted_subchapter = {
+                        "subchapter": subchapter_name,
+                        "raw_response": response_text,
+                        "extraction_failed": True,
+                        "error": str(e)
+                    }
+                    all_subchapters.append(extracted_subchapter)
+                    
+                    try:
+                        with open(final_json_path, "r", encoding="utf-8") as f:
+                            current_data = json.load(f)
+                        
+                        if "chapters" in current_data and len(current_data["chapters"]) > 0:
+                            current_data["chapters"][0]["subchapters"].append(extracted_subchapter)
+                            current_data["metadata"]["total_subchapters"] = len(current_data["chapters"][0]["subchapters"])
+                            
+                            with open(final_json_path, "w", encoding="utf-8") as f:
+                                json.dump(current_data, f, ensure_ascii=False, indent=2)
+                            
+                            self.logger.info(f"✓ Added subchapter '{subchapter_name}' (with error) to Paragraph JSON file immediately")
+                        else:
+                            self.logger.warning(f"Unexpected JSON structure in output file")
+                    except Exception as e2:
+                        self.logger.error(f"Failed to write subchapter '{subchapter_name}' to file: {e2}", exc_info=True)
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing subchapter {subchapter_name}: {e}", exc_info=True)
+                continue
+        
+        # Final update: Try to extract chapter name from subchapters if not found yet
+        if not chapter_name or not chapter_name.strip():
+            try:
+                for subchapter in all_subchapters:
+                    if isinstance(subchapter, dict):
+                        extracted_chapter = (
+                            subchapter.get("chapter", "") or
+                            subchapter.get("Chapter", "") or
+                            ""
+                        )
+                        if extracted_chapter and extracted_chapter.strip():
+                            chapter_name = extracted_chapter.strip()
+                            self.logger.info(f"Extracted chapter name from subchapter (fallback): {chapter_name}")
+                            break
+                
+                if chapter_name and chapter_name.strip():
+                    try:
+                        with open(final_json_path, "r", encoding="utf-8") as f:
+                            current_data = json.load(f)
+                        current_data["metadata"]["chapter"] = chapter_name
+                        if "chapters" in current_data and len(current_data["chapters"]) > 0:
+                            current_data["chapters"][0]["chapter"] = chapter_name
+                        with open(final_json_path, "w", encoding="utf-8") as f:
+                            json.dump(current_data, f, ensure_ascii=False, indent=2)
+                        self.logger.info(f"Updated chapter name in file (fallback): {chapter_name}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not update chapter name in file: {e}")
+            except Exception as e:
+                self.logger.debug(f"Could not extract chapter name: {e}")
+        
+        # Final metadata update
+        try:
+            with open(final_json_path, "r", encoding="utf-8") as f:
+                current_data = json.load(f)
+            
+            total_topics = 0
+            if "chapters" in current_data and len(current_data["chapters"]) > 0:
+                for sub in current_data["chapters"][0].get("subchapters", []):
+                    if isinstance(sub, dict) and "topics" in sub:
+                        if isinstance(sub["topics"], list):
+                            total_topics += len(sub["topics"])
+            
+            current_data["metadata"]["total_topics"] = total_topics
+            current_data["metadata"]["total_subchapters"] = len(all_subchapters)
+            current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+            
+            with open(final_json_path, "w", encoding="utf-8") as f:
+                json.dump(current_data, f, ensure_ascii=False, indent=2)
+            
+            self.logger.info(f"✓ OCR Extraction Paragraph completed. {len(all_subchapters)} subchapters processed and saved incrementally.")
+            
+            if progress_callback:
+                progress_callback(f"✓ OCR Extraction Paragraph completed. {len(all_subchapters)} subchapters processed.")
+            
+            return str(final_json_path)
+        except Exception as e:
+            self.logger.error(f"Failed to finalize OCR Extraction Paragraph JSON: {e}")
+            if final_json_path.exists():
+                return str(final_json_path)
+            return None
+    
+    def _generate_unique_ocr_paragraph_filename(self, pdf_name: str) -> str:
+        """
+        Generate unique OCR Extraction Paragraph filename with PDF name: OCR Extraction Paragraph_{pdf_name}.json
+        
+        Args:
+            pdf_name: PDF filename without extension (sanitized)
+            
+        Returns:
+            Filename with PDF name appended
+        """
+        import re
+        sanitized_pdf_name = re.sub(r'[<>:"/\\|?*]', '_', pdf_name)
+        sanitized_pdf_name = sanitized_pdf_name.strip()
+        if len(sanitized_pdf_name) > 100:
+            sanitized_pdf_name = sanitized_pdf_name[:100]
+        
+        filename = f"OCR Extraction Paragraph_{sanitized_pdf_name}.json"
+        return filename
 
 
 
