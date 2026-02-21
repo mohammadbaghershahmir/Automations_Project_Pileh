@@ -1,8 +1,8 @@
 """
 Stage V Processor: Test File Generation
 Generates test files from Stage J data and Word document in two steps:
-Step 1: Generate initial test questions (per topic, with full Stage J)
-Step 2: Refine questions and add QId (per topic, with full Stage J)
+Step 1: Generate initial test questions ONCE with full Stage J JSON + full test file + Step 1 prompt.
+Step 2: Refine questions and add QId (per topic, using filtered Step 1 output).
 """
 
 import json
@@ -44,7 +44,7 @@ class StageVProcessor(BaseStageProcessor):
             stage_j_path: Path to Stage J JSON file (a{book}{chapter}.json)
             word_file_path: Path to Word file containing test questions
             ocr_extraction_json_path: Path to OCR Extraction JSON file (for topic structure)
-            prompt_1: Prompt for Step 1 (initial test questions generation, should contain {Topic_NAME} and {Subchapter_Name})
+            prompt_1: Prompt for Step 1 (initial test questions; used once with full Stage J + full test file; no topic placeholders)
             model_name_1: Gemini model name for Step 1
             prompt_2: Prompt for Step 2 (refine questions and add QId, should contain {Topic_NAME} and {Subchapter_Name})
             model_name_2: Gemini model name for Step 2
@@ -207,87 +207,34 @@ class StageVProcessor(BaseStageProcessor):
             stage_settings_manager.set_stage_model("stage_v", model_name_1)
             self.logger.info(f"Stage V Step 1: Using provider={provider_1}, model={model_name_1}")
         
-        # ========== STEP 1: Generate Initial Test Questions (per Topic) ==========
+        # ========== STEP 1: Generate Initial Test Questions ONCE (full Stage J + full test file + Step 1 prompt) ==========
         _progress("=" * 60)
-        _progress("STEP 1: Generating initial test questions (per Topic, with full Stage J)...")
+        _progress("STEP 1: Generating initial test questions (single run: full Stage J + full test file + Step 1 prompt)...")
         _progress("=" * 60)
         
-        step1_topic_outputs: Dict[str, str] = {}  # (subchapter_name, topic_name) -> output_path
+        step1_combined_path = self._step1_run_once(
+            stage_j_path=stage_j_path,
+            word_file_path=word_file_path,
+            full_stage_j_json=full_stage_j_json,
+            prompt=prompt_1,
+            model_name=model_name_1,
+            book_id=book_id,
+            chapter_id=chapter_id,
+            output_dir=output_dir,
+            progress_callback=progress_callback
+        )
         
-        for topic_idx, (subchapter_name, topic_name) in enumerate(topics_list, 1):
-            _progress(f"[{topic_idx}/{len(topics_list)}] Processing Step 1 for Topic '{topic_name}' (Subchapter: '{subchapter_name}')...")
-            self.logger.info("")
-            self.logger.info("=" * 80)
-            self.logger.info(f"PROCESSING TOPIC {topic_idx}/{len(topics_list)}: '{topic_name}'")
-            self.logger.info("=" * 80)
-            self.logger.info(f"  Subchapter: '{subchapter_name}'")
-            self.logger.info(f"  Topic: '{topic_name}'")
-            self.logger.info(f"  Total Stage J records: {len(stage_j_records)}")
-            
-            topic_key = (subchapter_name, topic_name)
-            topic_step1_output = self._step1_generate_initial_questions(
-                stage_j_path=stage_j_path,
-                word_file_path=word_file_path,
-                full_stage_j_json=full_stage_j_json,
-                current_topic_name=topic_name,
-                current_topic_subchapter=subchapter_name,
-                prompt=prompt_1,
-                model_name=model_name_1,
-                topic_idx=topic_idx,
-                total_topics=len(topics_list),
-                output_dir=output_dir,
-                progress_callback=progress_callback
-            )
-            
-            if topic_step1_output:
-                step1_topic_outputs[topic_key] = topic_step1_output
-                _progress(f"Step 1 completed for Topic '{topic_name}': {topic_step1_output}")
-                self.logger.info(f"  ✓ Step 1 completed for Topic '{topic_name}'")
-            else:
-                self.logger.warning(f"  ✗ Step 1 failed for Topic '{topic_name}', skipping...")
-        
-        if not step1_topic_outputs:
-            self.logger.error("Step 1 failed for all topics")
+        if not step1_combined_path:
+            self.logger.error("Step 1 failed")
             return None
         
-        # Combine Step 1 outputs from all topics
-        _progress("Combining Step 1 outputs from all topics...")
-        self.logger.info(f"Combining Step 1 outputs from {len(step1_topic_outputs)} topics...")
-        step1_combined_data = []
-        for (subchapter_name, topic_name), topic_step1_path in step1_topic_outputs.items():
-            topic_step1_data = self.load_json_file(topic_step1_path)
-            if topic_step1_data:
-                topic_records = self.get_data_from_json(topic_step1_data)
-                if topic_records:
-                    step1_combined_data.extend(topic_records)
-                    self.logger.info(f"  Added {len(topic_records)} questions from Topic '{topic_name}' (Subchapter: '{subchapter_name}')")
+        _progress(f"Step 1 completed. Output: {step1_combined_path}")
         
-        if not step1_combined_data:
-            self.logger.error("Failed to combine Step 1 outputs")
+        # Ensure Step 1 output has data before running Step 2 for all topics
+        step1_check = self.load_json_file(step1_combined_path)
+        if not step1_check or not (self.get_data_from_json(step1_check) or []):
+            self.logger.error("Step 1 output has no data")
             return None
-        
-        # Save combined Step 1 output
-        step1_combined_path = os.path.join(output_dir or os.path.dirname(stage_j_path) or os.getcwd(), 
-                                          f"step1_combined_{book_id}{chapter_id:03d}.json")
-        step1_combined_json = {
-            "metadata": {
-                "book_id": book_id,
-                "chapter_id": chapter_id,
-                "source": "Stage V - Step 1 (Combined from Topics)",
-                "total_topics": len(step1_topic_outputs),
-                "total_questions": len(step1_combined_data)
-            },
-            "data": step1_combined_data
-        }
-        try:
-            with open(step1_combined_path, 'w', encoding='utf-8') as f:
-                json.dump(step1_combined_json, f, ensure_ascii=False, indent=2)
-            _progress(f"Step 1 combined output saved to: {step1_combined_path}")
-        except Exception as e:
-            self.logger.error(f"Failed to save combined Step 1 output: {e}")
-            return None
-        
-        step1_output = step1_combined_path
         
         # Update stage settings for Step 2 (so correct API provider is used)
         if stage_settings_manager:
@@ -295,18 +242,17 @@ class StageVProcessor(BaseStageProcessor):
             stage_settings_manager.set_stage_model("stage_v", model_name_2)
             self.logger.info(f"Stage V Step 2: Using provider={provider_2}, model={model_name_2}")
         
-        # ========== STEP 2: Refine Questions and Add QId (per Topic) ==========
+        # ========== STEP 2: Refine Questions and Add QId (per Topic: full J + full Step 1 + Step 2 prompt) ==========
         _progress("=" * 60)
-        _progress("STEP 2: Refining questions and adding QId (per Topic, with full Stage J)...")
+        _progress("STEP 2: Refining questions and adding QId (each topic: full Stage J + full Step 1 file + Step 2 prompt)...")
         _progress("=" * 60)
         
         step2_topic_outputs: Dict[str, str] = {}  # (subchapter_name, topic_name) -> output_path
         global_qid_counter = 1  # Global counter for QId across all topics
         
+        # Step 2 input for every topic: full Stage J JSON + full Step 1 file + Step 2 prompt (with topic/subchapter)
         for topic_idx, (subchapter_name, topic_name) in enumerate(topics_list, 1):
             topic_key = (subchapter_name, topic_name)
-            if topic_key not in step1_topic_outputs:
-                continue
             
             _progress(f"[{topic_idx}/{len(topics_list)}] Processing Step 2 for Topic '{topic_name}' (Subchapter: '{subchapter_name}')...")
             self.logger.info("")
@@ -315,7 +261,7 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.info("=" * 80)
             self.logger.info(f"  Subchapter: '{subchapter_name}'")
             self.logger.info(f"  Topic: '{topic_name}'")
-            self.logger.info(f"  Total Stage J records: {len(stage_j_records)}")
+            self.logger.info(f"  Input: full Stage J + full Step 1 file + Step 2 prompt")
             
             topic_step2_output, num_questions = self._step2_refine_questions_and_add_qid(
                 stage_j_path=stage_j_path,
@@ -323,7 +269,7 @@ class StageVProcessor(BaseStageProcessor):
                 full_stage_j_json=full_stage_j_json,
                 current_topic_name=topic_name,
                 current_topic_subchapter=subchapter_name,
-                step1_output_path=step1_topic_outputs[topic_key],
+                step1_output_path=step1_combined_path,
                 prompt=prompt_2,
                 model_name=model_name_2,
                 book_id=book_id,
@@ -337,7 +283,7 @@ class StageVProcessor(BaseStageProcessor):
             
             if topic_step2_output:
                 step2_topic_outputs[topic_key] = topic_step2_output
-                global_qid_counter += num_questions  # Update global counter
+                global_qid_counter += num_questions
                 _progress(f"Step 2 completed for Topic '{topic_name}': {topic_step2_output}")
                 self.logger.info(f"  ✓ Step 2 completed for Topic '{topic_name}' ({num_questions} questions, QId range: {global_qid_counter - num_questions} to {global_qid_counter - 1})")
             else:
@@ -347,7 +293,7 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.error("Step 2 failed for all topics")
             return None
         
-        # Combine Step 2 outputs from all topics
+        # Combine Step 2 outputs from all topics (only final combined output is kept; per-topic files are removed)
         _progress("Combining Step 2 outputs from all topics...")
         self.logger.info(f"Combining Step 2 outputs from {len(step2_topic_outputs)} topics...")
         step2_combined_data = []
@@ -358,6 +304,11 @@ class StageVProcessor(BaseStageProcessor):
                 if topic_records:
                     step2_combined_data.extend(topic_records)
                     self.logger.info(f"  Added {len(topic_records)} questions from Topic '{topic_name}' (Subchapter: '{subchapter_name}')")
+            try:
+                if os.path.exists(topic_step2_path):
+                    os.remove(topic_step2_path)
+            except Exception:
+                pass
         
         if not step2_combined_data:
             self.logger.error("Failed to combine Step 2 outputs")
@@ -439,6 +390,135 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.error("Failed to save final output")
             return None
     
+    def _step1_run_once(
+        self,
+        stage_j_path: str,
+        word_file_path: str,
+        full_stage_j_json: str,
+        prompt: str,
+        model_name: str,
+        book_id: int,
+        chapter_id: int,
+        output_dir: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Optional[str]:
+        """
+        Step 1 (single run): Generate initial test questions from full Stage J JSON + full test file + Step 1 prompt.
+        No per-topic split; one API call with entire inputs.
+        
+        Args:
+            stage_j_path: Path to Stage J JSON file
+            word_file_path: Path to Word test file
+            full_stage_j_json: Full Stage J JSON string (all records)
+            prompt: Step 1 prompt (no topic placeholders)
+            model_name: Model name for API
+            book_id: Book ID for output metadata
+            chapter_id: Chapter ID for output metadata
+            output_dir: Output directory
+            progress_callback: Optional progress callback
+            
+        Returns:
+            Path to Step 1 combined output JSON, or None on error
+        """
+        def _progress(msg: str):
+            if progress_callback:
+                progress_callback(msg)
+            self.logger.info(msg)
+        
+        _progress("Loading Word document for Step 1...")
+        word_content = self.word_processor.read_word_file(word_file_path)
+        if not word_content:
+            self.logger.error("Failed to read Word file")
+            return None
+        
+        word_content_formatted = self.word_processor.prepare_word_for_model(
+            word_content,
+            context="Test Questions"
+        )
+        
+        full_prompt = f"""{prompt}
+
+Word Document (Test Questions):
+{word_content_formatted}
+
+Stage J Data (FULL file - all records, without Type column):
+{full_stage_j_json}"""
+        
+        _progress("Processing Stage V - Step 1 (single run: full Stage J + full test file)...")
+        part_response = None
+        for attempt in range(3):
+            try:
+                part_response = self.api_client.process_text(
+                    text=full_prompt,
+                    system_prompt=None,
+                    model_name=model_name,
+                    temperature=APIConfig.DEFAULT_TEMPERATURE,
+                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                )
+                if part_response:
+                    _progress(f"Step 1 response received ({len(part_response)} characters)")
+                    break
+            except Exception as e:
+                self.logger.warning(f"Step 1 attempt {attempt + 1} failed: {e}")
+                if attempt < 2:
+                    _progress(f"Retrying Step 1... (attempt {attempt + 2}/3)")
+                else:
+                    self.logger.error("All Step 1 attempts failed")
+        
+        if not part_response:
+            self.logger.error("No response from model in Step 1")
+            return None
+        
+        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
+        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
+        txt_path = os.path.join(base_dir, f"{base_name}_stage_v_step1_full.txt")
+        try:
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(part_response)
+            _progress(f"Saved raw model response to: {txt_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to save TXT file: {e}")
+        
+        all_questions = []
+        part_output = self.extract_json_from_response(part_response)
+        if not part_output:
+            part_output = self.load_txt_as_json_from_text(part_response)
+        if part_output:
+            if isinstance(part_output, list):
+                all_questions = part_output
+            elif isinstance(part_output, dict):
+                all_questions = self.get_data_from_json(part_output) or []
+        if not all_questions:
+            model_output = self.load_txt_as_json(txt_path)
+            if model_output:
+                if isinstance(model_output, list):
+                    all_questions = model_output
+                elif isinstance(model_output, dict):
+                    all_questions = self.get_data_from_json(model_output) or []
+        
+        if not all_questions:
+            self.logger.error("No questions extracted from Step 1 response")
+            return None
+        
+        _progress(f"Step 1 extracted {len(all_questions)} questions")
+        out_dir = output_dir or base_dir
+        step1_combined_path = os.path.join(out_dir, f"step1_combined_{book_id}{chapter_id:03d}.json")
+        step1_metadata = {
+            "book_id": book_id,
+            "chapter_id": chapter_id,
+            "source": "Stage V - Step 1 (single run: full Stage J + full test file + Step 1 prompt)",
+            "total_questions": len(all_questions),
+            "source_stage_j": os.path.basename(stage_j_path),
+            "source_word_file": os.path.basename(word_file_path),
+            "model_used": model_name
+        }
+        success = self.save_json_file(all_questions, step1_combined_path, step1_metadata, "V-Step1")
+        if success:
+            _progress(f"Step 1 output saved to: {step1_combined_path}")
+            return step1_combined_path
+        self.logger.error("Failed to save Step 1 output")
+        return None
+    
     def _step1_generate_initial_questions(
         self,
         stage_j_path: str,
@@ -454,8 +534,8 @@ class StageVProcessor(BaseStageProcessor):
         progress_callback: Optional[Callable[[str], None]] = None
     ) -> Optional[str]:
         """
-        Step 1: Generate initial test questions from Stage J and Word document.
-        Uses FULL Stage J data but focuses on current topic.
+        Step 1 (legacy, per-topic): Generate initial test questions from Stage J and Word document.
+        Uses FULL Stage J data but focuses on current topic. Prefer _step1_run_once for new flow.
         
         Args:
             stage_j_path: Path to Stage J JSON file
