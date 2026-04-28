@@ -81,7 +81,7 @@ class DeepSeekAPIClient:
                     system_prompt: Optional[str] = None,
                     model_name: str = APIConfig.DEFAULT_DEEPSEEK_MODEL,
                     temperature: float = 0.7,
-                    max_tokens: int = 8192,
+                    max_tokens: int = APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS,
                     api_key: Optional[str] = None,
                     auto_fallback_model: bool = True) -> Optional[str]:
         """
@@ -92,7 +92,7 @@ class DeepSeekAPIClient:
             system_prompt: Optional system prompt/instructions
             model_name: DeepSeek model to use
             temperature: Temperature for generation (0.0-2.0)
-            max_tokens: Maximum output tokens (will be capped at 8192 for DeepSeek API)
+            max_tokens: Maximum output tokens (reasoner: up to 64K, chat: up to 8K)
             api_key: Optional API key. If None, uses next key from manager.
             auto_fallback_model: If True, automatically try deepseek-chat if deepseek-reasoner fails
             
@@ -102,27 +102,33 @@ class DeepSeekAPIClient:
         max_retries = 3
         timeout_delay = 10.0
         
-        # DeepSeek API only supports max_tokens up to 8192
-        DEEPSEEK_MAX_TOKENS = 8192
-        effective_max_tokens = min(max_tokens, DEEPSEEK_MAX_TOKENS)
-        if max_tokens > DEEPSEEK_MAX_TOKENS:
-            self.logger.warning(f"max_tokens {max_tokens} exceeds DeepSeek limit ({DEEPSEEK_MAX_TOKENS}), capping to {DEEPSEEK_MAX_TOKENS}")
+        # DeepSeek API limits per model (from official docs):
+        # deepseek-reasoner: default 32K, max 64K
+        # deepseek-chat: max 8192
+        # Total context limit: 131072 (input + output combined)
+        DEEPSEEK_REASONER_MAX = 65536  # 64K
+        DEEPSEEK_CHAT_MAX = 8192
+        DEEPSEEK_CONTEXT_LIMIT = 131072  # input + output combined
+        model_limit = DEEPSEEK_REASONER_MAX if "reasoner" in (model_name or "").lower() else DEEPSEEK_CHAT_MAX
+        effective_max_tokens = min(max_tokens, model_limit)
+        if max_tokens > model_limit:
+            self.logger.warning(f"max_tokens {max_tokens} exceeds DeepSeek {model_name} limit ({model_limit}), capping to {model_limit}")
         
-        # Calculate payload size to determine if we should reduce max_tokens
-        payload_size = len(json.dumps({
-            "model": model_name,
-            "messages": [{"role": "user", "content": text}] + ([{"role": "system", "content": system_prompt}] if system_prompt else []),
-            "temperature": temperature,
-            "max_tokens": effective_max_tokens,
-            "stream": False
-        }).encode('utf-8'))
-        
-        # Auto-reduce max_tokens for large payloads to avoid connection issues
-        if payload_size > 40 * 1024:  # > 40 KB
-            # Reduce max_tokens proportionally
-            reduction_factor = min(0.5, (40 * 1024) / payload_size)
-            effective_max_tokens = max(2048, int(effective_max_tokens * reduction_factor))
-            self.logger.warning(f"[DeepSeek API] Large payload ({payload_size/1024:.2f} KB) detected. Reducing max_tokens to {effective_max_tokens} to avoid connection issues.")
+        # Cap output by total context limit: input + output <= 131072
+        # Build messages to get accurate payload size (API: 822KB ≈ 110K tokens → ~7.5 bytes/token)
+        _messages = []
+        if system_prompt:
+            _messages.append({"role": "system", "content": system_prompt})
+        _messages.append({"role": "user", "content": text or ""})
+        _msg_bytes = len(json.dumps(_messages).encode("utf-8"))
+        estimated_input_tokens = int(_msg_bytes / 7.5)
+        max_output_by_context = max(2048, DEEPSEEK_CONTEXT_LIMIT - estimated_input_tokens)
+        if effective_max_tokens > max_output_by_context:
+            self.logger.warning(
+                f"[DeepSeek API] Input ~{estimated_input_tokens} tokens, context limit {DEEPSEEK_CONTEXT_LIMIT}. "
+                f"Capping max_tokens from {effective_max_tokens} to {max_output_by_context}"
+            )
+            effective_max_tokens = max_output_by_context
         
         # Track if we should try fallback model
         should_try_fallback = False
@@ -139,11 +145,8 @@ class DeepSeekAPIClient:
                 if attempt == 0:
                     self.logger.info(f"[DeepSeek API] Processing request with model: {model_name}")
                 
-                # Prepare messages
-                messages = []
-                if system_prompt:
-                    messages.append({"role": "system", "content": system_prompt})
-                messages.append({"role": "user", "content": text})
+                # Prepare messages (reuse from above)
+                messages = _messages
                 
                 # Prepare request
                 headers = {

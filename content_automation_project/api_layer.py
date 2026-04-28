@@ -94,7 +94,7 @@ class APIConfig:
     # gemini-1.5-pro: up to 8192 tokens
     # gemini-1.5-flash: up to 8192 tokens
     DEFAULT_MAX_TOKENS = 16384  # Maximum for gemini-2.5 models
-    DEFAULT_DEEPSEEK_MAX_TOKENS = 4096  # Maximum for DeepSeek API (hard limit)
+    DEFAULT_DEEPSEEK_MAX_TOKENS = 65536  # DeepSeek Reasoner: max 64K (docs); DeepSeek Chat: max 8K
     # OpenRouter (e.g. z-ai/glm-5): GLM-5 supports up to 131K output tokens
     DEFAULT_OPENROUTER_MAX_TOKENS = 65536  # Safe default for OpenRouter/GLM (model limit ~131K)
 

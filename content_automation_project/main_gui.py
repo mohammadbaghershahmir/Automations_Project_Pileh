@@ -9148,32 +9148,6 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_v_selected_word_files'):
             self.stage_v_selected_word_files = []
         
-        # OCR Extraction JSON File Selection (Optional - Single File or Auto-Detect)
-        ocr_extraction_frame = ctk.CTkFrame(main_frame)
-        ocr_extraction_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(ocr_extraction_frame, text="OCR Extraction JSON File (Optional - Auto-detected per pair if not specified):", 
-                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
-        
-        if not hasattr(self, 'stage_v_ocr_extraction_var'):
-            self.stage_v_ocr_extraction_var = ctk.StringVar()
-            # Auto-fill if available
-            if hasattr(self, 'last_ocr_extraction_path') and self.last_ocr_extraction_path and os.path.exists(self.last_ocr_extraction_path):
-                self.stage_v_ocr_extraction_var.set(self.last_ocr_extraction_path)
-        
-        entry_frame_ocr = ctk.CTkFrame(ocr_extraction_frame)
-        entry_frame_ocr.pack(fill="x", padx=10, pady=5)
-        
-        ocr_extraction_entry = ctk.CTkEntry(entry_frame_ocr, textvariable=self.stage_v_ocr_extraction_var, width=400)
-        ocr_extraction_entry.pack(side="left", fill="x", expand=True, padx=5)
-        
-        ctk.CTkButton(entry_frame_ocr, text="Browse", 
-                     command=lambda: self.browse_file_for_stage(self.stage_v_ocr_extraction_var, 
-                                                                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")])).pack(side="right")
-        
-        ctk.CTkLabel(ocr_extraction_frame, text="Note: If not specified, OCR Extraction JSON will be auto-detected from Stage J directory for each pair.", 
-                    font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
-        
         # Pairs Section
         pairs_frame = ctk.CTkFrame(main_frame)
         pairs_frame.pack(fill="x", pady=10)
@@ -9546,48 +9520,6 @@ class ContentAutomationGUI:
         
         return None, None
     
-    def _auto_detect_ocr_extraction_for_pair(self, stage_j_path: str, common_ocr_path: Optional[str] = None):
-        """Auto-detect OCR Extraction JSON file for a Stage J file"""
-        # If common OCR path is provided, use it
-        if common_ocr_path and os.path.exists(common_ocr_path):
-            return common_ocr_path
-        
-        # Try to find OCR Extraction JSON in same directory as Stage J
-        stage_j_dir = os.path.dirname(stage_j_path)
-        stage_j_basename = os.path.basename(stage_j_path)
-        stage_j_name_without_ext = os.path.splitext(stage_j_basename)[0]
-        
-        # Try various patterns
-        possible_names = [
-            "OCR Extraction.json",
-            f"OCR Extraction_{stage_j_name_without_ext}.json",
-            "OCR Extraction_*.json",  # Will use glob
-        ]
-        
-        # Extract book/chapter from Stage J filename
-        book_id, chapter_id = self._extract_book_chapter_from_stage_j_for_v(stage_j_path)
-        if book_id and chapter_id:
-            possible_names.extend([
-                f"OCR Extraction_{book_id:03d}{chapter_id:03d}.json",
-                f"OCR_Extraction_{book_id:03d}{chapter_id:03d}.json",
-            ])
-        
-        # Try to find matching file
-        import glob
-        for pattern in possible_names:
-            if '*' in pattern:
-                # Use glob
-                matches = glob.glob(os.path.join(stage_j_dir, pattern))
-                if matches:
-                    return matches[0]
-            else:
-                # Direct file
-                file_path = os.path.join(stage_j_dir, pattern)
-                if os.path.exists(file_path):
-                    return file_path
-        
-        return None
-    
     def _auto_pair_stage_v_files(self):
         """Auto-pair Stage J files with Word files based on Book/Chapter"""
         if not hasattr(self, 'stage_v_selected_stage_j_files') or not self.stage_v_selected_stage_j_files:
@@ -9597,13 +9529,6 @@ class ContentAutomationGUI:
         if not hasattr(self, 'stage_v_selected_word_files') or not self.stage_v_selected_word_files:
             messagebox.showwarning("Warning", "Please add at least one Word file")
             return
-        
-        # Get common OCR Extraction file if specified
-        common_ocr_path = None
-        if hasattr(self, 'stage_v_ocr_extraction_var') and self.stage_v_ocr_extraction_var.get():
-            ocr_path = self.stage_v_ocr_extraction_var.get().strip()
-            if ocr_path and os.path.exists(ocr_path):
-                common_ocr_path = ocr_path
         
         pairs = []
         paired_word_files = set()
@@ -9628,13 +9553,9 @@ class ContentAutomationGUI:
                     paired_word_files.add(word_path)
                     break
             
-            # Auto-detect OCR Extraction JSON
-            ocr_extraction_path = self._auto_detect_ocr_extraction_for_pair(stage_j_path, common_ocr_path)
-            
             pair = {
                 'stage_j_path': stage_j_path,
                 'word_path': matched_word,
-                'ocr_extraction_path': ocr_extraction_path,
                 'status': 'pending',
                 'output_path': None,
                 'error': None
@@ -9646,11 +9567,9 @@ class ContentAutomationGUI:
         
         paired_count = sum(1 for p in pairs if p['word_path'] is not None)
         unpaired_count = len(pairs) - paired_count
-        ocr_detected_count = sum(1 for p in pairs if p['ocr_extraction_path'] is not None)
-        
         messagebox.showinfo(
             "Auto-Pairing Complete",
-            f"Paired: {paired_count}\nUnpaired: {unpaired_count}\nOCR Auto-detected: {ocr_detected_count}"
+            f"Paired: {paired_count}\nUnpaired: {unpaired_count}"
         )
     
     def _update_stage_v_pairs(self):
@@ -9682,10 +9601,7 @@ class ContentAutomationGUI:
             
             stage_j_name = os.path.basename(pair['stage_j_path']) if pair['stage_j_path'] else "None"
             word_name = os.path.basename(pair['word_path']) if pair['word_path'] else "None"
-            ocr_name = os.path.basename(pair['ocr_extraction_path']) if pair['ocr_extraction_path'] else "Auto-detect"
-            
             pair_text = f"{stage_j_name} ↔ {word_name}"
-            ocr_text = f"OCR: {ocr_name}"
             
             # Main pair info
             info_frame = ctk.CTkFrame(pair_frame)
@@ -9728,16 +9644,6 @@ class ContentAutomationGUI:
             )
             change_word_btn.pack(side="right", padx=5, pady=5)
             
-            # OCR info
-            ocr_label = ctk.CTkLabel(
-                pair_frame,
-                text=ocr_text,
-                font=ctk.CTkFont(size=9),
-                text_color="gray",
-                anchor="w"
-            )
-            ocr_label.pack(fill="x", padx=15, pady=(0, 5))
-            
             self.stage_v_pairs_info_list.append({
                 'pair': pair,
                 'status_label': status_label,
@@ -9767,16 +9673,6 @@ class ContentAutomationGUI:
                     self.root.after(0, lambda: messagebox.showwarning(
                         "Warning",
                         "No valid pairs found. Each pair must have both Stage J and Word file."
-                    ))
-                    return
-                
-                # Check OCR Extraction for all pairs
-                pairs_without_ocr = [p for p in valid_pairs if not p.get('ocr_extraction_path')]
-                if pairs_without_ocr:
-                    self.root.after(0, lambda: messagebox.showwarning(
-                        "Warning",
-                        f"{len(pairs_without_ocr)} pair(s) do not have OCR Extraction JSON.\n"
-                        "Please specify a common OCR Extraction file or ensure files exist in Stage J directories."
                     ))
                     return
                 
@@ -9847,8 +9743,6 @@ class ContentAutomationGUI:
                 for idx, pair in enumerate(valid_pairs):
                     stage_j_path = pair['stage_j_path']
                     word_path = pair['word_path']
-                    ocr_extraction_path = pair.get('ocr_extraction_path')
-                    
                     stage_j_name = os.path.basename(stage_j_path)
                     word_name = os.path.basename(word_path)
                     
@@ -9878,7 +9772,6 @@ class ContentAutomationGUI:
                         output_path = self.stage_v_processor.process_stage_v(
                             stage_j_path=stage_j_path,
                             word_file_path=word_path,
-                            ocr_extraction_json_path=ocr_extraction_path,
                             prompt_1=prompt_1,
                             model_name_1=model_1,
                             provider_1=provider_1,

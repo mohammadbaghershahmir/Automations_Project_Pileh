@@ -196,13 +196,14 @@ class UnifiedAPIClient:
             api_key = stage_api_key
             self.logger.info(f"[UnifiedAPIClient] Using stage-specific API key for stage: {stage}")
         
-        # Cap max_tokens for DeepSeek API
+        # Use max output tokens for DeepSeek (64K for reasoner, 8K for chat per docs)
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient):
             # Use DeepSeek model when caller passed Gemini default (avoids "Model Not Exist" on DeepSeek API)
             if model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name:
                 model_name = APIConfig.DEFAULT_DEEPSEEK_MODEL
-            max_tokens = min(max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
+            # Always use max allowed for DeepSeek; DeepSeek client will cap per model (reasoner 64K, chat 8K)
+            max_tokens = APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS
             self.logger.info(f"[UnifiedAPIClient] Processing text with DeepSeek model: {model_name} (stage: {stage})")
         elif isinstance(client, OpenRouterAPIClient):
             if model_name == APIConfig.DEFAULT_TEXT_MODEL or not model_name:
@@ -223,11 +224,10 @@ class UnifiedAPIClient:
                                 force_no_streaming: bool = False) -> Optional[str]:
         """Process PDF using appropriate API for current stage"""
         client = self.get_client_for_stage()
-        # Cap max_tokens for DeepSeek API
+        # Use max output tokens for DeepSeek (64K for reasoner per docs)
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient):
-            # This is DeepSeek client, cap max_tokens
-            max_tokens = min(max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
+            max_tokens = APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS
         return client.process_pdf_with_prompt(
             pdf_path, prompt, model_name, temperature, max_tokens, api_key, return_json, force_no_streaming
         )
@@ -244,11 +244,10 @@ class UnifiedAPIClient:
                                       progress_callback: Optional[Callable[[str], None]] = None) -> Optional[str]:
         """Process PDF in batches using appropriate API for current stage"""
         client = self.get_client_for_stage()
-        # Cap max_tokens for DeepSeek API
+        # Use max output tokens for DeepSeek (64K for reasoner per docs)
         from deepseek_api_client import DeepSeekAPIClient
         if isinstance(client, DeepSeekAPIClient):
-            # This is DeepSeek client, cap max_tokens
-            max_tokens = min(max_tokens, APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS)
+            max_tokens = APIConfig.DEFAULT_DEEPSEEK_MAX_TOKENS
         return client.process_pdf_with_prompt_batch(
             pdf_path, prompt, model_name, temperature, max_tokens,
             pages_per_batch, rows_per_batch, api_key, progress_callback
