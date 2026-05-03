@@ -150,6 +150,17 @@ class AutomatedPipelineOrchestrator:
         stage_v_prompt_2: Optional[str] = None,
         stage_v_model_2: Optional[str] = None,
         
+        # Optional Stages X, Y, Z (require old book PDF + prompts when enabled)
+        old_book_pdf_path: Optional[str] = None,
+        stage_x_pdf_extraction_prompt: Optional[str] = None,
+        stage_x_change_prompt: Optional[str] = None,
+        stage_x_pdf_extraction_model: Optional[str] = None,
+        stage_x_change_model: Optional[str] = None,
+        stage_y_prompt: Optional[str] = None,
+        stage_y_model: Optional[str] = None,
+        stage_z_prompt: Optional[str] = None,
+        stage_z_model: Optional[str] = None,
+        
         # Output directory
         output_dir: Optional[str] = None,
         
@@ -172,6 +183,7 @@ class AutomatedPipelineOrchestrator:
         6. Stage F: Process Stage E → Stage F JSON
         7. Stage J: Process Stage E + Word file → Stage J JSON (if Word file exists)
         8. Stage V: Process Stage J + Word file → Stage V JSON (if Word file exists)
+        9–11. Stages X, Y, Z: Optional when old_book_pdf_path and required prompts are provided.
         
         Args:
             pdf_path: Path to PDF file
@@ -197,7 +209,12 @@ class AutomatedPipelineOrchestrator:
             stage_v_model_2: Optional model for Stage V Step 2
             output_dir: Output directory (defaults to PDF directory)
             progress_callback: Optional callback for progress updates
-            resume_from_stage: Optional stage name to resume from (e.g., "J", "V")
+            resume_from_stage: Optional stage name to resume from (e.g., "J", "V", "X")
+            old_book_pdf_path: Old edition PDF for Stage X (and metadata for Y)
+            stage_x_pdf_extraction_prompt / stage_x_change_prompt: Required for Stage X
+            stage_x_pdf_extraction_model / stage_x_change_model: Optional overrides
+            stage_y_prompt / stage_y_model: Stage Y (requires Stage X in same run)
+            stage_z_prompt / stage_z_model: Stage Z (requires X and Y in same run)
             
         Returns:
             Dictionary mapping stage names to StageResult objects
@@ -239,12 +256,32 @@ class AutomatedPipelineOrchestrator:
         multi_part_processor = MultiPartProcessor(self.api_client, output_dir)
         multi_part_post_processor = MultiPartPostProcessor(self.api_client)
         
-        # Determine starting stage for resume
-        stages_to_run = ["1", "2", "3", "4", "E", "F", "J", "V"]
+        # Build stage list: core pipeline + optional X, Y, Z
+        core_stages = ["1", "2", "3", "4", "E", "F", "J", "V"]
+        xyz_stages: List[str] = []
+        if (
+            old_book_pdf_path
+            and os.path.isfile(old_book_pdf_path)
+            and stage_x_pdf_extraction_prompt
+            and stage_x_change_prompt
+        ):
+            xyz_stages.append("X")
+            if stage_y_prompt:
+                xyz_stages.append("Y")
+                if stage_z_prompt:
+                    xyz_stages.append("Z")
+            elif stage_z_prompt:
+                _progress("Warning: Stage Z requested but stage_y_prompt missing; skipping Z.")
+        elif (stage_y_prompt or stage_z_prompt or stage_x_pdf_extraction_prompt or stage_x_change_prompt):
+            _progress(
+                "Warning: Stages X/Y/Z need a valid old_book_pdf_path plus Stage X prompts. Skipping X/Y/Z."
+            )
+
+        stages_to_run = core_stages + xyz_stages
         if resume_from_stage:
             try:
-                start_index = stages_to_run.index(resume_from_stage)
-                stages_to_run = stages_to_run[start_index:]
+                resume_idx = stages_to_run.index(resume_from_stage)
+                stages_to_run = stages_to_run[resume_idx:]
                 _progress(f"Resuming from stage: {resume_from_stage}")
             except ValueError:
                 _progress(f"Warning: Invalid resume_from_stage '{resume_from_stage}', starting from beginning")
@@ -784,17 +821,21 @@ class AutomatedPipelineOrchestrator:
                 
                 ocr_extraction_json_path = stage1_result.output_path
                 
-                # Get old book PDF path from Stage X metadata
-                old_book_pdf_path = None
+                # Resolve old book PDF (do not assign to parameter name — avoids Python scoping bugs)
+                resolved_old_pdf = None
                 stage_x_result = self.stage_results.get("X")
                 if stage_x_result and stage_x_result.status == StageStatus.SUCCESS:
                     with open(stage_x_result.output_path, 'r', encoding='utf-8') as f:
                         stage_x_data = json.load(f)
                     stage_x_metadata = stage_x_data.get("metadata", {})
-                    old_book_pdf_path = stage_x_metadata.get("old_book_pdf_path")
+                    resolved_old_pdf = stage_x_metadata.get("old_book_pdf_path")
+                if (not resolved_old_pdf or not os.path.exists(resolved_old_pdf)) and old_book_pdf_path and os.path.exists(old_book_pdf_path):
+                    resolved_old_pdf = old_book_pdf_path
                 
-                if not old_book_pdf_path or not os.path.exists(old_book_pdf_path):
-                    raise Exception(f"Old book PDF path not found. Stage X must complete successfully before Stage Y, or old_book_pdf_path must be provided. Path: {old_book_pdf_path}")
+                if not resolved_old_pdf or not os.path.exists(resolved_old_pdf):
+                    raise Exception(
+                        f"Old book PDF path not found for Stage Y. Path: {resolved_old_pdf!r}"
+                    )
                 
                 # Validate required inputs
                 if not stage_y_prompt:
@@ -809,7 +850,7 @@ class AutomatedPipelineOrchestrator:
                 
                 # Run Stage Y
                 stage_y_output = self.stage_y_processor.process_stage_y(
-                    old_book_pdf_path=old_book_pdf_path,
+                    old_book_pdf_path=resolved_old_pdf,
                     ocr_extraction_prompt=ocr_extraction_prompt,
                     ocr_extraction_model=ocr_extraction_model,
                     ocr_extraction_json_path=ocr_extraction_json_path,

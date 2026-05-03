@@ -515,20 +515,16 @@ Handles chunked processing for very large inputs:
 pip install -r requirements.txt
 ```
 
-### Step 2: Prepare API Keys
+### Step 2: Prepare OpenRouter Environment Variables
 
-Create a CSV file with your Gemini API keys:
+Create a `.env` file in the project root:
 
-**Format**: `account;project;api_key`
-
-**Example** (`api_keys.csv`):
-```csv
-account;project;api_key
-Account1;Project1;YOUR_API_KEY_1_HERE
-Account2;Project2;YOUR_API_KEY_2_HERE
+```env
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_MODEL=z-ai/glm-5
 ```
 
-**Note**: Multiple API keys enable automatic rotation and better rate limit handling.
+`OPENROUTER_MODEL` is optional. If omitted, the app uses its default OpenRouter model.
 
 ### Step 3: Run the Application
 
@@ -540,11 +536,11 @@ python run.py
 
 ### Basic Workflow
 
-#### 1. Configure API Keys
+#### 1. Configure API Key
 
-1. Click "Browse" next to "API Key CSV File"
-2. Select your CSV file containing API keys
-3. Status will show "X API keys loaded" if successful
+1. Set `OPENROUTER_API_KEY` in `.env`
+2. Launch the app
+3. API status shows whether the key was detected from `.env`
 
 #### 2. Upload PDF
 
@@ -808,8 +804,8 @@ Log level can be adjusted in `main_gui.py` (`setup_logging()` method).
 
 ### Common Issues
 
-**Issue**: "No API keys loaded"
-- **Solution**: Check CSV file format (must be `account;project;api_key`)
+**Issue**: "OPENROUTER_API_KEY is missing in .env"
+- **Solution**: Create/update `.env` in project root and set `OPENROUTER_API_KEY=...`
 
 **Issue**: "Stage 2 processing failed"
 - **Solution**: Check Stage 1 JSON format, verify prompt is valid

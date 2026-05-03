@@ -16,13 +16,17 @@ from typing import Any, Dict, List, Optional, Tuple
 from base_stage_processor import BaseStageProcessor
 from word_file_processor import WordFileProcessor
 
-# Put Stage V prompts directly here (no external prompt files needed).
-# You can edit these two constants whenever prompts change.
-DEFAULT_STEP1_PROMPT = """تو یک دستیار تهیه محتوای آموزشی هستی.
+# Step 1 default matches `prompts.json` → "Test Bank Generation - Step 1 Prompt"
+def _default_step1_from_repo() -> str:
+    import json
+    from pathlib import Path
 
-متن زیر یک متن پزشکی حاوی تعدادی تست و سپس پاسخ تشریحی آن است.
-خروجی را به صورت JSON تولید کن و ساختار ستون‌ها را رعایت کن.
-"""
+    root = Path(__file__).resolve().parent
+    data = json.loads((root / "prompts.json").read_text(encoding="utf-8"))
+    return data["Test Bank Generation - Step 1 Prompt"].strip()
+
+
+DEFAULT_STEP1_PROMPT = _default_step1_from_repo()
 
 DEFAULT_STEP2_PROMPT = """تو یک دستیار تهیه محتوای آموزشی هستی.
 
@@ -137,8 +141,23 @@ class StageVPromptPreview(BaseStageProcessor):
             "source_stage_j": os.path.abspath(stage_j_path),
             "source_word_file": os.path.abspath(word_file_path),
             "total_topics": len(topics_list),
+            "step1_mode": "single_full_input",
             "topics": [],
         }
+
+        full_stage_j_json = json.dumps(cleaned_records, ensure_ascii=False, indent=2)
+        full_prompt_1 = f"""{prompt_1}
+
+Word Document (Test Questions):
+{word_content_formatted}
+
+Stage J Data (FULL file - all records, without Type column):
+{full_stage_j_json}"""
+
+        step1_path = os.path.join(final_output_dir, "step1_full_input.txt")
+        with open(step1_path, "w", encoding="utf-8") as f:
+            f.write(full_prompt_1)
+        manifest["step1_prompt_file"] = os.path.abspath(step1_path)
 
         for topic_idx, (chapter_name, subchapter_name, topic_name) in enumerate(topics_list, 1):
             topic_key = self._build_topic_key(chapter_name, subchapter_name, topic_name)
@@ -151,18 +170,6 @@ class StageVPromptPreview(BaseStageProcessor):
                 continue
 
             stage_j_json = json.dumps(filtered_stage_j, ensure_ascii=False, indent=2)
-
-            topic_prompt_1 = prompt_1.replace("{Topic_NAME}", topic_name)
-            topic_prompt_1 = topic_prompt_1.replace("{Subchapter_Name}", subchapter_name)
-            full_prompt_1 = f"""{topic_prompt_1}
-
-Word Document (Test Questions):
-{word_content_formatted}
-
-Stage J Data (FULL file - all records, without Type column):
-{stage_j_json}
-
-IMPORTANT: Focus on generating test questions for the topic: "{topic_name}" (Subchapter: "{subchapter_name}")."""
 
             topic_prompt_2 = prompt_2.replace("{Topic_NAME}", topic_name)
             topic_prompt_2 = topic_prompt_2.replace("{Subchapter_Name}", subchapter_name)
@@ -177,11 +184,8 @@ Stage J Data (FULL file - all records, without Type column):
 IMPORTANT: Focus on refining test questions for the topic: "{topic_name}" (Subchapter: "{subchapter_name}")."""
 
             safe_topic = self._safe_name(topic_name, default=f"topic_{topic_idx}")
-            step1_path = os.path.join(final_output_dir, f"step1_topic_{topic_idx:03d}_{safe_topic}.txt")
             step2_path = os.path.join(final_output_dir, f"step2_topic_{topic_idx:03d}_{safe_topic}.txt")
 
-            with open(step1_path, "w", encoding="utf-8") as f:
-                f.write(full_prompt_1)
             with open(step2_path, "w", encoding="utf-8") as f:
                 f.write(full_prompt_2)
 
@@ -192,13 +196,12 @@ IMPORTANT: Focus on refining test questions for the topic: "{topic_name}" (Subch
                     "subchapter": subchapter_name,
                     "topic": topic_name,
                     "stage_j_rows_in_prompt": len(filtered_stage_j),
-                    "step1_prompt_file": os.path.abspath(step1_path),
                     "step2_prompt_file": os.path.abspath(step2_path),
                 }
             )
 
         if not manifest["topics"]:
-            raise ValueError("No prompts generated (no matching Stage J rows found for OCR topics)")
+            raise ValueError("No prompts generated (no matching Stage J rows found for topics)")
 
         manifest_path = os.path.join(final_output_dir, "prompt_manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as f:

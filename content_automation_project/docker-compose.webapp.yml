@@ -1,0 +1,64 @@
+# Content Automation — admin API + Celery worker + Redis
+#
+# 1. cp .env.example .env  then edit .env (SECRET_KEY, ADMIN_EMAIL_1, ADMIN_PASSWORD_1, API keys)
+# 2. docker compose -f docker-compose.webapp.yml up --build
+# 3. http://localhost:8000
+#
+# Default images use AWS Public ECR copies of Docker Official Images (same content as docker.io)
+# when Docker Hub (registry-1.docker.io) returns EOF. Override PYTHON_BASE_IMAGE / REDIS_IMAGE in .env
+# if you prefer docker.io or your own mirror.
+#
+# Compose loads ".env" from this directory for ${VAR} substitution and passes it into containers
+# (env_file). No need for export in the shell.
+#
+# Data: volume app-data → /data (SQLite + job files). Reset: docker compose ... down -v
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-public.ecr.aws/docker/library/redis:7-alpine}
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.webapp
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-public.ecr.aws/docker/library/python:3.11-slim-bookworm}
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ADMIN_EMAIL_1: ${ADMIN_EMAIL_1:-admin@localhost}
+      ADMIN_PASSWORD_1: ${ADMIN_PASSWORD_1:-changeme}
+      DATABASE_URL: sqlite:////data/webapp.db
+      JOBS_ROOT: /data/jobs
+    volumes:
+      - app-data:/data
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.webapp
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim-bookworm}
+    command: celery -A webapp.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      DATABASE_URL: sqlite:////data/webapp.db
+      JOBS_ROOT: /data/jobs
+    volumes:
+      - app-data:/data
+    depends_on:
+      - redis
+
+volumes:
+  app-data:

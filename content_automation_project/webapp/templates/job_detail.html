@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.id[:8] }}{% endblock %}
+{% block sidebar_extra %}
+<span class="nav-label">Open job</span>
+<span class="muted" style="display:block;padding:4px 12px 0;font-size:11px;word-break:break-all;line-height:1.35;">{{ job.id[:10] }}…</span>
+{% endblock %}
+{% block content %}
+<p class="muted" style="margin:0 0 8px;"><a href="/jobs">← All jobs</a></p>
+<h1 style="margin-top:0;">{{ cfg.get("display_name", "Test Bank job") }}</h1>
+<p class="muted"><code style="font-size:11px;">{{ job.id }}</code> · Created {{ job.created_at|shamsi }} (Tehran)</p>
+
+<div id="notify-stack" class="notify-stack" aria-live="polite"></div>
+
+{% set ns = namespace(all_s1_ok=false) %}
+{% if pairs and pairs|length > 0 %}
+  {% set ns.all_s1_ok = true %}
+  {% for p in pairs %}
+    {% if p.step1_status != 'succeeded' %}
+      {% set ns.all_s1_ok = false %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{# Match JS poll: Step 1 stop while step1 aggregate ≠ succeeded; Step 2 stop when step1 done and step2 not finished #}
+{% set show_stop_s1 = job.status in ('queued', 'running') and not ns.all_s1_ok %}
+{% set show_stop_s2 = job.status in ('queued', 'running') and ns.all_s1_ok %}
+
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">Word pairing</h2>
+  <p class="muted" style="margin-top:0;">Upload a <strong>.doc</strong> or <strong>.docx</strong> for each pair, or choose files already in this job. <strong>Save pairing</strong> before running Step&nbsp;1.</p>
+  <form method="post" action="/jobs/{{ job.id }}/pairing" enctype="multipart/form-data">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Stage J</th><th>Word file</th></tr>
+      </thead>
+      <tbody>
+        {% for p in pairs %}
+        <tr>
+          <td>{{ p.pair_index }}</td>
+          <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:min(100%,400px);">
+              <label class="muted" style="font-size:12px;">Upload</label>
+              <input type="file" name="word_upload_{{ p.pair_index }}" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="font-size:12px;max-width:100%;"/>
+              <label class="muted" style="font-size:12px;margin-top:4px;">Or use file already in this job</label>
+              <select name="word_pair_{{ p.pair_index }}" style="min-width:220px;max-width:100%;padding:6px 8px;border-radius:6px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-border);">
+                <option value="">— none —</option>
+                {% for w in word_choices %}
+                <option value="{{ w }}" {% if p.word_filename == w %}selected{% endif %}>{{ w }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit" class="btn-cta secondary" style="margin-top:14px;">Save pairing</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Initial outputs</h2>
+  <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
+  {% set p0 = pairs[0] if pairs else none %}
+  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="Run Step 1"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% else %}Run Step 1{% endif %}</span></button>
+
+  <div id="stop-under-s1" class="stop-under-step" style="display:{% if show_stop_s1 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+    <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 1</button>
+    <p class="muted" style="margin:8px 0 0;font-size:12px;">Request stop — the worker exits after the current API call (or sooner when it checks).</p>
+  </div>
+
+  <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 1 outputs</h3>
+  <p class="muted" style="margin-top:0;font-size:13px;">Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.</p>
+  <table>
+    <thead>
+      <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
+    </thead>
+    <tbody id="tbody-s1">
+      {% for a in step1_artifacts %}
+      <tr>
+        <td>{{ a.role }}</td>
+        <td style="font-size:12px;word-break:break-all;">{{ a.rel_path }}</td>
+        <td>{{ a.byte_size }}</td>
+        <td><a href="/artifacts/{{ a.id }}/download">Download</a>
+          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=12000" target="_blank">Preview</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No Step 1 outputs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">Step 2 — Refined outputs</h2>
+  <p class="muted" style="margin-top:0;">Uses Step&nbsp;1 results. Run only after Step&nbsp;1 has succeeded and you have checked Step&nbsp;1 outputs above.</p>
+  {% if job.type == 'test_bank' and not step2_enabled %}
+  <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;color:#fbbf24;">Finish Step&nbsp;1 successfully before running Step&nbsp;2.</p>
+  {% else %}
+  <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;display:none;"></p>
+  {% endif %}
+  <button type="button" id="btn-s2" class="btn-cta secondary btn-step{% if p0 and step2_enabled and p0.step2_status == 'running' %} is-running{% elif p0 and step2_enabled and p0.step2_status == 'failed' %} is-failed{% endif %}" data-default-label="Run Step 2" {% if job.type == 'test_bank' and not step2_enabled %}disabled data-keep-disabled="1"{% elif p0 and step2_enabled and p0.step2_status == 'running' %}disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and step2_enabled and p0.step2_status == 'running' %}Running…{% elif p0 and step2_enabled and p0.step2_status == 'failed' %}Failed — run again{% else %}Run Step 2{% endif %}</span></button>
+
+  <div id="stop-under-s2" class="stop-under-step" style="display:{% if show_stop_s2 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+    <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 2</button>
+    <p class="muted" style="margin:8px 0 0;font-size:12px;">Request stop — the worker exits after the current API call (or sooner when it checks).</p>
+  </div>
+
+  <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 2 outputs</h3>
+  <p class="muted" style="margin-top:0;font-size:13px;">Final and Step&nbsp;2 topic artifacts (updates while Step&nbsp;2 runs).</p>
+  <table>
+    <thead>
+      <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
+    </thead>
+    <tbody id="tbody-s2">
+      {% for a in step2_artifacts %}
+      <tr>
+        <td>{{ a.role }}</td>
+        <td style="font-size:12px;word-break:break-all;">{{ a.rel_path }}</td>
+        <td>{{ a.byte_size }}</td>
+        <td><a href="/artifacts/{{ a.id }}/download">Download</a>
+          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=12000" target="_blank">Preview</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No Step 2 outputs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if job.type != 'test_bank' %}
+<div class="card" style="text-align:center;">
+  <button type="button" id="btn-full" class="secondary" style="font-size:0.9rem;">Run full pipeline (Step 1 + 2)</button>
+  <p class="muted" style="margin:10px 0 0;font-size:12px;">Runs Step&nbsp;1 then Step&nbsp;2 in one queued job (non–Test Bank types).</p>
+</div>
+{% endif %}
+
+{% if other_artifacts %}
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">Inputs &amp; other files</h2>
+  <p class="muted" style="margin-top:0;font-size:13px;">Uploads and other artifacts not shown under Step&nbsp;1 / Step&nbsp;2.</p>
+  <table>
+    <thead>
+      <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for a in other_artifacts %}
+      <tr>
+        <td>{{ a.role }}</td>
+        <td style="font-size:12px;word-break:break-all;">{{ a.rel_path }}</td>
+        <td>{{ a.byte_size }}</td>
+        <td><a href="/artifacts/{{ a.id }}/download">Download</a>
+          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=12000" target="_blank">Preview</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">Log <span class="muted">(poll every 3s)</span></h2>
+  <pre class="log" id="logbox">Loading…</pre>
+</div>
+
+<script>
+(function() {
+  const jobId = "{{ job.id }}";
+  const jobType = "{{ job.type }}";
+  const testBank = jobType === "test_bank";
+  function detailFromJson(obj) {
+    const d = obj && obj.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.map(function (x) { return x.msg || JSON.stringify(x); }).join("; ");
+    return d ? String(d) : "";
+  }
+  async function post(url, btn) {
+    if (!btn) return;
+    var labelEl = btn.querySelector(".btn-label");
+    var def = btn.getAttribute("data-default-label") || "Run";
+    var prevLabel = labelEl ? labelEl.textContent : "";
+    btn.disabled = true;
+    btn.classList.remove("is-running", "is-failed");
+    if (labelEl) labelEl.textContent = "Queueing…";
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const text = await r.text();
+      var j = null;
+      try { j = JSON.parse(text); } catch (_) {}
+      if (!r.ok) {
+        var msg = (j && detailFromJson(j)) || text.slice(0, 300);
+        window.alert("Could not queue job (" + r.status + "): " + (msg || "no details"));
+        btn.disabled = false;
+        if (labelEl) labelEl.textContent = prevLabel;
+        return;
+      }
+      location.reload();
+    } catch (e) {
+      window.alert("Network error: " + e);
+      btn.disabled = false;
+      if (labelEl) labelEl.textContent = prevLabel;
+    }
+  }
+  document.getElementById("btn-s1").onclick = function (ev) { post("/jobs/" + jobId + "/enqueue-step1", ev.currentTarget); };
+  document.getElementById("btn-s2").onclick = function (ev) {
+    var b = ev.currentTarget;
+    if (b.disabled) return;
+    post("/jobs/" + jobId + "/enqueue-step2", b);
+  };
+  var bf = document.getElementById("btn-full");
+  if (bf) bf.onclick = function (ev) { post("/jobs/" + jobId + "/enqueue-full", ev.currentTarget); };
+
+  var notifyStackEarly = document.getElementById("notify-stack");
+  function addBannerEarly(kind, text) {
+    if (!notifyStackEarly) return;
+    var div = document.createElement("div");
+    div.className = "notify-banner " + kind;
+    div.setAttribute("role", "status");
+    var span = document.createElement("span");
+    span.textContent = text;
+    var bx = document.createElement("button");
+    bx.type = "button";
+    bx.className = "notify-dismiss";
+    bx.setAttribute("aria-label", "Dismiss");
+    bx.textContent = "×";
+    bx.onclick = function () { div.remove(); };
+    div.appendChild(span);
+    div.appendChild(bx);
+    notifyStackEarly.appendChild(div);
+  }
+  document.querySelectorAll(".btn-stop-step").forEach(function (btnStop) {
+    btnStop.addEventListener("click", async function () {
+      if (btnStop.disabled) return;
+      if (!window.confirm("Stop this background run? The worker will stop after the current API call finishes (usually within a short time).")) return;
+      document.querySelectorAll(".btn-stop-step").forEach(function (b) { b.disabled = true; });
+      try {
+        const r = await fetch("/jobs/" + jobId + "/cancel", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        const text = await r.text();
+        var jo = null;
+        try { jo = JSON.parse(text); } catch (_) {}
+        if (!r.ok) {
+          var msg = (jo && jo.detail) ? (typeof jo.detail === "string" ? jo.detail : JSON.stringify(jo.detail)) : text.slice(0, 300);
+          window.alert(msg || "Could not stop");
+          document.querySelectorAll(".btn-stop-step").forEach(function (b) { b.disabled = false; });
+          return;
+        }
+        addBannerEarly("info", "Stop requested — the worker will stop after the current work finishes. Watch the log for progress.");
+      } catch (e) {
+        window.alert("Network error: " + e);
+        document.querySelectorAll(".btn-stop-step").forEach(function (b) { b.disabled = false; });
+      }
+    });
+  });
+})();
+
+(function() {
+  const jobId = "{{ job.id }}";
+  const jobType = "{{ job.type }}";
+  const testBank = jobType === "test_bank";
+  const STEP1_ROLES = ["step1_combined", "txt_dump"];
+  const STEP2_ROLES = ["step2_topic", "final_b_json"];
+  let afterSeq = 0;
+  const logbox = document.getElementById("logbox");
+  const notifyStack = document.getElementById("notify-stack");
+  const tbodyS1 = document.getElementById("tbody-s1");
+  const tbodyS2 = document.getElementById("tbody-s2");
+  const btnS1 = document.getElementById("btn-s1");
+  const btnS2 = document.getElementById("btn-s2");
+  const step2Hint = document.getElementById("step2-hint");
+  const stopUnderS1 = document.getElementById("stop-under-s1");
+  const stopUnderS2 = document.getElementById("stop-under-s2");
+
+  let prevS1 = null;
+  let prevS2 = null;
+  let prevJobStatus = "{{ job.status }}";
+
+  function aggStep(pairs, key) {
+    if (!pairs || !pairs.length) return "pending";
+    if (pairs.some(function (p) { return p[key] === "running"; })) return "running";
+    if (pairs.some(function (p) { return p[key] === "failed"; })) return "failed";
+    if (pairs.every(function (p) { return p[key] === "succeeded"; })) return "succeeded";
+    return "pending";
+  }
+
+  function updateStopPlacement(j, pairs) {
+    var busy = j.status === "queued" || j.status === "running";
+    var a1 = aggStep(pairs, "step1_status");
+    var a2 = aggStep(pairs, "step2_status");
+    if (stopUnderS1) stopUnderS1.style.display = busy && a1 !== "succeeded" ? "block" : "none";
+    if (stopUnderS2) stopUnderS2.style.display = busy && a1 === "succeeded" && a2 !== "succeeded" ? "block" : "none";
+    document.querySelectorAll(".btn-stop-step").forEach(function (b) {
+      b.disabled = !busy;
+    });
+  }
+
+  function setStepButton(btn, state) {
+    if (!btn) return;
+    var label = btn.querySelector(".btn-label");
+    var def = btn.getAttribute("data-default-label") || "Run";
+    btn.classList.remove("is-running", "is-failed");
+    if (state === "running") {
+      btn.classList.add("is-running");
+      btn.disabled = true;
+      if (label) label.textContent = "Running…";
+    } else if (state === "failed") {
+      btn.classList.add("is-failed");
+      btn.disabled = false;
+      if (label) label.textContent = "Failed — run again";
+    } else {
+      if (label) label.textContent = def;
+      btn.disabled = btn.hasAttribute("data-keep-disabled");
+    }
+  }
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function renderArtifactRows(tbody, list, rolesFilter) {
+    if (!tbody) return;
+    var rows = (list || []).filter(function (a) { return rolesFilter.indexOf(a.role) >= 0; });
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">No outputs yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function (a) {
+      return (
+        "<tr><td>" + escapeHtml(a.role) + "</td>" +
+        '<td style="font-size:12px;word-break:break-all;">' + escapeHtml(a.rel_path) + "</td>" +
+        "<td>" + escapeHtml(String(a.byte_size)) + "</td>" +
+        '<td><a href="/artifacts/' + a.id + '/download">Download</a> ' +
+        '<a href="/artifacts/' + a.id + '/preview?offset=0&limit=12000" target="_blank">Preview</a></td></tr>'
+      );
+    }).join("");
+  }
+
+  function addBanner(kind, text) {
+    if (!notifyStack) return;
+    var div = document.createElement("div");
+    div.className = "notify-banner " + kind;
+    div.setAttribute("role", "status");
+    var span = document.createElement("span");
+    span.textContent = text;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "notify-dismiss";
+    btn.setAttribute("aria-label", "Dismiss");
+    btn.textContent = "×";
+    btn.onclick = function () { div.remove(); };
+    div.appendChild(span);
+    div.appendChild(btn);
+    notifyStack.appendChild(div);
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch("/jobs/" + jobId + "/poll?after_seq=" + afterSeq + "&limit=800", { credentials: "same-origin" });
+      if (!r.ok) {
+        if (logbox.textContent === "Loading…" || (logbox.textContent.indexOf("Poll failed") === 0))
+          logbox.textContent = "Poll failed (" + r.status + "). Try refreshing the page or signing in again.";
+        return;
+      }
+      const j = await r.json();
+      var pairs = j.pairs || [];
+      var a1 = aggStep(pairs, "step1_status");
+      var a2 = aggStep(pairs, "step2_status");
+
+      if (prevS1 !== null) {
+        if (prevS1 === "running" && a1 === "succeeded") {
+          addBanner("ok", "Step 1 finished — review Step 1 outputs above, then run Step 2 when ready.");
+        }
+        if (prevS1 === "running" && a1 === "failed") {
+          addBanner("fail", "Step 1 failed. Check the log below.");
+        }
+      }
+      if (prevS2 !== null) {
+        if (prevS2 === "running" && a2 === "succeeded") {
+          addBanner("ok", "Step 2 finished — review Step 2 outputs below.");
+        }
+        if (prevS2 === "running" && a2 === "failed") {
+          addBanner("fail", "Step 2 failed. Check the log below.");
+        }
+      }
+      prevS1 = a1;
+      prevS2 = a2;
+
+      if (prevJobStatus !== "cancelled" && j.status === "cancelled") {
+        addBanner("info", "Job stopped.");
+      }
+      prevJobStatus = j.status;
+
+      updateStopPlacement(j, pairs);
+
+      setStepButton(btnS1, a1);
+
+      if (testBank && btnS2) {
+        if (a1 !== "succeeded") {
+          btnS2.setAttribute("data-keep-disabled", "1");
+          btnS2.disabled = true;
+          btnS2.classList.remove("is-running", "is-failed");
+          var lb2 = btnS2.querySelector(".btn-label");
+          if (lb2) lb2.textContent = btnS2.getAttribute("data-default-label");
+          if (step2Hint) {
+            step2Hint.style.display = "";
+            step2Hint.textContent = "Finish Step 1 successfully before running Step 2.";
+          }
+        } else {
+          btnS2.removeAttribute("data-keep-disabled");
+          setStepButton(btnS2, a2);
+          if (step2Hint) step2Hint.style.display = "none";
+        }
+      } else {
+        if (btnS2) btnS2.removeAttribute("data-keep-disabled");
+        setStepButton(btnS2, a2);
+      }
+
+      if (j.artifacts && tbodyS1) renderArtifactRows(tbodyS1, j.artifacts, STEP1_ROLES);
+      if (j.artifacts && tbodyS2) renderArtifactRows(tbodyS2, j.artifacts, STEP2_ROLES);
+
+      if (j.log_lines && j.log_lines.length) {
+        let chunk = "";
+        for (const l of j.log_lines) {
+          chunk += l.line + "\n";
+          afterSeq = Math.max(afterSeq, l.seq);
+        }
+        if (logbox.textContent === "Loading…") logbox.textContent = "";
+        logbox.textContent += chunk;
+      }
+      if (typeof j.max_seq === "number") afterSeq = Math.max(afterSeq, j.max_seq);
+    } catch (e) {
+      if (logbox.textContent === "Loading…" || (logbox.textContent.indexOf("Poll failed") === 0))
+        logbox.textContent = "Poll failed (network). Check connection and refresh.";
+      console.warn(e);
+    }
+  }
+  poll();
+  setInterval(poll, 3000);
+})();
+</script>
+{% endblock %}

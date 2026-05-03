@@ -10,11 +10,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 
 import requests
 
 from api_layer import APIKeyManager, APIConfig
+
+
+class OpenRouterRequestAborted(Exception):
+    """Raised when cancel_check() is true during a streamed request (user stop)."""
 
 
 class OpenRouterAPIClient:
@@ -40,16 +44,122 @@ class OpenRouterAPIClient:
         adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
         self.session.mount("https://", adapter)
 
+    def _resolve_api_key(self, explicit_api_key: Optional[str] = None) -> Optional[str]:
+        """Resolve API key from explicit parameter or OPENROUTER_API_KEY env."""
+        if explicit_api_key and explicit_api_key.strip():
+            return explicit_api_key.strip()
+        key = self.key_manager.get_next_key()
+        if key and key.strip():
+            return key.strip()
+        return (os.getenv("OPENROUTER_API_KEY") or "").strip() or None
+
+    def extract_from_code_block(self, text: str) -> str:
+        """Compatibility helper shared by processors."""
+        if not text:
+            return text
+        text_stripped = text.strip()
+        if text_stripped.startswith("```"):
+            first_newline = text_stripped.find("\n")
+            if first_newline == -1:
+                return text_stripped.strip("`").strip()
+            end_marker = text_stripped.rfind("```")
+            if end_marker > first_newline:
+                return text_stripped[first_newline + 1:end_marker].strip()
+        return text
+
     def initialize_text_client(self, model_name: str = APIConfig.DEFAULT_OPENROUTER_MODEL,
                                api_key: Optional[str] = None) -> bool:
         """Compatibility initializer (stores model; validates API key availability)."""
-        key = api_key or self.key_manager.get_next_key()
+        key = self._resolve_api_key(api_key)
         if not key:
             self.logger.error("No OpenRouter API key available")
             return False
         self._current_model_name = model_name
         self.logger.info(f"OpenRouter client initialized with model: {model_name}")
         return True
+
+    def _stream_chat_completions(
+        self,
+        *,
+        model_name: str,
+        user_text: str,
+        system_prompt: Optional[str],
+        temperature: float,
+        max_tokens: int,
+        api_key: Optional[str],
+        timeout_s: float,
+        cancel_check: Callable[[], bool],
+    ) -> Optional[str]:
+        """Stream tokens from OpenRouter and check cancel between SSE lines (enables user stop)."""
+        key = self._resolve_api_key(api_key)
+        if not key:
+            self.logger.error("No OpenRouter API key available")
+            return None
+
+        messages: List[Dict[str, str]] = []
+        if system_prompt and system_prompt.strip():
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_text})
+
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://content-automation.local",
+            "X-Title": "Content Automation",
+        }
+        payload: Dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        if cancel_check():
+            raise OpenRouterRequestAborted()
+        try:
+            resp = self.session.post(
+                self.base_url, headers=headers, json=payload, stream=True, timeout=timeout_s
+            )
+            resp.raise_for_status()
+            # text/event-stream often has no charset; requests defaults to ISO-8859-1 and mojibakes UTF-8
+            # (e.g. Persian) before json.loads. Force UTF-8 for iter_lines decode.
+            resp.encoding = "utf-8"
+            chunks: List[str] = []
+            for raw in resp.iter_lines(decode_unicode=True):
+                if cancel_check():
+                    resp.close()
+                    raise OpenRouterRequestAborted()
+                if not raw:
+                    continue
+                line = raw.strip()
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                err = obj.get("error")
+                if err:
+                    msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+                    self.logger.error("OpenRouter stream error: %s", msg)
+                    return None
+                for choice in obj.get("choices") or []:
+                    delta = choice.get("delta") or {}
+                    if not isinstance(delta, dict):
+                        continue
+                    piece = delta.get("content") or delta.get("reasoning")
+                    if piece:
+                        chunks.append(piece)
+            return "".join(chunks) if chunks else None
+        except OpenRouterRequestAborted:
+            raise
+        except Exception as e:
+            self.logger.error("OpenRouter streaming failed: %s", e)
+            return None
 
     def _call_chat_completions(
         self,
@@ -61,13 +171,26 @@ class OpenRouterAPIClient:
         max_tokens: int,
         api_key: Optional[str],
         timeout_s: float = 300.0,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Optional[str]:
-        key = api_key or self.key_manager.get_next_key()
+        if cancel_check is not None:
+            return self._stream_chat_completions(
+                model_name=model_name,
+                user_text=user_text,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                api_key=api_key,
+                timeout_s=timeout_s,
+                cancel_check=cancel_check,
+            )
+
+        key = self._resolve_api_key(api_key)
         if not key:
             self.logger.error("No OpenRouter API key available")
             return None
 
-        messages = []
+        messages: List[Dict[str, str]] = []
         if system_prompt and system_prompt.strip():
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_text})
@@ -105,8 +228,12 @@ class OpenRouterAPIClient:
         temperature: float = APIConfig.DEFAULT_TEMPERATURE,
         max_tokens: int = APIConfig.DEFAULT_MAX_TOKENS,
         api_key: Optional[str] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Optional[str]:
-        """Process text via OpenRouter chat completions."""
+        """Process text via OpenRouter chat completions.
+
+        When cancel_check is set, uses streaming so stop requests can take effect during long generations.
+        """
         if not model_name:
             model_name = APIConfig.DEFAULT_OPENROUTER_MODEL
         self._current_model_name = model_name
@@ -117,6 +244,7 @@ class OpenRouterAPIClient:
             temperature=temperature,
             max_tokens=max_tokens,
             api_key=api_key,
+            cancel_check=cancel_check,
         )
 
     def process_pdf_with_prompt(

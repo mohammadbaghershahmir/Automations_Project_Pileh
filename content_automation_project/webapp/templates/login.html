@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #0f1419; color: #e7e9ea; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; }
+    form { background: #16181c; padding: 28px 26px; border-radius: 8px; border: 1px solid #2f3336; width: 100%; max-width: 380px; }
+    label { display: block; margin-bottom: 6px; font-size: 14px; color: #71767b; }
+    input { display: block; width: 100%; max-width: 100%; padding: 12px 14px; margin-bottom: 16px; border-radius: 6px; border: 1px solid #333; background: #080a0c; color: #e7e9ea; }
+    button { width: 100%; padding: 12px 14px; background: #1d9bf0; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; box-sizing: border-box; }
+    .err { color: #f87171; margin-bottom: 12px; font-size: 14px; }
+  </style>
+</head>
+<body>
+<form id="login-form">
+  <h1 style="margin-top:0;font-size:1.25rem;">Admin login</h1>
+  <div id="err" class="err" style="display:none;"></div>
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" autocomplete="username" required/>
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required/>
+  <button type="submit">Sign in</button>
+</form>
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const r = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ email, password }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok && j.ok) {
+    window.location.href = '/jobs';
+    return;
+  }
+  err.textContent = j.error || 'Login failed';
+  err.style.display = 'block';
+});
+</script>
+</body>
+</html>

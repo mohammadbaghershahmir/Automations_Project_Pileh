@@ -1,2 +1,5 @@
 build/
 dist/
+
+# Local secrets and env (use .env.example as template)
+.env

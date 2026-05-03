@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 
 
 class StageSettingsManager:
-    """Manages stage-specific settings (model and API key)"""
+    """Manages stage-specific settings (model and API key)."""
     
     def __init__(self, settings_file: str = "stage_settings.json"):
         """
@@ -156,9 +156,9 @@ class StageSettingsManager:
             default: Default provider if not set
             
         Returns:
-            Provider name ("google", "deepseek", or "openrouter") or default
+            Provider name (always "openrouter" in current architecture)
         """
-        return self.get_stage_setting(stage_name, 'provider', default)
+        return "openrouter"
     
     def set_stage_provider(self, stage_name: str, provider: str) -> bool:
         """
@@ -166,15 +166,14 @@ class StageSettingsManager:
         
         Args:
             stage_name: Name of the stage
-            provider: Provider name ("google" or "deepseek")
+            provider: Provider name
             
         Returns:
             True if set successfully, False otherwise
         """
-        if provider not in ["google", "deepseek", "openrouter"]:
-            self.logger.warning(f"Invalid provider: {provider}. Must be 'google', 'deepseek', or 'openrouter'")
-            return False
-        return self.set_stage_setting(stage_name, 'provider', provider)
+        if provider != "openrouter":
+            self.logger.warning("Only 'openrouter' provider is supported. Overriding requested provider.")
+        return self.set_stage_setting(stage_name, 'provider', "openrouter")
     
     def get_all_stage_settings(self, stage_name: str) -> Dict[str, Any]:
         """

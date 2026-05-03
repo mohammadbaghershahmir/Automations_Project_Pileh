@@ -34,11 +34,15 @@ from stage_h_processor import StageHProcessor
 from stage_m_processor import StageMProcessor
 from stage_l_processor import StageLProcessor
 from stage_v_processor import StageVProcessor
+from stage_v_pairing import (
+    extract_book_chapter_from_stage_j_for_v,
+    extract_book_chapter_from_word_filename_for_v,
+    auto_pair_stage_v_files,
+)
 from stage_x_processor import StageXProcessor
 from stage_y_processor import StageYProcessor
 from stage_z_processor import StageZProcessor
 from pre_ocr_topic_processor import PreOCRTopicProcessor
-from automated_pipeline_orchestrator import AutomatedPipelineOrchestrator
 from reference_change_topic_extractor import extract_topics_from_ocr_json
 
 
@@ -70,30 +74,11 @@ class ContentAutomationGUI:
         self.pdf_processor = PDFProcessor()
         self.prompt_manager = PromptManager()
         
-        # Initialize API key managers for Google, DeepSeek, and OpenRouter
-        self.google_api_key_manager = APIKeyManager()
-        self.deepseek_api_key_manager = APIKeyManager()
+        # Initialize API key manager (OpenRouter only, loaded from .env)
         self.openrouter_api_key_manager = APIKeyManager()
-        
-        # Initialize API key file path variables (will be set in setup_api_section if not exists)
-        # These are created here to ensure they exist before UI setup
-        
-        # Load API keys if files exist (auto-load on startup)
-        if os.path.exists("api_keys.csv"):
-            if not hasattr(self, 'api_key_file_var'):
-                self.api_key_file_var = ctk.StringVar()
-            self.api_key_file_var.set("api_keys.csv")
-            self.google_api_key_manager.load_from_csv("api_keys.csv")
-        if os.path.exists("deepseek_api_keys.csv"):
-            if not hasattr(self, 'deepseek_api_key_file_var'):
-                self.deepseek_api_key_file_var = ctk.StringVar()
-            self.deepseek_api_key_file_var.set("deepseek_api_keys.csv")
-            self.deepseek_api_key_manager.load_from_csv("deepseek_api_keys.csv")
-        if os.path.exists("openrouter_api_keys.csv"):
-            if not hasattr(self, 'openrouter_api_key_file_var'):
-                self.openrouter_api_key_file_var = ctk.StringVar()
-            self.openrouter_api_key_file_var.set("openrouter_api_keys.csv")
-            self.openrouter_api_key_manager.load_from_csv("openrouter_api_keys.csv")
+        self.openrouter_api_key_manager.load_from_env()
+        self.google_api_key_manager = self.openrouter_api_key_manager
+        self.deepseek_api_key_manager = self.openrouter_api_key_manager
         
         # Initialize stage settings manager
         self.stage_settings_manager = StageSettingsManager()
@@ -295,129 +280,49 @@ class ContentAutomationGUI:
         # Output Section
         self.setup_output_section(main_frame)
         
-        # Automated Pipeline Section (includes View Other Tools button)
-        self.setup_automated_pipeline_section(main_frame)
+        # Open tabbed stages/tools (manual workflow only; no full auto pipeline)
+        self.setup_start_per_page_section(main_frame)
         
         # Status Section
         self.setup_status_section(main_frame)
     
     def setup_api_section(self, parent):
-        """Setup API configuration section"""
+        """Setup API configuration section (OpenRouter + .env only)."""
         api_frame = ctk.CTkFrame(parent)
         api_frame.pack(fill="x", pady=(0, 20))
-        
-        api_label = ctk.CTkLabel(api_frame, text="API Configuration", 
+
+        api_label = ctk.CTkLabel(api_frame, text="API Configuration",
                                 font=ctk.CTkFont(size=18, weight="bold"))
         api_label.pack(pady=(15, 10))
-        
-        # Google API Key CSV file selection
-        google_key_frame = ctk.CTkFrame(api_frame)
-        google_key_frame.pack(fill="x", padx=15, pady=5)
-        
-        ctk.CTkLabel(google_key_frame, text="Google API Key CSV File:", 
-                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Only create StringVar if it doesn't exist (for main view)
-        if not hasattr(self, 'api_key_file_var'):
-            self.api_key_file_var = ctk.StringVar()
-        google_api_key_entry = ctk.CTkEntry(google_key_frame, textvariable=self.api_key_file_var, width=400)
-        google_api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
-        
-        ctk.CTkButton(google_key_frame, text="Browse", command=self.browse_api_key_file, 
-                     width=80).pack(side="right", padx=(5, 10), pady=(0, 5))
-        
-        ctk.CTkLabel(google_key_frame, text="CSV format: account;project;api_key (Used for Pre-OCR Topic & OCR Extraction)", 
-                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
-        
-        # Google API keys status - only create for main view
-        if not hasattr(self, 'api_keys_status_label') or parent == self.main_stages_1_4_frame:
-            if not hasattr(self, 'api_keys_status_label'):
-                self.api_keys_status_label = ctk.CTkLabel(google_key_frame, text="No Google API keys loaded", 
-                                                          font=ctk.CTkFont(size=10), text_color="gray")
-                self.api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
-        else:
-            # For tabview, create a separate label that syncs with main
-            api_keys_status_label_tab = ctk.CTkLabel(google_key_frame, text="No Google API keys loaded", 
-                                                      font=ctk.CTkFont(size=10), text_color="gray")
-            api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        # DeepSeek API Key CSV file selection
-        deepseek_key_frame = ctk.CTkFrame(api_frame)
-        deepseek_key_frame.pack(fill="x", padx=15, pady=5)
-        
-        ctk.CTkLabel(deepseek_key_frame, text="DeepSeek API Key CSV File:", 
-                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Only create StringVar if it doesn't exist (for main view)
-        if not hasattr(self, 'deepseek_api_key_file_var'):
-            self.deepseek_api_key_file_var = ctk.StringVar()
-        deepseek_api_key_entry = ctk.CTkEntry(deepseek_key_frame, textvariable=self.deepseek_api_key_file_var, width=400)
-        deepseek_api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
-        
-        ctk.CTkButton(deepseek_key_frame, text="Browse", command=self.browse_deepseek_api_key_file, 
-                     width=80).pack(side="right", padx=(5, 10), pady=(0, 5))
-        
-        ctk.CTkLabel(deepseek_key_frame, text="CSV format: account;project;api_key (Used for Document Processing & Stages E-Z)", 
-                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
-        
-        # DeepSeek API keys status - only create for main view
-        if not hasattr(self, 'deepseek_api_keys_status_label') or parent == self.main_stages_1_4_frame:
-            if not hasattr(self, 'deepseek_api_keys_status_label'):
-                self.deepseek_api_keys_status_label = ctk.CTkLabel(deepseek_key_frame, text="No DeepSeek API keys loaded", 
-                                                          font=ctk.CTkFont(size=10), text_color="gray")
-                self.deepseek_api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
-        else:
-            # For tabview, create a separate label that syncs with main
-            deepseek_api_keys_status_label_tab = ctk.CTkLabel(deepseek_key_frame, text="No DeepSeek API keys loaded", 
-                                                      font=ctk.CTkFont(size=10), text_color="gray")
-            deepseek_api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        # OpenRouter API Key CSV file selection
-        openrouter_key_frame = ctk.CTkFrame(api_frame)
-        openrouter_key_frame.pack(fill="x", padx=15, pady=5)
-        
-        ctk.CTkLabel(openrouter_key_frame, text="OpenRouter API Key CSV File:", 
-                    font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        # Only create StringVar if it doesn't exist (for main view)
-        if not hasattr(self, 'openrouter_api_key_file_var'):
-            self.openrouter_api_key_file_var = ctk.StringVar()
-        openrouter_api_key_entry = ctk.CTkEntry(openrouter_key_frame, textvariable=self.openrouter_api_key_file_var, width=400)
-        openrouter_api_key_entry.pack(side="left", fill="x", expand=True, padx=(10, 5), pady=(0, 5))
-        
-        ctk.CTkButton(openrouter_key_frame, text="Browse", command=self.browse_openrouter_api_key_file, 
-                     width=80).pack(side="right", padx=(5, 10), pady=(0, 5))
-        
-        ctk.CTkLabel(openrouter_key_frame, text="CSV format: account;project;api_key (Used for Reference Change & Document Processing)", 
-                    font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 5))
-        
-        # OpenRouter API keys status - only create for main view
-        if not hasattr(self, 'openrouter_api_keys_status_label') or parent == self.main_stages_1_4_frame:
-            if not hasattr(self, 'openrouter_api_keys_status_label'):
-                # Check if keys were already loaded in __init__
-                if hasattr(self, 'openrouter_api_key_manager') and len(self.openrouter_api_key_manager.api_keys) > 0:
-                    num_keys = len(self.openrouter_api_key_manager.api_keys)
-                    status_text = f"Loaded {num_keys} OpenRouter API key(s) - Will be used in rotation"
-                    status_color = "green"
-                else:
-                    status_text = "No OpenRouter API keys loaded"
-                    status_color = "gray"
-                self.openrouter_api_keys_status_label = ctk.CTkLabel(openrouter_key_frame, text=status_text, 
-                                                          font=ctk.CTkFont(size=10), text_color=status_color)
-                self.openrouter_api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
-        else:
-            # For tabview, create a separate label that syncs with main
-            if hasattr(self, 'openrouter_api_key_manager') and len(self.openrouter_api_key_manager.api_keys) > 0:
-                num_keys = len(self.openrouter_api_key_manager.api_keys)
-                status_text = f"Loaded {num_keys} OpenRouter API key(s) - Will be used in rotation"
-                status_color = "green"
-            else:
-                status_text = "No OpenRouter API keys loaded"
-                status_color = "gray"
-            openrouter_api_keys_status_label_tab = ctk.CTkLabel(openrouter_key_frame, text=status_text, 
-                                                      font=ctk.CTkFont(size=10), text_color=status_color)
-            openrouter_api_keys_status_label_tab.pack(anchor="w", padx=10, pady=(0, 10))
-    
+
+        info_frame = ctk.CTkFrame(api_frame)
+        info_frame.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(
+            info_frame,
+            text="OpenRouter API Key Source:",
+            font=ctk.CTkFont(size=12, weight="bold")
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+
+        ctk.CTkLabel(
+            info_frame,
+            text="Set OPENROUTER_API_KEY in your .env file (optional: OPENROUTER_MODEL).",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        ).pack(anchor="w", padx=10, pady=(0, 5))
+
+        key_ok = bool(self.openrouter_api_key_manager.get_next_key())
+        status_text = "OpenRouter API key loaded from .env" if key_ok else "Missing OPENROUTER_API_KEY in .env"
+        status_color = "green" if key_ok else "red"
+
+        self.openrouter_api_keys_status_label = ctk.CTkLabel(
+            info_frame,
+            text=status_text,
+            font=ctk.CTkFont(size=10),
+            text_color=status_color,
+        )
+        self.openrouter_api_keys_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+
     def add_stage_settings_section(self, parent, stage_name: str, 
                                    api_provider: str = "auto",
                                    default_model: Optional[str] = None) -> tuple:
@@ -437,7 +342,7 @@ class ContentAutomationGUI:
         
         # Auto-detect API provider if needed
         if api_provider == "auto":
-            api_provider = UnifiedAPIClient.STAGE_API_MAPPING.get(stage_name.lower(), "google")
+            api_provider = "openrouter"
         
         # Get stage-specific settings if available
         stage_provider = self.stage_settings_manager.get_stage_provider(stage_name, api_provider)
@@ -451,18 +356,10 @@ class ContentAutomationGUI:
         
         # Determine available models based on current provider
         def get_models_for_provider(provider):
-            if provider == "deepseek":
-                return APIConfig.DEEPSEEK_TEXT_MODELS
-            if provider == "openrouter":
-                return APIConfig.OPENROUTER_TEXT_MODELS
-            return APIConfig.TEXT_MODELS
+            return APIConfig.OPENROUTER_TEXT_MODELS
         
         def get_default_model_for_provider(provider):
-            if provider == "deepseek":
-                return APIConfig.DEFAULT_DEEPSEEK_MODEL
-            if provider == "openrouter":
-                return APIConfig.DEFAULT_OPENROUTER_MODEL
-            return APIConfig.DEFAULT_TEXT_MODEL
+            return APIConfig.DEFAULT_OPENROUTER_MODEL
         
         # Settings frame
         settings_frame = ctk.CTkFrame(parent)
@@ -486,7 +383,7 @@ class ContentAutomationGUI:
         if stage_name == "reference_change":
             provider_var.set(stage_provider)
         
-        provider_combo = ctk.CTkComboBox(provider_frame, values=["google", "deepseek", "openrouter"], 
+        provider_combo = ctk.CTkComboBox(provider_frame, values=["openrouter"], 
                                          variable=provider_var, width=400,
                                          command=lambda choice: self._on_provider_changed(
                                              stage_name, choice, model_var, model_combo, api_key_var
@@ -497,7 +394,7 @@ class ContentAutomationGUI:
         model_frame = ctk.CTkFrame(settings_frame)
         model_frame.pack(fill="x", padx=10, pady=5)
         
-        provider_label = "DeepSeek" if stage_provider == "deepseek" else ("OpenRouter" if stage_provider == "openrouter" else "Google")
+        provider_label = "OpenRouter"
         ctk.CTkLabel(model_frame, text=f"{provider_label} Model:", 
                     font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=5, pady=2)
         
@@ -505,9 +402,6 @@ class ContentAutomationGUI:
         if not hasattr(self, model_var_name):
             # Use stage model if available, otherwise use default for current provider
             if stage_model and (
-                (stage_provider == "deepseek" and stage_model in APIConfig.DEEPSEEK_TEXT_MODELS) or
-                (stage_provider == "google" and stage_model in APIConfig.TEXT_MODELS) or
-                # For OpenRouter allow any model string (user may type any OpenRouter model id)
                 (stage_provider == "openrouter" and isinstance(stage_model, str) and stage_model.strip())
             ):
                 initial_model = stage_model
@@ -545,8 +439,8 @@ class ContentAutomationGUI:
         api_key_frame = ctk.CTkFrame(settings_frame)
         api_key_frame.pack(fill="x", padx=10, pady=5)
         
-        provider_label_key = "DeepSeek" if stage_provider == "deepseek" else ("OpenRouter" if stage_provider == "openrouter" else "Google")
-        api_key_label = ctk.CTkLabel(api_key_frame, text=f"{provider_label_key} API Key (Optional - overrides CSV keys):", 
+        provider_label_key = "OpenRouter"
+        api_key_label = ctk.CTkLabel(api_key_frame, text=f"{provider_label_key} API Key (Optional - overrides .env key):", 
                     font=ctk.CTkFont(size=12, weight="bold"))
         api_key_label.pack(anchor="w", padx=5, pady=2)
         # Store reference to api_key_label for provider change callback
@@ -588,16 +482,9 @@ class ContentAutomationGUI:
     
     def _on_provider_changed(self, stage_name: str, provider: str, model_var, model_combo, api_key_var):
         """Handle provider change - update model list and labels"""
-        # Update model list based on provider
-        if provider == "deepseek":
-            available_models = APIConfig.DEEPSEEK_TEXT_MODELS
-            default_model = APIConfig.DEFAULT_DEEPSEEK_MODEL
-        elif provider == "openrouter":
-            available_models = APIConfig.OPENROUTER_TEXT_MODELS
-            default_model = APIConfig.DEFAULT_OPENROUTER_MODEL
-        else:
-            available_models = APIConfig.TEXT_MODELS
-            default_model = APIConfig.DEFAULT_TEXT_MODEL
+        # OpenRouter-only mode: always use OpenRouter model list.
+        available_models = APIConfig.OPENROUTER_TEXT_MODELS
+        default_model = APIConfig.DEFAULT_OPENROUTER_MODEL
         
         # Update model combo values
         model_combo.configure(values=available_models)
@@ -610,13 +497,13 @@ class ContentAutomationGUI:
         # Update API key label
         api_key_label = getattr(self, f"{stage_name}_api_key_label", None)
         if api_key_label:
-            provider_label = "DeepSeek" if provider == "deepseek" else ("OpenRouter" if provider == "openrouter" else "Google")
-            api_key_label.configure(text=f"{provider_label} API Key (Optional - overrides CSV keys):")
+            provider_label = "OpenRouter"
+            api_key_label.configure(text=f"{provider_label} API Key (Optional - overrides .env key):")
         
         # Update model label
         model_label = getattr(self, f"{stage_name}_model_label", None)
         if model_label:
-            provider_label = "DeepSeek" if provider == "deepseek" else ("OpenRouter" if provider == "openrouter" else "Google")
+            provider_label = "OpenRouter"
             model_label.configure(text=f"{provider_label} Model:")
     
     def setup_pre_ocr_topic_ui(self, parent):
@@ -928,7 +815,7 @@ class ContentAutomationGUI:
         # Navigation button to switch to tabview
         self.show_tabview_btn = ctk.CTkButton(
             buttons_frame,
-            text="Start Per Stage Processing",
+            text="Start Per Page",
             command=self.show_tabview,
             width=200,
             height=40,
@@ -939,121 +826,32 @@ class ContentAutomationGUI:
         self.show_tabview_btn.pack(side="left", padx=10)
         
     
-    def setup_automated_pipeline_section(self, parent):
-        """Setup Automated Pipeline section in main page"""
-        pipeline_frame = ctk.CTkFrame(parent)
-        pipeline_frame.pack(fill="x", pady=(0, 20))
-        
-        # Title
-        title_label = ctk.CTkLabel(
-            pipeline_frame,
-            text="Automated Pipeline",
-            font=ctk.CTkFont(size=18, weight="bold")
-        )
-        title_label.pack(pady=(15, 10))
-        
-        desc_label = ctk.CTkLabel(
-            pipeline_frame,
-            text="Run complete pipeline automatically: PDF -> Stage 1 -> Stage 2 -> Stage 3 -> Stage 4 -> Stage E -> Stage F -> Stage J -> Stage V -> Stage X -> Stage Y -> Stage Z\n"
-                 "If Word file is not provided, Stage J and V will fail but pipeline continues.\n"
-                 "If Old Book PDF is not provided, Stage X, Y, and Z will be skipped.",
-            font=ctk.CTkFont(size=11),
-            justify="left",
-            text_color="gray"
-        )
-        desc_label.pack(pady=(0, 15))
-        
-        # PointID input
-        pointid_frame = ctk.CTkFrame(pipeline_frame)
-        pointid_frame.pack(fill="x", padx=15, pady=5)
-        ctk.CTkLabel(pointid_frame, text="Start PointID (10 digits):", width=180).pack(side="left", padx=5)
-        self.auto_pipeline_pointid_var = ctk.StringVar(value="1050030001")
-        ctk.CTkEntry(pointid_frame, textvariable=self.auto_pipeline_pointid_var, width=200).pack(side="left", padx=5)
-        ctk.CTkLabel(pointid_frame, text="Example: 1050030001", font=ctk.CTkFont(size=10), text_color="gray").pack(side="left", padx=5)
-        
-        # Chapter name
-        chapter_frame = ctk.CTkFrame(pipeline_frame)
-        chapter_frame.pack(fill="x", padx=15, pady=5)
-        ctk.CTkLabel(chapter_frame, text="Chapter Name:", width=180).pack(side="left", padx=5)
-        self.auto_pipeline_chapter_var = ctk.StringVar(value="")
-        ctk.CTkEntry(chapter_frame, textvariable=self.auto_pipeline_chapter_var, width=400).pack(side="left", padx=5, fill="x", expand=True)
-        
-        # Word file (optional)
-        word_frame = ctk.CTkFrame(pipeline_frame)
-        word_frame.pack(fill="x", padx=15, pady=5)
-        ctk.CTkLabel(word_frame, text="Word File (for Stage J & V):", width=180).pack(side="left", padx=5)
-        self.auto_pipeline_word_var = ctk.StringVar(value="")
-        ctk.CTkEntry(word_frame, textvariable=self.auto_pipeline_word_var, width=300).pack(side="left", padx=5, fill="x", expand=True)
-        ctk.CTkButton(
-            word_frame,
-            text="Browse",
-            width=100,
-            command=lambda: self.auto_pipeline_word_var.set(filedialog.askopenfilename(filetypes=[("Word files", "*.docx *.doc"), ("All files", "*.*")]))
-        ).pack(side="left", padx=5)
+    def setup_start_per_page_section(self, parent):
+        """Single entry to the tabbed workspace (manual stages); no automated full pipeline."""
+        frame = ctk.CTkFrame(parent)
+        frame.pack(fill="x", pady=(0, 20))
         ctk.CTkLabel(
-            word_frame,
-            text="(Optional - required for Stage J and V)",
-            font=ctk.CTkFont(size=10),
-            text_color="orange"
-        ).pack(side="left", padx=5)
-        
-        # Old Book PDF (for Stage X)
-        old_pdf_frame = ctk.CTkFrame(pipeline_frame)
-        old_pdf_frame.pack(fill="x", padx=15, pady=5)
-        ctk.CTkLabel(old_pdf_frame, text="Old Book PDF (for Stage X):", width=180).pack(side="left", padx=5)
-        self.auto_pipeline_old_pdf_var = ctk.StringVar(value="")
-        ctk.CTkEntry(old_pdf_frame, textvariable=self.auto_pipeline_old_pdf_var, width=300).pack(side="left", padx=5, fill="x", expand=True)
-        ctk.CTkButton(
-            old_pdf_frame,
-            text="Browse",
-            width=100,
-            command=lambda: self.auto_pipeline_old_pdf_var.set(filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]))
-        ).pack(side="left", padx=5)
+            frame,
+            text="Tabbed tools",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(15, 8))
         ctk.CTkLabel(
-            old_pdf_frame,
-            text="(Optional - required for Stage X, Y, Z)",
-            font=ctk.CTkFont(size=10),
-            text_color="orange"
-        ).pack(side="left", padx=5)
-        
-        # Progress label
-        self.auto_pipeline_progress_label = ctk.CTkLabel(
-            pipeline_frame,
-            text="Ready to start automated pipeline...",
+            frame,
+            text="Run stages and utilities from the tab view.",
             font=ctk.CTkFont(size=11),
-            text_color="gray"
-        )
-        self.auto_pipeline_progress_label.pack(pady=(10, 5))
-        
-        # Buttons frame (Start Pipeline and View Other Tools)
-        buttons_frame = ctk.CTkFrame(pipeline_frame)
-        buttons_frame.pack(pady=(5, 15))
-        
-        # Start button
-        self.auto_pipeline_start_btn = ctk.CTkButton(
-            buttons_frame,
-            text="Start Automated Pipeline",
-            command=self.start_automated_pipeline_from_main,
-            width=300,
-            height=45,
-            font=ctk.CTkFont(size=15, weight="bold"),
-            fg_color="orange",
-            hover_color="darkorange"
-        )
-        self.auto_pipeline_start_btn.pack(side="left", padx=10)
-        
-        # View Other Tools button (moved from setup_controls)
+            text_color="gray",
+        ).pack(pady=(0, 12))
         self.show_tabview_btn = ctk.CTkButton(
-            buttons_frame,
-            text="Start Per Stage Processing",
+            frame,
+            text="Start Per Page",
             command=self.show_tabview,
-            width=200,
+            width=280,
             height=45,
             font=ctk.CTkFont(size=15, weight="bold"),
             fg_color="purple",
-            hover_color="darkviolet"
+            hover_color="darkviolet",
         )
-        self.show_tabview_btn.pack(side="left", padx=10)
+        self.show_tabview_btn.pack(pady=(0, 15))
     
     def setup_status_section(self, parent):
         """Setup status section"""
@@ -1066,78 +864,31 @@ class ContentAutomationGUI:
         self.status_text = ctk.CTkTextbox(status_frame, height=150, font=self.farsi_text_font)
         self.status_text.pack(fill="x", padx=15, pady=(0, 15))
         
-        self.update_status("Ready. Please configure API keys and select a PDF file.")
+        self.update_status("Ready. Please set OPENROUTER_API_KEY in .env and select a PDF file.")
     
     def browse_api_key_file(self):
-        """Browse for Google API key CSV file"""
-        filename = filedialog.askopenfilename(
-            title="Select Google API Key CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        if filename:
-            self.api_key_file_var.set(filename)
-            # Load Google API keys
-            if self.google_api_key_manager.load_from_csv(filename):
-                num_keys = len(self.google_api_key_manager.api_keys)
-                self.api_keys_status_label.configure(
-                    text=f"Loaded {num_keys} Google API key(s) - Will be used in rotation",
-                    text_color="green"
-                )
-                self.update_status(f"Loaded {num_keys} Google API key(s) from: {os.path.basename(filename)}")
-            else:
-                self.api_keys_status_label.configure(
-                    text="X Failed to load Google API keys",
-                    text_color="red"
-                )
-                messagebox.showerror("Error", "Failed to load Google API keys from file")
-    
+        """Legacy action kept for compatibility (.env is now the source of truth)."""
+        self.openrouter_api_key_manager.load_from_env()
+        if self.openrouter_api_key_manager.api_keys:
+            self.openrouter_api_keys_status_label.configure(
+                text="OpenRouter API key loaded from .env",
+                text_color="green",
+            )
+            self.update_status("OpenRouter API key loaded from .env")
+        else:
+            self.openrouter_api_keys_status_label.configure(
+                text="Missing OPENROUTER_API_KEY in .env",
+                text_color="red",
+            )
+            messagebox.showerror("Error", "OPENROUTER_API_KEY was not found in .env")
+
     def browse_deepseek_api_key_file(self):
-        """Browse for DeepSeek API key CSV file"""
-        filename = filedialog.askopenfilename(
-            title="Select DeepSeek API Key CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        if filename:
-            self.deepseek_api_key_file_var.set(filename)
-            # Load DeepSeek API keys
-            if self.deepseek_api_key_manager.load_from_csv(filename):
-                num_keys = len(self.deepseek_api_key_manager.api_keys)
-                self.deepseek_api_keys_status_label.configure(
-                    text=f"Loaded {num_keys} DeepSeek API key(s) - Will be used in rotation",
-                    text_color="green"
-                )
-                self.update_status(f"Loaded {num_keys} DeepSeek API key(s) from: {os.path.basename(filename)}")
-            else:
-                self.deepseek_api_keys_status_label.configure(
-                    text="X Failed to load DeepSeek API keys",
-                    text_color="red"
-                )
-                messagebox.showerror("Error", "Failed to load DeepSeek API keys from file")
-    
+        self.browse_api_key_file()
+
     def browse_openrouter_api_key_file(self):
-        """Browse for OpenRouter API key CSV file"""
-        filename = filedialog.askopenfilename(
-            title="Select OpenRouter API Key CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        if filename:
-            self.openrouter_api_key_file_var.set(filename)
-            # Load OpenRouter API keys
-            if self.openrouter_api_key_manager.load_from_csv(filename):
-                num_keys = len(self.openrouter_api_key_manager.api_keys)
-                self.openrouter_api_keys_status_label.configure(
-                    text=f"Loaded {num_keys} OpenRouter API key(s) - Will be used in rotation",
-                    text_color="green"
-                )
-                self.update_status(f"Loaded {num_keys} OpenRouter API key(s) from: {os.path.basename(filename)}")
-            else:
-                self.openrouter_api_keys_status_label.configure(
-                    text="X Failed to load OpenRouter API keys",
-                    text_color="red"
-                )
-                messagebox.showerror("Error", "Failed to load OpenRouter API keys from file")
-    
-    
+        self.browse_api_key_file()
+
+
     def browse_multiple_pre_ocr_pdfs(self):
         """Browse and select multiple PDF files"""
         file_paths = filedialog.askopenfilenames(
@@ -2114,7 +1865,7 @@ class ContentAutomationGUI:
                         self.root.after(0, lambda: messagebox.showerror("Error", "Please load API keys"))
                         return
                     else:
-                        if not self.google_api_key_manager.load_from_csv(self.api_key_file_var.get()):
+                        if not self.google_api_key_manager.load_from_env():
                             self.root.after(0, lambda: messagebox.showerror("Error", "Failed to load API keys"))
                             return
                 
@@ -2239,7 +1990,7 @@ class ContentAutomationGUI:
                         messagebox.showerror("Error", "Please load API keys from CSV file")
                         return
                     else:
-                        if not self.api_key_manager.load_from_csv(self.api_key_file_var.get()):
+                        if not self.api_key_manager.load_from_env():
                             self.update_status("Error: Failed to load API keys")
                             messagebox.showerror("Error", "Failed to load API keys from CSV file")
                             return
@@ -3540,18 +3291,9 @@ class ContentAutomationGUI:
             
             # Get provider and validate API keys (Document Processing: DeepSeek, OpenRouter, or Google)
             provider = self.document_processing_provider_var.get() if hasattr(self, 'document_processing_provider_var') else "deepseek"
-            if provider == "openrouter":
-                if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load OpenRouter API keys first (API Configuration)"))
-                    return
-            elif provider == "deepseek":
-                if not self.deepseek_api_key_manager.api_keys:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
-                    return
-            else:
-                if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
-                    return
+            if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
+                self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
+                return
 
             # Set stage so api_client uses Document Processing provider/model (like OCR Extraction / OCR Extraction Paragraph)
             self.api_client.set_stage("document_processing")
@@ -5360,15 +5102,15 @@ class ContentAutomationGUI:
                 # Validate API keys based on provider
                 if provider == "openrouter":
                     if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
-                        messagebox.showerror("Error", "Please load OpenRouter API keys first (API Configuration)")
+                        messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env")
                         return
                 elif provider == "deepseek":
                     if not self.deepseek_api_key_manager.api_keys:
-                        messagebox.showerror("Error", "Please load DeepSeek API keys first")
+                        messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env")
                         return
                 else:  # google
                     if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
-                        messagebox.showerror("Error", "Please load Google API keys first")
+                        messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env")
                         return
                 
                 # Set stage for Stage E and update stage settings to use current provider/model
@@ -5506,15 +5248,15 @@ class ContentAutomationGUI:
             # Validate API keys based on provider
             if provider == "openrouter":
                 if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load OpenRouter API keys first (API Configuration)"))
+                    self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
                     return
             elif provider == "deepseek":
                 if not self.deepseek_api_key_manager.api_keys:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
+                    self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
                     return
             else:  # google
                 if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
+                    self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
                     return
             
             # Set stage for Stage E and update stage settings to use current provider/model
@@ -5824,7 +5566,7 @@ class ContentAutomationGUI:
             
             # Validate API keys
             if not self.deepseek_api_key_manager.api_keys:
-                self.root.after(0, lambda: messagebox.showerror("Error", "Please load DeepSeek API keys first"))
+                self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
                 return
             
             # Set stage for Stage TA (uses DeepSeek API)
@@ -6068,8 +5810,8 @@ class ContentAutomationGUI:
                 
                 # Validate API keys
                 if not self.google_api_key_manager.api_keys:
-                    self.ocr_extraction_status_label.configure(text="Error: Please load API keys first", text_color="red")
-                    messagebox.showerror("Error", "Please load API keys first")
+                    self.ocr_extraction_status_label.configure(text="Error: OPENROUTER_API_KEY is missing in .env", text_color="red")
+                    messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env")
                     return
                 
                 # Set stage for OCR Extraction (uses Google API)
@@ -6532,7 +6274,7 @@ class ContentAutomationGUI:
                 
                 # Validate API keys
                 if not self.google_api_key_manager.api_keys:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
+                    self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
                     return
                 
                 # Set stage for OCR Extraction Paragraph (uses Google API)
@@ -6712,7 +6454,7 @@ class ContentAutomationGUI:
                 
                 # Validate API keys
                 if not self.google_api_key_manager.api_keys:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please load Google API keys first"))
+                    self.root.after(0, lambda: messagebox.showerror("Error", "OPENROUTER_API_KEY is missing in .env"))
                     return
                 
                 # Set stage for OCR Extraction (uses Google API)
@@ -9469,57 +9211,12 @@ class ContentAutomationGUI:
     
     def _extract_book_chapter_from_stage_j_for_v(self, stage_j_path: str):
         """Extract book and chapter from Stage J file (from PointId or filename)"""
-        try:
-            # Try to load Stage J and extract from PointId
-            data = json.load(open(stage_j_path, 'r', encoding='utf-8'))
-            records = data.get("data") or data.get("rows", [])
-            if records and records[0].get("PointId"):
-                point_id = records[0].get("PointId")
-                if isinstance(point_id, str) and len(point_id) >= 6:
-                    book_id = int(point_id[0:3])
-                    chapter_id = int(point_id[3:6])
-                    return book_id, chapter_id
-        except:
-            pass
-        
-        # Fallback: try to extract from filename (a{book}{chapter}.json)
-        try:
-            basename = os.path.basename(stage_j_path)
-            name_without_ext = os.path.splitext(basename)[0]
-            if name_without_ext.startswith('a') and len(name_without_ext) >= 7:
-                book_chapter = name_without_ext[1:]
-                book_id = int(book_chapter[0:3])
-                chapter_id = int(book_chapter[3:6])
-                return book_id, chapter_id
-        except:
-            pass
-        
-        return None, None
-    
+        return extract_book_chapter_from_stage_j_for_v(stage_j_path)
+
     def _extract_book_chapter_from_word_filename_for_v(self, word_path: str):
         """Extract book and chapter from Word filename (various patterns)"""
-        import re
-        basename = os.path.basename(word_path)
-        name_without_ext = os.path.splitext(basename)[0]
-        
-        # Try various patterns
-        patterns = [
-            r'ch(\d{3})_(\d{3})',  # ch105_003.docx
-            r'chapter_(\d{3})_(\d{3})',  # chapter_105_003.docx
-            r'(\d{3})_(\d{3})',  # 105_003.docx
-            r'book(\d{3})_chapter(\d{3})',  # book105_chapter003.docx
-            r'e(\d{3})(\d{3})',  # e105003.docx
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, name_without_ext, re.IGNORECASE)
-            if match:
-                book_id = int(match.group(1))
-                chapter_id = int(match.group(2))
-                return book_id, chapter_id
-        
-        return None, None
-    
+        return extract_book_chapter_from_word_filename_for_v(word_path)
+
     def _auto_pair_stage_v_files(self):
         """Auto-pair Stage J files with Word files based on Book/Chapter"""
         if not hasattr(self, 'stage_v_selected_stage_j_files') or not self.stage_v_selected_stage_j_files:
@@ -9530,37 +9227,10 @@ class ContentAutomationGUI:
             messagebox.showwarning("Warning", "Please add at least one Word file")
             return
         
-        pairs = []
-        paired_word_files = set()
-        
-        for stage_j_path in self.stage_v_selected_stage_j_files:
-            book_id, chapter_id = self._extract_book_chapter_from_stage_j_for_v(stage_j_path)
-            
-            if book_id is None or chapter_id is None:
-                # Can't extract book/chapter, skip
-                continue
-            
-            # Find matching Word file
-            matched_word = None
-            for word_path in self.stage_v_selected_word_files:
-                if word_path in paired_word_files:
-                    continue
-                
-                word_book, word_chapter = self._extract_book_chapter_from_word_filename_for_v(word_path)
-                
-                if word_book == book_id and word_chapter == chapter_id:
-                    matched_word = word_path
-                    paired_word_files.add(word_path)
-                    break
-            
-            pair = {
-                'stage_j_path': stage_j_path,
-                'word_path': matched_word,
-                'status': 'pending',
-                'output_path': None,
-                'error': None
-            }
-            pairs.append(pair)
+        pairs = auto_pair_stage_v_files(
+            list(self.stage_v_selected_stage_j_files),
+            list(self.stage_v_selected_word_files),
+        )
         
         self.stage_v_pairs = pairs
         self._update_stage_v_pairs_ui()
@@ -9713,15 +9383,15 @@ class ContentAutomationGUI:
                 for pname, prov in [("Step 1", provider_1), ("Step 2", provider_2)]:
                     if prov == "openrouter":
                         if not (hasattr(self, 'openrouter_api_key_manager') and self.openrouter_api_key_manager.api_keys):
-                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"Please load OpenRouter API keys first (API Configuration) for {p}"))
+                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"OPENROUTER_API_KEY is missing in .env for {p}"))
                             return
                     elif prov == "deepseek":
                         if not self.deepseek_api_key_manager.api_keys:
-                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"Please load DeepSeek API keys first for {p}"))
+                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"OPENROUTER_API_KEY is missing in .env for {p}"))
                             return
                     else:  # google
                         if not (hasattr(self, 'google_api_key_manager') and self.google_api_key_manager.api_keys):
-                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"Please load Google API keys first for {p}"))
+                            self.root.after(0, lambda p=pname: messagebox.showerror("Error", f"OPENROUTER_API_KEY is missing in .env for {p}"))
                             return
                 
                 # Get delay
@@ -13555,7 +13225,7 @@ class ContentAutomationGUI:
                     if not api_key and hasattr(self, 'openrouter_api_key_manager'):
                         api_key = self.openrouter_api_key_manager.get_next_key()
                     if not api_key:
-                        error_msg = "OpenRouter API Key is required. Please set it in Stage Settings (OpenRouter API Key) or load from CSV file (API Configuration section)."
+                        error_msg = "OpenRouter API key is required. Set OPENROUTER_API_KEY in .env or provide it in Stage Settings."
                         self._update_status(f"ERROR: {error_msg}")
                         self.ref_change_status_label.configure(text=f"Error: {error_msg}")
                         self.ref_change_progress_bar.set(0)
@@ -15347,175 +15017,6 @@ class ContentAutomationGUI:
         # Run in background thread
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
-    
-    def start_automated_pipeline_from_main(self):
-        """Start automated pipeline from main page"""
-        # Validate PDF is selected
-        if not self.pdf_path or not os.path.exists(self.pdf_path):
-            messagebox.showerror("Error", "Please select a PDF file first.")
-            return
-        
-        # Validate PointID
-        pointid = self.auto_pipeline_pointid_var.get().strip()
-        if not pointid or len(pointid) != 10 or not pointid.isdigit():
-            messagebox.showerror("Error", "Please enter a valid 10-digit PointID (e.g., 1050030001).")
-            return
-        
-        # Validate chapter name
-        chapter_name = self.auto_pipeline_chapter_var.get().strip()
-        if not chapter_name:
-            messagebox.showerror("Error", "Please enter chapter name.")
-            return
-        
-        # Get Stage 1 prompt from main page
-        if self.use_custom_prompt:
-            stage1_prompt = self.custom_prompt
-        else:
-            if not self.selected_prompt_name:
-                messagebox.showerror("Error", "Please select or enter a prompt for Stage 1.")
-                return
-            stage1_prompt = self.prompt_manager.get_prompt(self.selected_prompt_name) or ""
-        
-        if not stage1_prompt:
-            messagebox.showerror("Error", "Please select or enter a prompt for Stage 1.")
-            return
-        
-        # Get model (use default from main view)
-        stage1_model = self.get_default_model()
-        
-        # Disable button
-        self.auto_pipeline_start_btn.configure(state="disabled", text="Running Pipeline...")
-        
-        # Run in background
-        threading.Thread(target=self.run_full_automated_pipeline_worker, daemon=True).start()
-    
-    def run_full_automated_pipeline_worker(self):
-        """Background worker for full automated pipeline starting from PDF"""
-        try:
-            # Get all inputs
-            pdf_path = self.pdf_path
-            pointid = self.auto_pipeline_pointid_var.get().strip()
-            chapter_name = self.auto_pipeline_chapter_var.get().strip()
-            word_file_path = self.auto_pipeline_word_var.get().strip()
-            if not word_file_path or not os.path.exists(word_file_path):
-                word_file_path = None
-            
-            # Get Stage 1 prompt and model
-            if self.use_custom_prompt:
-                stage1_prompt = self.custom_prompt
-            else:
-                stage1_prompt = self.prompt_manager.get_prompt(self.selected_prompt_name) or ""
-            
-            stage1_model = self.get_default_model()
-            
-            # Get Stage 2, 3, 4 prompts from prompt_manager
-            stage2_prompt = self.prompt_manager.get_prompt("Document Processing Prompt") or ""
-            stage3_prompt = self.prompt_manager.get_prompt("Stage 3 - Chunked JSON Completion") or ""
-            stage4_prompt = self.prompt_manager.get_prompt("Stage 4 - Prompt") or ""
-            
-            # Get Stage E, J, V prompts
-            stage_e_prompt = self.prompt_manager.get_prompt("Image Notes Prompt") or ""
-            stage_j_prompt = self.prompt_manager.get_prompt("Importance & Type Prompt") or ""
-            stage_v_prompt_1 = self.prompt_manager.get_prompt("Test Bank Generation - Step 1 Prompt") or ""
-            stage_v_prompt_2 = self.prompt_manager.get_prompt("Test Bank Generation - Step 2 Prompt") or ""
-            stage_v_prompt_3 = self.prompt_manager.get_prompt("Test Bank Generation - Step 3 Prompt") or ""
-            
-            # Get Stage X, Y, Z prompts (optional)
-            old_book_pdf_path = self.auto_pipeline_old_pdf_var.get().strip()
-            if not old_book_pdf_path or not os.path.exists(old_book_pdf_path):
-                old_book_pdf_path = None
-            
-            stage_x_pdf_prompt = self.prompt_manager.get_prompt("Stage X - PDF Extraction Prompt") or ""
-            stage_x_change_prompt = self.prompt_manager.get_prompt("Change Detection Prompt") or ""
-            stage_y_prompt = self.prompt_manager.get_prompt("Deletion Detection Prompt") or ""
-            stage_z_prompt = self.prompt_manager.get_prompt("RichText Generation Prompt") or ""
-            
-            # Validate required prompts
-            if not stage2_prompt:
-                messagebox.showerror("Error", "Stage 2 prompt not found in prompts.json. Please add it.")
-                return
-            if not stage3_prompt:
-                messagebox.showerror("Error", "Stage 3 prompt not found in prompts.json. Please add it.")
-                return
-            if not stage4_prompt:
-                messagebox.showerror("Error", "Stage 4 prompt not found in prompts.json. Please add it.")
-                return
-            if not stage_e_prompt:
-                messagebox.showerror("Error", "Stage E prompt not found in prompts.json. Please add it.")
-                return
-            
-            # Progress callback
-            def progress_callback(msg: str):
-                self.root.after(0, lambda: self.auto_pipeline_progress_label.configure(text=msg))
-            
-            # Initialize orchestrator
-            orchestrator = AutomatedPipelineOrchestrator(self.api_client)
-            
-            # Output directory (use default from main view)
-            output_dir = self.get_default_output_dir(pdf_path)
-            
-            # Run pipeline
-            results = orchestrator.run_automated_pipeline(
-                pdf_path=pdf_path,
-                stage1_prompt=stage1_prompt,
-                stage1_model=stage1_model,
-                stage2_prompt=stage2_prompt,
-                stage2_model=stage1_model,  # Use same model
-                chapter_name=chapter_name,
-                stage3_prompt=stage3_prompt,
-                stage3_model=stage1_model,
-                stage4_prompt=stage4_prompt,
-                stage4_model=stage1_model,
-                start_pointid=pointid,
-                stage_e_prompt=stage_e_prompt,
-                stage_e_model=stage1_model,
-                word_file_path=word_file_path,
-                stage_j_prompt=stage_j_prompt if stage_j_prompt else None,
-                stage_j_model=stage1_model if stage_j_prompt else None,
-                stage_v_prompt_1=stage_v_prompt_1 if stage_v_prompt_1 else None,
-                stage_v_model_1=stage1_model if stage_v_prompt_1 else None,
-                stage_v_prompt_2=stage_v_prompt_2 if stage_v_prompt_2 else None,
-                stage_v_model_2=stage1_model if stage_v_prompt_2 else None,
-                stage_v_prompt_3=stage_v_prompt_3 if stage_v_prompt_3 else None,
-                stage_v_model_3=stage1_model if stage_v_prompt_3 else None,
-                old_book_pdf_path=old_book_pdf_path,
-                stage_x_pdf_extraction_prompt=stage_x_pdf_prompt if stage_x_pdf_prompt else None,
-                stage_x_pdf_extraction_model=stage1_model if stage_x_pdf_prompt else None,
-                stage_x_change_prompt=stage_x_change_prompt if stage_x_change_prompt else None,
-                stage_x_change_model=stage1_model if stage_x_change_prompt else None,
-                stage_y_prompt=stage_y_prompt if stage_y_prompt else None,
-                stage_y_model=stage1_model if stage_y_prompt else None,
-                stage_z_prompt=stage_z_prompt if stage_z_prompt else None,
-                stage_z_model=stage1_model if stage_z_prompt else None,
-                output_dir=output_dir,
-                progress_callback=progress_callback
-            )
-            
-            # Show results
-            successful = [name for name, result in results.items() if result.status.value == "success"]
-            failed = [name for name, result in results.items() if result.status.value == "failed"]
-            
-            summary = f"Pipeline completed!\n\nSuccessful stages: {', '.join(successful) if successful else 'None'}\n"
-            if failed:
-                summary += f"\nFailed stages: {', '.join(failed)}\n"
-                for name in failed:
-                    summary += f"  - Stage {name}: {results[name].error_message}\n"
-            
-            messagebox.showinfo("Pipeline Complete", summary)
-            self.root.after(0, lambda: self.auto_pipeline_progress_label.configure(
-                text=f"Completed! Successful: {len(successful)}, Failed: {len(failed)}"
-            ))
-            
-        except Exception as e:
-            self.logger.error(f"Error in automated pipeline: {e}", exc_info=True)
-            messagebox.showerror("Error", f"Pipeline error:\n{str(e)}")
-            self.root.after(0, lambda: self.auto_pipeline_progress_label.configure(
-                text=f"Error: {str(e)}", text_color="red"
-            ))
-        finally:
-            self.root.after(0, lambda: self.auto_pipeline_start_btn.configure(
-                state="normal", text="Start Automated Pipeline"
-            ))
     
     def run(self):
         """Start the GUI main loop"""

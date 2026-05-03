@@ -22,3 +22,1075 @@
 2026-04-28 14:29:10,751 - ERROR - No valid API keys found in the file
 2026-04-28 14:29:20,816 - INFO - Saved stage settings to stage_settings.json
 2026-04-28 14:30:00,317 - ERROR - No valid API keys found in the file
+2026-04-28 14:47:41,857 - INFO - Loaded 16 predefined prompts
+2026-04-28 14:47:41,858 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-28 14:47:41,858 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-28 14:47:41,858 - INFO - Loaded stage settings from stage_settings.json
+2026-04-28 14:47:41,916 - INFO - python-docx library is available
+2026-04-28 14:47:41,916 - INFO - python-docx library is available
+2026-04-28 14:50:21,759 - INFO - Loaded 16 predefined prompts
+2026-04-28 14:50:21,759 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-28 14:50:21,759 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-28 14:50:21,760 - INFO - Loaded stage settings from stage_settings.json
+2026-04-28 14:50:21,813 - INFO - python-docx library is available
+2026-04-28 14:50:21,813 - INFO - python-docx library is available
+2026-04-28 14:59:45,555 - INFO - Current stage set to: stage_v
+2026-04-28 14:59:45,575 - INFO - Starting Stage V processing...
+2026-04-28 14:59:45,578 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-28 14:59:45,579 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-28 14:59:45,579 - INFO - Extracting topic structure directly from Stage J...
+2026-04-28 14:59:45,580 - INFO - ================================================================================
+2026-04-28 14:59:45,580 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-28 14:59:45,580 - INFO - ================================================================================
+2026-04-28 14:59:45,580 - INFO - Found 23 topics to process
+2026-04-28 14:59:45,580 - INFO - Found 3 unique subchapters
+2026-04-28 14:59:45,580 - INFO - 
+2026-04-28 14:59:45,580 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-28 14:59:45,580 - INFO -     Topic 1: 'مقدمه'
+2026-04-28 14:59:45,581 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-28 14:59:45,581 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-28 14:59:45,581 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-28 14:59:45,581 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-28 14:59:45,581 - INFO -     Topic 6: 'درمان'
+2026-04-28 14:59:45,581 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-28 14:59:45,581 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-28 14:59:45,581 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-28 14:59:45,581 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-28 14:59:45,581 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-28 14:59:45,581 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-28 14:59:45,581 - INFO -     Topic 6: 'تشخیص'
+2026-04-28 14:59:45,581 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-28 14:59:45,581 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-28 14:59:45,581 - INFO -     Topic 9: 'درمان'
+2026-04-28 14:59:45,581 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-28 14:59:45,581 - INFO -     Topic 1: 'مقدمه'
+2026-04-28 14:59:45,581 - INFO -     Topic 2: 'تاریخچه'
+2026-04-28 14:59:45,581 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-28 14:59:45,581 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-28 14:59:45,581 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-28 14:59:45,581 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-28 14:59:45,581 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-28 14:59:45,581 - INFO -     Topic 8: 'درمان'
+2026-04-28 14:59:45,581 - INFO - ================================================================================
+2026-04-28 14:59:45,582 - INFO - Saved stage settings to stage_settings.json
+2026-04-28 14:59:45,582 - INFO - Saved stage settings to stage_settings.json
+2026-04-28 14:59:45,582 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-28 14:59:45,583 - INFO - ============================================================
+2026-04-28 14:59:45,583 - INFO - STEP 1: Generating initial test questions (topic-by-topic: filtered Stage J + full test file + Step 1 prompt)...
+2026-04-28 14:59:45,583 - INFO - ============================================================
+2026-04-28 14:59:45,583 - INFO - [1/23] Step 1 for Topic 'مقدمه و تاریخچه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 29)
+2026-04-28 14:59:45,595 - INFO - Loading Word document for Topic 1/23...
+2026-04-28 14:59:45,627 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-28 14:59:45,627 - INFO - Processing Stage V - Step 1 for Topic 1/23 (full file)...
+2026-04-28 14:59:45,627 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-28 14:59:45,627 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-28 15:07:26,177 - INFO - Loaded 16 predefined prompts
+2026-04-28 15:07:26,177 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-28 15:07:26,177 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-28 15:07:26,177 - INFO - Loaded stage settings from stage_settings.json
+2026-04-28 15:07:26,237 - INFO - python-docx library is available
+2026-04-28 15:07:26,238 - INFO - python-docx library is available
+2026-04-28 15:08:01,464 - INFO - Current stage set to: stage_v
+2026-04-28 15:08:01,466 - INFO - Starting Stage V processing...
+2026-04-28 15:08:01,469 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-28 15:08:01,470 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-28 15:08:01,470 - INFO - Extracting topic structure directly from Stage J...
+2026-04-28 15:08:01,471 - INFO - ================================================================================
+2026-04-28 15:08:01,471 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-28 15:08:01,471 - INFO - ================================================================================
+2026-04-28 15:08:01,471 - INFO - Found 23 topics to process
+2026-04-28 15:08:01,471 - INFO - Found 3 unique subchapters
+2026-04-28 15:08:01,471 - INFO - 
+2026-04-28 15:08:01,471 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-28 15:08:01,471 - INFO -     Topic 1: 'مقدمه'
+2026-04-28 15:08:01,471 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-28 15:08:01,471 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-28 15:08:01,471 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-28 15:08:01,472 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-28 15:08:01,472 - INFO -     Topic 6: 'درمان'
+2026-04-28 15:08:01,472 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-28 15:08:01,472 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-28 15:08:01,472 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-28 15:08:01,472 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-28 15:08:01,472 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-28 15:08:01,472 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-28 15:08:01,472 - INFO -     Topic 6: 'تشخیص'
+2026-04-28 15:08:01,472 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-28 15:08:01,472 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-28 15:08:01,472 - INFO -     Topic 9: 'درمان'
+2026-04-28 15:08:01,472 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-28 15:08:01,472 - INFO -     Topic 1: 'مقدمه'
+2026-04-28 15:08:01,472 - INFO -     Topic 2: 'تاریخچه'
+2026-04-28 15:08:01,472 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-28 15:08:01,472 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-28 15:08:01,472 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-28 15:08:01,472 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-28 15:08:01,472 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-28 15:08:01,472 - INFO -     Topic 8: 'درمان'
+2026-04-28 15:08:01,472 - INFO - ================================================================================
+2026-04-28 15:08:01,491 - INFO - Saved stage settings to stage_settings.json
+2026-04-28 15:08:01,492 - INFO - Saved stage settings to stage_settings.json
+2026-04-28 15:08:01,492 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-28 15:08:01,492 - INFO - ============================================================
+2026-04-28 15:08:01,492 - INFO - STEP 1: Generating initial test questions (topic-by-topic: filtered Stage J + full test file + Step 1 prompt)...
+2026-04-28 15:08:01,492 - INFO - ============================================================
+2026-04-28 15:08:01,493 - INFO - [1/23] Step 1 for Topic 'مقدمه و تاریخچه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 29)
+2026-04-28 15:08:01,495 - INFO - Loading Word document for Topic 1/23...
+2026-04-28 15:08:01,520 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-28 15:08:01,521 - INFO - Processing Stage V - Step 1 for Topic 1/23 (full file)...
+2026-04-28 15:08:01,521 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-28 15:08:01,521 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-28 15:12:03,124 - INFO - Step 1 response received for Topic 1 (12038 characters)
+2026-04-28 15:12:03,131 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.txt
+2026-04-28 15:12:03,134 - INFO - Extracting JSON from Part 1 response...
+2026-04-28 15:12:03,136 - INFO - Found 1 JSON block(s) using pattern: ```json\s*(.*?)\s*```
+2026-04-28 15:12:03,137 - INFO - Successfully parsed JSON block (type: list)
+2026-04-28 15:12:03,137 - INFO -   JSON array length: 11
+2026-04-28 15:12:03,137 - INFO - Extracted 1 JSON block(s) from response
+2026-04-28 15:12:03,137 - INFO - Successfully extracted JSON from response using document processing method (1 block)
+2026-04-28 15:12:03,139 - INFO - Extracted 11 questions from Part 1
+2026-04-28 15:12:03,183 - INFO - Total questions generated in Step 1 for Topic 1: 11
+2026-04-28 15:12:03,187 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.json (11 records)
+2026-04-28 15:12:03,187 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.json
+2026-04-28 15:12:03,188 - INFO - [2/23] Step 1 for Topic 'اپیدمیولوژی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 12)
+2026-04-28 15:12:03,188 - INFO - Loading Word document for Topic 2/23...
+2026-04-28 15:12:03,224 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-28 15:12:03,244 - INFO - Processing Stage V - Step 1 for Topic 2/23 (full file)...
+2026-04-28 15:12:03,244 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-28 15:12:03,245 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 09:20:53,175 - INFO - Loaded 16 predefined prompts
+2026-04-29 09:20:53,175 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 09:20:53,175 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 09:20:53,175 - INFO - Loaded stage settings from stage_settings.json
+2026-04-29 09:20:53,244 - INFO - python-docx library is available
+2026-04-29 09:20:53,244 - INFO - python-docx library is available
+2026-04-29 09:22:49,554 - INFO - Current stage set to: stage_v
+2026-04-29 09:22:49,557 - INFO - Starting Stage V processing...
+2026-04-29 09:22:49,561 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-29 09:22:49,561 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-29 09:22:49,578 - INFO - Extracting topic structure directly from Stage J...
+2026-04-29 09:22:49,579 - INFO - ================================================================================
+2026-04-29 09:22:49,579 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-29 09:22:49,579 - INFO - ================================================================================
+2026-04-29 09:22:49,579 - INFO - Found 23 topics to process
+2026-04-29 09:22:49,580 - INFO - Found 3 unique subchapters
+2026-04-29 09:22:49,580 - INFO - 
+2026-04-29 09:22:49,580 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-29 09:22:49,580 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 09:22:49,580 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-29 09:22:49,580 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 09:22:49,580 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 09:22:49,580 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-29 09:22:49,580 - INFO -     Topic 6: 'درمان'
+2026-04-29 09:22:49,580 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-29 09:22:49,580 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-29 09:22:49,580 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-29 09:22:49,580 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 09:22:49,580 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 09:22:49,580 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-29 09:22:49,580 - INFO -     Topic 6: 'تشخیص'
+2026-04-29 09:22:49,580 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-29 09:22:49,580 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-29 09:22:49,580 - INFO -     Topic 9: 'درمان'
+2026-04-29 09:22:49,580 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-29 09:22:49,580 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 09:22:49,581 - INFO -     Topic 2: 'تاریخچه'
+2026-04-29 09:22:49,581 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-29 09:22:49,581 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-29 09:22:49,581 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-29 09:22:49,581 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-29 09:22:49,581 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-29 09:22:49,581 - INFO -     Topic 8: 'درمان'
+2026-04-29 09:22:49,581 - INFO - ================================================================================
+2026-04-29 09:22:49,582 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 09:22:49,583 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 09:22:49,583 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-29 09:22:49,583 - INFO - ============================================================
+2026-04-29 09:22:49,583 - INFO - STEP 1: Generating initial test questions (topic-by-topic: filtered Stage J + full test file + Step 1 prompt)...
+2026-04-29 09:22:49,583 - INFO - ============================================================
+2026-04-29 09:22:49,584 - INFO - [1/23] Step 1 for Topic 'مقدمه و تاریخچه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 29)
+2026-04-29 09:22:49,592 - INFO - Loading Word document for Topic 1/23...
+2026-04-29 09:22:49,619 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 09:22:49,641 - INFO - Processing Stage V - Step 1 for Topic 1/23 (full file)...
+2026-04-29 09:22:49,642 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 09:22:49,642 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 09:32:51,284 - INFO - Step 1 response received for Topic 1 (10812 characters)
+2026-04-29 09:32:51,293 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.txt
+2026-04-29 09:32:51,294 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 09:32:51,296 - INFO - Found 1 JSON block(s) using pattern: ```json\s*(.*?)\s*```
+2026-04-29 09:32:51,297 - INFO - Successfully parsed JSON block (type: list)
+2026-04-29 09:32:51,297 - INFO -   JSON array length: 11
+2026-04-29 09:32:51,297 - INFO - Extracted 1 JSON block(s) from response
+2026-04-29 09:32:51,297 - INFO - Successfully extracted JSON from response using document processing method (1 block)
+2026-04-29 09:32:51,298 - INFO - Extracted 11 questions from Part 1
+2026-04-29 09:32:51,335 - INFO - Total questions generated in Step 1 for Topic 1: 11
+2026-04-29 09:32:51,340 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.json (11 records)
+2026-04-29 09:32:51,340 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.json
+2026-04-29 09:32:51,341 - INFO - [2/23] Step 1 for Topic 'اپیدمیولوژی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 12)
+2026-04-29 09:32:51,341 - INFO - Loading Word document for Topic 2/23...
+2026-04-29 09:32:51,384 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 09:32:51,401 - INFO - Processing Stage V - Step 1 for Topic 2/23 (full file)...
+2026-04-29 09:32:51,402 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 09:32:51,402 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 09:37:13,239 - INFO - Step 1 response received for Topic 2 (5483 characters)
+2026-04-29 09:37:13,245 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_2_اپیدمیولوژی.txt
+2026-04-29 09:37:13,246 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 09:37:13,247 - INFO - Found 1 JSON block(s) using pattern: ```json\s*(.*?)\s*```
+2026-04-29 09:37:13,247 - INFO - Successfully parsed JSON block (type: list)
+2026-04-29 09:37:13,247 - INFO -   JSON array length: 6
+2026-04-29 09:37:13,247 - INFO - Extracted 1 JSON block(s) from response
+2026-04-29 09:37:13,247 - INFO - Successfully extracted JSON from response using document processing method (1 block)
+2026-04-29 09:37:13,249 - INFO - Extracted 6 questions from Part 1
+2026-04-29 09:37:13,294 - INFO - Total questions generated in Step 1 for Topic 2: 6
+2026-04-29 09:37:13,297 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_2_اپیدمیولوژی.json (6 records)
+2026-04-29 09:37:13,297 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_2_اپیدمیولوژی.json
+2026-04-29 09:37:13,298 - INFO - [3/23] Step 1 for Topic 'پاتوژنز' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 41)
+2026-04-29 09:37:13,299 - INFO - Loading Word document for Topic 3/23...
+2026-04-29 09:37:13,333 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 09:37:13,335 - INFO - Processing Stage V - Step 1 for Topic 3/23 (full file)...
+2026-04-29 09:37:13,336 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 09:37:13,336 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 09:46:07,953 - INFO - Step 1 response received for Topic 3 (32672 characters)
+2026-04-29 09:46:07,963 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_3_پاتوژنز.txt
+2026-04-29 09:46:08,021 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 09:46:08,021 - INFO - Found 1 JSON block(s) using pattern: ```json\s*(.*?)\s*```
+2026-04-29 09:46:08,021 - WARNING - JSON parse failed: Expecting value: line 19 column 3 (char 1536). Trying fallback extraction...
+2026-04-29 09:46:08,024 - INFO - Extracted 1 complete items from partial JSON array
+2026-04-29 09:46:08,024 - INFO - Successfully parsed JSON using balanced bracket matching
+2026-04-29 09:46:08,024 - INFO - Extracted 1 JSON block(s) from response
+2026-04-29 09:46:08,024 - INFO - Successfully extracted JSON from response using document processing method (1 block)
+2026-04-29 09:46:08,024 - INFO - Extracted 1 questions from Part 1
+2026-04-29 09:46:08,025 - INFO - Total questions generated in Step 1 for Topic 3: 1
+2026-04-29 09:46:08,026 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_3_پاتوژنز.json (1 records)
+2026-04-29 09:46:08,026 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_3_پاتوژنز.json
+2026-04-29 09:46:08,027 - INFO - [4/23] Step 1 for Topic 'ویژگی‌های بالینی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 47)
+2026-04-29 09:46:08,028 - INFO - Loading Word document for Topic 4/23...
+2026-04-29 09:46:08,065 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 09:46:08,083 - INFO - Processing Stage V - Step 1 for Topic 4/23 (full file)...
+2026-04-29 09:46:08,083 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 09:46:08,083 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 09:48:31,458 - INFO - Step 1 response received for Topic 4 (10419 characters)
+2026-04-29 09:48:31,465 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_4_ویژگیهای_بالینی.txt
+2026-04-29 09:48:31,467 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 09:48:31,470 - WARNING - No JSON blocks found in response
+2026-04-29 09:48:31,470 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 09:48:31,470 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 09:48:31,471 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 157 column 14 (char 10142). Trying fallback extraction...
+2026-04-29 09:48:31,473 - ERROR - All JSON extraction methods failed
+2026-04-29 09:48:31,473 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 09:48:31,475 - WARNING - No JSON blocks found in response
+2026-04-29 09:48:31,475 - WARNING - Failed to extract JSON from text using document processing method (10419 chars)
+2026-04-29 09:48:31,475 - ERROR - Failed to extract JSON from model responses
+2026-04-29 09:48:31,476 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 09:48:31,478 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 09:48:31,478 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 157 column 14 (char 10142). Trying fallback extraction...
+2026-04-29 09:48:31,479 - ERROR - All JSON extraction methods failed
+2026-04-29 09:48:31,479 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_4_ویژگیهای_بالینی.txt
+2026-04-29 09:48:31,482 - INFO - Extracted 9 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_4_ویژگیهای_بالینی.txt
+2026-04-29 09:48:31,482 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_4_ویژگیهای_بالینی.txt
+2026-04-29 09:48:31,511 - INFO - Total questions generated in Step 1 for Topic 4: 9
+2026-04-29 09:48:31,512 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_4_ویژگیهای_بالینی.json (9 records)
+2026-04-29 09:48:31,532 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_4_ویژگیهای_بالینی.json
+2026-04-29 09:48:31,534 - INFO - [5/23] Step 1 for Topic 'بیماری‌های همراه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 53)
+2026-04-29 09:48:31,534 - INFO - Loading Word document for Topic 5/23...
+2026-04-29 09:48:31,557 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 09:48:31,564 - INFO - Processing Stage V - Step 1 for Topic 5/23 (full file)...
+2026-04-29 09:48:31,564 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 09:48:31,564 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 09:53:38,456 - INFO - Step 1 response received for Topic 5 (16367 characters)
+2026-04-29 09:53:38,463 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_5_بیماریهای_همراه.txt
+2026-04-29 09:53:38,467 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 09:53:38,468 - INFO - Found 1 JSON block(s) using pattern: ```json\s*(.*?)\s*```
+2026-04-29 09:53:38,468 - INFO - Successfully parsed JSON block (type: list)
+2026-04-29 09:53:38,469 - INFO -   JSON array length: 16
+2026-04-29 09:53:38,469 - INFO - Extracted 1 JSON block(s) from response
+2026-04-29 09:53:38,469 - INFO - Successfully extracted JSON from response using document processing method (1 block)
+2026-04-29 09:53:38,470 - INFO - Extracted 16 questions from Part 1
+2026-04-29 09:53:38,509 - INFO - Total questions generated in Step 1 for Topic 5: 16
+2026-04-29 09:53:38,511 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_5_بیماریهای_همراه.json (16 records)
+2026-04-29 09:53:38,511 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_5_بیماریهای_همراه.json
+2026-04-29 09:53:38,513 - INFO - [6/23] Step 1 for Topic 'تشخیص' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 59)
+2026-04-29 09:53:38,514 - INFO - Loading Word document for Topic 6/23...
+2026-04-29 09:53:38,530 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 09:53:38,547 - INFO - Processing Stage V - Step 1 for Topic 6/23 (full file)...
+2026-04-29 09:53:38,547 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 09:53:38,547 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:03:32,198 - INFO - Step 1 response received for Topic 6 (11142 characters)
+2026-04-29 10:03:32,214 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_6_تشخیص.txt
+2026-04-29 10:03:32,249 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:03:32,251 - WARNING - No JSON blocks found in response
+2026-04-29 10:03:32,251 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:03:32,251 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:03:32,252 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 210 column 16 (char 11103). Trying fallback extraction...
+2026-04-29 10:03:32,253 - ERROR - All JSON extraction methods failed
+2026-04-29 10:03:32,253 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:03:32,254 - WARNING - No JSON blocks found in response
+2026-04-29 10:03:32,254 - WARNING - Failed to extract JSON from text using document processing method (11142 chars)
+2026-04-29 10:03:32,254 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:03:32,254 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:03:32,255 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:03:32,255 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 210 column 16 (char 11103). Trying fallback extraction...
+2026-04-29 10:03:32,255 - ERROR - All JSON extraction methods failed
+2026-04-29 10:03:32,256 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_6_تشخیص.txt
+2026-04-29 10:03:32,257 - INFO - Extracted 12 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_6_تشخیص.txt
+2026-04-29 10:03:32,257 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_6_تشخیص.txt
+2026-04-29 10:03:32,257 - INFO - Total questions generated in Step 1 for Topic 6: 12
+2026-04-29 10:03:32,258 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_6_تشخیص.json (12 records)
+2026-04-29 10:03:32,260 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_6_تشخیص.json
+2026-04-29 10:03:32,281 - INFO - [7/23] Step 1 for Topic 'تشخیص افتراقی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 61)
+2026-04-29 10:03:32,281 - INFO - Loading Word document for Topic 7/23...
+2026-04-29 10:03:32,306 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:03:32,312 - INFO - Processing Stage V - Step 1 for Topic 7/23 (full file)...
+2026-04-29 10:03:32,312 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:03:32,312 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:10:19,342 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:10:19,346 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:13:37,122 - INFO - Step 1 response received for Topic 7 (14762 characters)
+2026-04-29 10:13:37,176 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_7_تشخیص_افتراقی.txt
+2026-04-29 10:13:37,177 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:13:37,179 - WARNING - No JSON blocks found in response
+2026-04-29 10:13:37,181 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:13:37,186 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:13:37,186 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 221 column 18 (char 14574). Trying fallback extraction...
+2026-04-29 10:13:37,187 - ERROR - All JSON extraction methods failed
+2026-04-29 10:13:37,212 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:13:37,213 - WARNING - No JSON blocks found in response
+2026-04-29 10:13:37,213 - WARNING - Failed to extract JSON from text using document processing method (14762 chars)
+2026-04-29 10:13:37,213 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:13:37,213 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:13:37,216 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:13:37,216 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 221 column 18 (char 14574). Trying fallback extraction...
+2026-04-29 10:13:37,217 - ERROR - All JSON extraction methods failed
+2026-04-29 10:13:37,217 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_7_تشخیص_افتراقی.txt
+2026-04-29 10:13:37,220 - INFO - Extracted 12 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_7_تشخیص_افتراقی.txt
+2026-04-29 10:13:37,220 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_7_تشخیص_افتراقی.txt
+2026-04-29 10:13:37,238 - INFO - Total questions generated in Step 1 for Topic 7: 12
+2026-04-29 10:13:37,239 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_7_تشخیص_افتراقی.json (12 records)
+2026-04-29 10:13:37,239 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_7_تشخیص_افتراقی.json
+2026-04-29 10:13:37,240 - INFO - [8/23] Step 1 for Topic 'پیش‌آگهی و پایش' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 21)
+2026-04-29 10:13:37,241 - INFO - Loading Word document for Topic 8/23...
+2026-04-29 10:13:37,274 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:13:37,304 - INFO - Processing Stage V - Step 1 for Topic 8/23 (full file)...
+2026-04-29 10:13:37,304 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:13:37,304 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:19:10,555 - INFO - Step 1 response received for Topic 8 (17972 characters)
+2026-04-29 10:19:10,562 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_8_پیشآگهی_و_پایش.txt
+2026-04-29 10:19:10,604 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:19:10,605 - WARNING - No JSON blocks found in response
+2026-04-29 10:19:10,605 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:19:10,606 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:19:10,606 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 276 column 14 (char 17861). Trying fallback extraction...
+2026-04-29 10:19:10,607 - ERROR - All JSON extraction methods failed
+2026-04-29 10:19:10,608 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:19:10,609 - WARNING - No JSON blocks found in response
+2026-04-29 10:19:10,609 - WARNING - Failed to extract JSON from text using document processing method (17972 chars)
+2026-04-29 10:19:10,609 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:19:10,609 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:19:10,610 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:19:10,610 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 276 column 14 (char 17861). Trying fallback extraction...
+2026-04-29 10:19:10,612 - ERROR - All JSON extraction methods failed
+2026-04-29 10:19:10,612 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_8_پیشآگهی_و_پایش.txt
+2026-04-29 10:19:10,613 - INFO - Extracted 16 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_8_پیشآگهی_و_پایش.txt
+2026-04-29 10:19:10,614 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_8_پیشآگهی_و_پایش.txt
+2026-04-29 10:19:10,614 - INFO - Total questions generated in Step 1 for Topic 8: 16
+2026-04-29 10:19:10,616 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_8_پیشآگهی_و_پایش.json (16 records)
+2026-04-29 10:19:10,638 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_8_پیشآگهی_و_پایش.json
+2026-04-29 10:19:10,639 - INFO - [9/23] Step 1 for Topic 'درمان' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 61)
+2026-04-29 10:19:10,639 - INFO - Loading Word document for Topic 9/23...
+2026-04-29 10:19:10,656 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:19:10,670 - INFO - Processing Stage V - Step 1 for Topic 9/23 (full file)...
+2026-04-29 10:19:10,671 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:19:10,671 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:22:51,905 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:22:51,908 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:28:54,105 - INFO - Step 1 response received for Topic 9 (4775 characters)
+2026-04-29 10:28:54,112 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_9_درمان.txt
+2026-04-29 10:28:54,113 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:28:54,114 - WARNING - No JSON blocks found in response
+2026-04-29 10:28:54,115 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:28:54,115 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:28:54,115 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 77 column 16 (char 4765). Trying fallback extraction...
+2026-04-29 10:28:54,116 - ERROR - All JSON extraction methods failed
+2026-04-29 10:28:54,119 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:28:54,120 - WARNING - No JSON blocks found in response
+2026-04-29 10:28:54,120 - WARNING - Failed to extract JSON from text using document processing method (4775 chars)
+2026-04-29 10:28:54,120 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:28:54,165 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:28:54,167 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:28:54,168 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 77 column 16 (char 4765). Trying fallback extraction...
+2026-04-29 10:28:54,169 - ERROR - All JSON extraction methods failed
+2026-04-29 10:28:54,169 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_9_درمان.txt
+2026-04-29 10:28:54,170 - INFO - Extracted 4 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_9_درمان.txt
+2026-04-29 10:28:54,170 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_9_درمان.txt
+2026-04-29 10:28:54,195 - INFO - Total questions generated in Step 1 for Topic 9: 4
+2026-04-29 10:28:54,198 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_9_درمان.json (4 records)
+2026-04-29 10:28:54,199 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_9_درمان.json
+2026-04-29 10:28:54,219 - INFO - [10/23] Step 1 for Topic 'مقدمه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 27)
+2026-04-29 10:28:54,220 - INFO - Loading Word document for Topic 10/23...
+2026-04-29 10:28:54,254 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:28:54,256 - INFO - Processing Stage V - Step 1 for Topic 10/23 (full file)...
+2026-04-29 10:28:54,256 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:28:54,257 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:32:57,128 - INFO - Step 1 response received for Topic 10 (8533 characters)
+2026-04-29 10:32:57,137 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_10_مقدمه.txt
+2026-04-29 10:32:57,183 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:32:57,184 - WARNING - No JSON blocks found in response
+2026-04-29 10:32:57,184 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:32:57,185 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:32:57,185 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 123 column 14 (char 8497). Trying fallback extraction...
+2026-04-29 10:32:57,185 - ERROR - All JSON extraction methods failed
+2026-04-29 10:32:57,208 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:32:57,209 - WARNING - No JSON blocks found in response
+2026-04-29 10:32:57,209 - WARNING - Failed to extract JSON from text using document processing method (8533 chars)
+2026-04-29 10:32:57,209 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:32:57,209 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:32:57,209 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:32:57,209 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 123 column 14 (char 8497). Trying fallback extraction...
+2026-04-29 10:32:57,210 - ERROR - All JSON extraction methods failed
+2026-04-29 10:32:57,210 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_10_مقدمه.txt
+2026-04-29 10:32:57,211 - INFO - Extracted 7 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_10_مقدمه.txt
+2026-04-29 10:32:57,211 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_10_مقدمه.txt
+2026-04-29 10:32:57,211 - INFO - Total questions generated in Step 1 for Topic 10: 7
+2026-04-29 10:32:57,211 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_10_مقدمه.json (7 records)
+2026-04-29 10:32:57,212 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_10_مقدمه.json
+2026-04-29 10:32:57,213 - INFO - [11/23] Step 1 for Topic 'تاریخچه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 13)
+2026-04-29 10:32:57,213 - INFO - Loading Word document for Topic 11/23...
+2026-04-29 10:32:57,232 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:32:57,236 - INFO - Processing Stage V - Step 1 for Topic 11/23 (full file)...
+2026-04-29 10:32:57,236 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:32:57,236 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:40:33,745 - INFO - Step 1 response received for Topic 11 (4865 characters)
+2026-04-29 10:40:33,752 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_11_تاریخچه.txt
+2026-04-29 10:40:33,753 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:40:33,755 - WARNING - No JSON blocks found in response
+2026-04-29 10:40:33,755 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:40:33,755 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:40:33,757 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 55 column 14 (char 4631). Trying fallback extraction...
+2026-04-29 10:40:33,760 - ERROR - All JSON extraction methods failed
+2026-04-29 10:40:33,815 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:40:33,816 - WARNING - No JSON blocks found in response
+2026-04-29 10:40:33,816 - WARNING - Failed to extract JSON from text using document processing method (4865 chars)
+2026-04-29 10:40:33,816 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:40:33,817 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:40:33,819 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:40:33,819 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 55 column 14 (char 4631). Trying fallback extraction...
+2026-04-29 10:40:33,819 - ERROR - All JSON extraction methods failed
+2026-04-29 10:40:33,820 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_11_تاریخچه.txt
+2026-04-29 10:40:33,820 - INFO - Extracted 3 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_11_تاریخچه.txt
+2026-04-29 10:40:33,820 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_11_تاریخچه.txt
+2026-04-29 10:40:33,821 - INFO - Total questions generated in Step 1 for Topic 11: 3
+2026-04-29 10:40:33,821 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_11_تاریخچه.json (3 records)
+2026-04-29 10:40:33,850 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_11_تاریخچه.json
+2026-04-29 10:40:33,852 - INFO - [12/23] Step 1 for Topic 'اپیدمیولوژی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 17)
+2026-04-29 10:40:33,853 - INFO - Loading Word document for Topic 12/23...
+2026-04-29 10:40:33,883 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:40:33,912 - INFO - Processing Stage V - Step 1 for Topic 12/23 (full file)...
+2026-04-29 10:40:33,912 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:40:33,912 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:47:46,839 - INFO - Step 1 response received for Topic 12 (2781 characters)
+2026-04-29 10:47:46,846 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_12_اپیدمیولوژی.txt
+2026-04-29 10:47:46,847 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:47:46,848 - WARNING - No JSON blocks found in response
+2026-04-29 10:47:46,848 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:47:46,848 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:47:46,849 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 33 column 5 (char 2762). Trying fallback extraction...
+2026-04-29 10:47:46,850 - ERROR - All JSON extraction methods failed
+2026-04-29 10:47:46,855 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:47:46,856 - WARNING - No JSON blocks found in response
+2026-04-29 10:47:46,856 - WARNING - Failed to extract JSON from text using document processing method (2781 chars)
+2026-04-29 10:47:46,856 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:47:46,903 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:47:46,904 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:47:46,904 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 33 column 5 (char 2762). Trying fallback extraction...
+2026-04-29 10:47:46,904 - ERROR - All JSON extraction methods failed
+2026-04-29 10:47:46,904 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_12_اپیدمیولوژی.txt
+2026-04-29 10:47:46,905 - INFO - Extracted 1 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_12_اپیدمیولوژی.txt
+2026-04-29 10:47:46,905 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_12_اپیدمیولوژی.txt
+2026-04-29 10:47:46,905 - INFO - Total questions generated in Step 1 for Topic 12: 1
+2026-04-29 10:47:46,906 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_12_اپیدمیولوژی.json (1 records)
+2026-04-29 10:47:46,928 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_12_اپیدمیولوژی.json
+2026-04-29 10:47:46,930 - INFO - [13/23] Step 1 for Topic 'پاتوژنز' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 35)
+2026-04-29 10:47:46,931 - INFO - Loading Word document for Topic 13/23...
+2026-04-29 10:47:46,954 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:47:46,961 - INFO - Processing Stage V - Step 1 for Topic 13/23 (full file)...
+2026-04-29 10:47:46,961 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:47:46,961 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:52:15,220 - INFO - Step 1 response received for Topic 13 (9843 characters)
+2026-04-29 10:52:15,227 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_13_پاتوژنز.txt
+2026-04-29 10:52:15,228 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:52:15,230 - WARNING - No JSON blocks found in response
+2026-04-29 10:52:15,230 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:52:15,230 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:52:15,230 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 118 column 19 (char 9826). Trying fallback extraction...
+2026-04-29 10:52:15,232 - ERROR - All JSON extraction methods failed
+2026-04-29 10:52:15,232 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:52:15,234 - WARNING - No JSON blocks found in response
+2026-04-29 10:52:15,234 - WARNING - Failed to extract JSON from text using document processing method (9843 chars)
+2026-04-29 10:52:15,234 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:52:15,235 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:52:15,237 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:52:15,237 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 118 column 19 (char 9826). Trying fallback extraction...
+2026-04-29 10:52:15,239 - ERROR - All JSON extraction methods failed
+2026-04-29 10:52:15,240 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_13_پاتوژنز.txt
+2026-04-29 10:52:15,241 - INFO - Extracted 6 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_13_پاتوژنز.txt
+2026-04-29 10:52:15,242 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_13_پاتوژنز.txt
+2026-04-29 10:52:15,275 - INFO - Total questions generated in Step 1 for Topic 13: 6
+2026-04-29 10:52:15,281 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_13_پاتوژنز.json (6 records)
+2026-04-29 10:52:15,281 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_13_پاتوژنز.json
+2026-04-29 10:52:15,304 - INFO - [14/23] Step 1 for Topic 'ویژگی‌های بالینی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 64)
+2026-04-29 10:52:15,304 - INFO - Loading Word document for Topic 14/23...
+2026-04-29 10:52:15,326 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:52:15,338 - INFO - Processing Stage V - Step 1 for Topic 14/23 (full file)...
+2026-04-29 10:52:15,339 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:52:15,339 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 10:56:16,718 - INFO - Step 1 response received for Topic 14 (957 characters)
+2026-04-29 10:56:16,725 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_14_ویژگیهای_بالینی.txt
+2026-04-29 10:56:16,727 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 10:56:16,728 - WARNING - No JSON blocks found in response
+2026-04-29 10:56:16,728 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 10:56:16,728 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:56:16,728 - WARNING - Direct JSON parse failed: Expecting value: line 10 column 15 (char 949). Trying fallback extraction...
+2026-04-29 10:56:16,728 - ERROR - All JSON extraction methods failed
+2026-04-29 10:56:16,730 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 10:56:16,732 - WARNING - No JSON blocks found in response
+2026-04-29 10:56:16,733 - WARNING - Failed to extract JSON from text using document processing method (957 chars)
+2026-04-29 10:56:16,734 - ERROR - Failed to extract JSON from model responses
+2026-04-29 10:56:16,785 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 10:56:16,790 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 10:56:16,790 - WARNING - Direct JSON parse failed: Expecting value: line 10 column 15 (char 949). Trying fallback extraction...
+2026-04-29 10:56:16,791 - ERROR - All JSON extraction methods failed
+2026-04-29 10:56:16,791 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_14_ویژگیهای_بالینی.txt
+2026-04-29 10:56:16,791 - ERROR - No JSON object boundaries found in TXT file: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_14_ویژگیهای_بالینی.txt
+2026-04-29 10:56:16,791 - ERROR - No questions generated in Step 1 for Topic 14
+2026-04-29 10:56:16,813 - INFO - [15/23] Step 1 for Topic 'تشخیص و تشخیص افتراقی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 56)
+2026-04-29 10:56:16,814 - INFO - Loading Word document for Topic 15/23...
+2026-04-29 10:56:16,845 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 10:56:16,845 - INFO - Processing Stage V - Step 1 for Topic 15/23 (full file)...
+2026-04-29 10:56:16,845 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 10:56:16,845 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:00:14,295 - INFO - Step 1 response received for Topic 15 (12206 characters)
+2026-04-29 11:00:14,301 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_15_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:00:14,302 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:00:14,303 - WARNING - No JSON blocks found in response
+2026-04-29 11:00:14,303 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:00:14,303 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:00:14,304 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 170 column 18 (char 11641). Trying fallback extraction...
+2026-04-29 11:00:14,305 - ERROR - All JSON extraction methods failed
+2026-04-29 11:00:14,307 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:00:14,307 - WARNING - No JSON blocks found in response
+2026-04-29 11:00:14,307 - WARNING - Failed to extract JSON from text using document processing method (12206 chars)
+2026-04-29 11:00:14,307 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:00:14,339 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:00:14,340 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:00:14,340 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 170 column 18 (char 11641). Trying fallback extraction...
+2026-04-29 11:00:14,341 - ERROR - All JSON extraction methods failed
+2026-04-29 11:00:14,341 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_15_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:00:14,343 - INFO - Extracted 9 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_15_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:00:14,343 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_15_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:00:14,343 - INFO - Total questions generated in Step 1 for Topic 15: 9
+2026-04-29 11:00:14,345 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_15_تشخیص_و_تشخیص_افتراقی.json (9 records)
+2026-04-29 11:00:14,345 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_15_تشخیص_و_تشخیص_افتراقی.json
+2026-04-29 11:00:14,346 - INFO - [16/23] Step 1 for Topic 'پیش‌آگهی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 9)
+2026-04-29 11:00:14,384 - INFO - Loading Word document for Topic 16/23...
+2026-04-29 11:00:14,422 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:00:14,440 - INFO - Processing Stage V - Step 1 for Topic 16/23 (full file)...
+2026-04-29 11:00:14,440 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:00:14,441 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:03:46,192 - INFO - Step 1 response received for Topic 16 (8726 characters)
+2026-04-29 11:03:46,203 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_16_پیشآگهی.txt
+2026-04-29 11:03:46,250 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:03:46,251 - WARNING - No JSON blocks found in response
+2026-04-29 11:03:46,251 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:03:46,251 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:03:46,252 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 125 column 16 (char 8484). Trying fallback extraction...
+2026-04-29 11:03:46,253 - ERROR - All JSON extraction methods failed
+2026-04-29 11:03:46,253 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:03:46,254 - WARNING - No JSON blocks found in response
+2026-04-29 11:03:46,254 - WARNING - Failed to extract JSON from text using document processing method (8726 chars)
+2026-04-29 11:03:46,255 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:03:46,278 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:03:46,278 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:03:46,279 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 125 column 16 (char 8484). Trying fallback extraction...
+2026-04-29 11:03:46,279 - ERROR - All JSON extraction methods failed
+2026-04-29 11:03:46,279 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_16_پیشآگهی.txt
+2026-04-29 11:03:46,280 - INFO - Extracted 7 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_16_پیشآگهی.txt
+2026-04-29 11:03:46,280 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_16_پیشآگهی.txt
+2026-04-29 11:03:46,281 - INFO - Total questions generated in Step 1 for Topic 16: 7
+2026-04-29 11:03:46,282 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_16_پیشآگهی.json (7 records)
+2026-04-29 11:03:46,282 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_16_پیشآگهی.json
+2026-04-29 11:03:46,283 - INFO - [17/23] Step 1 for Topic 'درمان' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید مخاطی', Stage J rows: 48)
+2026-04-29 11:03:46,283 - INFO - Loading Word document for Topic 17/23...
+2026-04-29 11:03:46,316 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:03:46,343 - INFO - Processing Stage V - Step 1 for Topic 17/23 (full file)...
+2026-04-29 11:03:46,343 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:03:46,344 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:07:35,499 - INFO - Step 1 response received for Topic 17 (10077 characters)
+2026-04-29 11:07:35,507 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_17_درمان.txt
+2026-04-29 11:07:35,509 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:07:35,511 - WARNING - No JSON blocks found in response
+2026-04-29 11:07:35,511 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:07:35,511 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:07:35,513 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 204 column 18 (char 10033). Trying fallback extraction...
+2026-04-29 11:07:35,514 - ERROR - All JSON extraction methods failed
+2026-04-29 11:07:35,520 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:07:35,521 - WARNING - No JSON blocks found in response
+2026-04-29 11:07:35,521 - WARNING - Failed to extract JSON from text using document processing method (10077 chars)
+2026-04-29 11:07:35,521 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:07:35,562 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:07:35,563 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:07:35,563 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 204 column 18 (char 10033). Trying fallback extraction...
+2026-04-29 11:07:35,564 - ERROR - All JSON extraction methods failed
+2026-04-29 11:07:35,564 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_17_درمان.txt
+2026-04-29 11:07:35,565 - INFO - Extracted 11 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_17_درمان.txt
+2026-04-29 11:07:35,565 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_17_درمان.txt
+2026-04-29 11:07:35,565 - INFO - Total questions generated in Step 1 for Topic 17: 11
+2026-04-29 11:07:35,573 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_17_درمان.json (11 records)
+2026-04-29 11:07:35,573 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_17_درمان.json
+2026-04-29 11:07:35,596 - INFO - [18/23] Step 1 for Topic 'مقدمه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'اپیدرمولیز بولوزا اکوئیزیتا', Stage J rows: 15)
+2026-04-29 11:07:35,597 - INFO - Loading Word document for Topic 18/23...
+2026-04-29 11:07:35,636 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:07:35,661 - INFO - Processing Stage V - Step 1 for Topic 18/23 (full file)...
+2026-04-29 11:07:35,661 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:07:35,661 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:09:36,741 - INFO - Step 1 response received for Topic 18 (5690 characters)
+2026-04-29 11:09:36,748 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_18_مقدمه.txt
+2026-04-29 11:09:36,799 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:09:36,800 - INFO - Found 1 JSON block(s) using pattern: ```json\s*(.*?)\s*```
+2026-04-29 11:09:36,800 - INFO - Successfully parsed JSON block (type: list)
+2026-04-29 11:09:36,800 - INFO -   JSON array length: 5
+2026-04-29 11:09:36,800 - INFO - Extracted 1 JSON block(s) from response
+2026-04-29 11:09:36,801 - INFO - Successfully extracted JSON from response using document processing method (1 block)
+2026-04-29 11:09:36,801 - INFO - Extracted 5 questions from Part 1
+2026-04-29 11:09:36,801 - INFO - Total questions generated in Step 1 for Topic 18: 5
+2026-04-29 11:09:36,802 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_18_مقدمه.json (5 records)
+2026-04-29 11:09:36,803 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_18_مقدمه.json
+2026-04-29 11:09:36,805 - INFO - [19/23] Step 1 for Topic 'تاریخچه و اپیدمیولوژی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'اپیدرمولیز بولوزا اکوئیزیتا', Stage J rows: 15)
+2026-04-29 11:09:36,806 - INFO - Loading Word document for Topic 19/23...
+2026-04-29 11:09:36,829 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:09:36,831 - INFO - Processing Stage V - Step 1 for Topic 19/23 (full file)...
+2026-04-29 11:09:36,831 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:09:36,831 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:13:55,268 - INFO - Step 1 response received for Topic 19 (10824 characters)
+2026-04-29 11:13:55,274 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_19_تاریخچه_و_اپیدمیولوژی.txt
+2026-04-29 11:13:55,275 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:13:55,277 - WARNING - No JSON blocks found in response
+2026-04-29 11:13:55,277 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:13:55,277 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:13:55,278 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 140 column 14 (char 10622). Trying fallback extraction...
+2026-04-29 11:13:55,280 - ERROR - All JSON extraction methods failed
+2026-04-29 11:13:55,322 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:13:55,323 - WARNING - No JSON blocks found in response
+2026-04-29 11:13:55,323 - WARNING - Failed to extract JSON from text using document processing method (10824 chars)
+2026-04-29 11:13:55,323 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:13:55,323 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:13:55,324 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:13:55,324 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 140 column 14 (char 10622). Trying fallback extraction...
+2026-04-29 11:13:55,325 - ERROR - All JSON extraction methods failed
+2026-04-29 11:13:55,325 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_19_تاریخچه_و_اپیدمیولوژی.txt
+2026-04-29 11:13:55,327 - INFO - Extracted 8 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_19_تاریخچه_و_اپیدمیولوژی.txt
+2026-04-29 11:13:55,327 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_19_تاریخچه_و_اپیدمیولوژی.txt
+2026-04-29 11:13:55,327 - INFO - Total questions generated in Step 1 for Topic 19: 8
+2026-04-29 11:13:55,329 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_19_تاریخچه_و_اپیدمیولوژی.json (8 records)
+2026-04-29 11:13:55,329 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_19_تاریخچه_و_اپیدمیولوژی.json
+2026-04-29 11:13:55,330 - INFO - [20/23] Step 1 for Topic 'پاتوژنز' (Chapter: 'گروه پمفیگوئید', Subchapter: 'اپیدرمولیز بولوزا اکوئیزیتا', Stage J rows: 25)
+2026-04-29 11:13:55,360 - INFO - Loading Word document for Topic 20/23...
+2026-04-29 11:13:55,400 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:13:55,418 - INFO - Processing Stage V - Step 1 for Topic 20/23 (full file)...
+2026-04-29 11:13:55,418 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:13:55,418 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:17:53,998 - INFO - Step 1 response received for Topic 20 (22624 characters)
+2026-04-29 11:17:54,043 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_20_پاتوژنز.txt
+2026-04-29 11:17:54,044 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:17:54,046 - WARNING - No JSON blocks found in response
+2026-04-29 11:17:54,046 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:17:54,046 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:17:54,047 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 340 column 18 (char 22345). Trying fallback extraction...
+2026-04-29 11:17:54,049 - ERROR - All JSON extraction methods failed
+2026-04-29 11:17:54,049 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:17:54,051 - WARNING - No JSON blocks found in response
+2026-04-29 11:17:54,051 - WARNING - Failed to extract JSON from text using document processing method (22624 chars)
+2026-04-29 11:17:54,051 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:17:54,051 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:17:54,051 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:17:54,052 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 340 column 18 (char 22345). Trying fallback extraction...
+2026-04-29 11:17:54,053 - ERROR - All JSON extraction methods failed
+2026-04-29 11:17:54,054 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_20_پاتوژنز.txt
+2026-04-29 11:17:54,057 - INFO - Extracted 19 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_20_پاتوژنز.txt
+2026-04-29 11:17:54,058 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_20_پاتوژنز.txt
+2026-04-29 11:17:54,080 - INFO - Total questions generated in Step 1 for Topic 20: 19
+2026-04-29 11:17:54,081 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_20_پاتوژنز.json (19 records)
+2026-04-29 11:17:54,081 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_20_پاتوژنز.json
+2026-04-29 11:17:54,082 - INFO - [21/23] Step 1 for Topic 'ویژگی‌های بالینی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'اپیدرمولیز بولوزا اکوئیزیتا', Stage J rows: 60)
+2026-04-29 11:17:54,083 - INFO - Loading Word document for Topic 21/23...
+2026-04-29 11:17:54,098 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:17:54,107 - INFO - Processing Stage V - Step 1 for Topic 21/23 (full file)...
+2026-04-29 11:17:54,107 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:17:54,107 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:22:26,749 - INFO - Step 1 response received for Topic 21 (6418 characters)
+2026-04-29 11:22:26,765 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_21_ویژگیهای_بالینی.txt
+2026-04-29 11:22:26,767 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:22:26,768 - WARNING - No JSON blocks found in response
+2026-04-29 11:22:26,769 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:22:26,769 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:22:26,769 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 109 column 16 (char 6408). Trying fallback extraction...
+2026-04-29 11:22:26,770 - ERROR - All JSON extraction methods failed
+2026-04-29 11:22:26,772 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:22:26,773 - WARNING - No JSON blocks found in response
+2026-04-29 11:22:26,773 - WARNING - Failed to extract JSON from text using document processing method (6418 chars)
+2026-04-29 11:22:26,773 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:22:26,812 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:22:26,814 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:22:26,814 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 109 column 16 (char 6408). Trying fallback extraction...
+2026-04-29 11:22:26,815 - ERROR - All JSON extraction methods failed
+2026-04-29 11:22:26,815 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_21_ویژگیهای_بالینی.txt
+2026-04-29 11:22:26,816 - INFO - Extracted 6 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_21_ویژگیهای_بالینی.txt
+2026-04-29 11:22:26,816 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_21_ویژگیهای_بالینی.txt
+2026-04-29 11:22:26,816 - INFO - Total questions generated in Step 1 for Topic 21: 6
+2026-04-29 11:22:26,818 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_21_ویژگیهای_بالینی.json (6 records)
+2026-04-29 11:22:26,819 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_21_ویژگیهای_بالینی.json
+2026-04-29 11:22:26,820 - INFO - [22/23] Step 1 for Topic 'تشخیص و تشخیص افتراقی' (Chapter: 'گروه پمفیگوئید', Subchapter: 'اپیدرمولیز بولوزا اکوئیزیتا', Stage J rows: 47)
+2026-04-29 11:22:26,820 - INFO - Loading Word document for Topic 22/23...
+2026-04-29 11:22:26,859 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:22:26,879 - INFO - Processing Stage V - Step 1 for Topic 22/23 (full file)...
+2026-04-29 11:22:26,880 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:22:26,880 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:27:10,598 - INFO - Step 1 response received for Topic 22 (3261 characters)
+2026-04-29 11:27:10,608 - INFO - Saved raw model responses to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_22_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:27:10,615 - INFO - Extracting JSON from Part 1 response...
+2026-04-29 11:27:10,617 - WARNING - No JSON blocks found in response
+2026-04-29 11:27:10,617 - WARNING - Failed to extract JSON from response using document processing method, trying ThirdStageConverter fallback...
+2026-04-29 11:27:10,618 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:27:10,619 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 48 column 16 (char 3246). Trying fallback extraction...
+2026-04-29 11:27:10,620 - ERROR - All JSON extraction methods failed
+2026-04-29 11:27:10,661 - INFO - Trying to extract Part 1 JSON from text...
+2026-04-29 11:27:10,662 - WARNING - No JSON blocks found in response
+2026-04-29 11:27:10,662 - WARNING - Failed to extract JSON from text using document processing method (3261 chars)
+2026-04-29 11:27:10,662 - ERROR - Failed to extract JSON from model responses
+2026-04-29 11:27:10,663 - INFO - Trying to load JSON from TXT file as fallback...
+2026-04-29 11:27:10,664 - WARNING - No closing markdown marker found, JSON may be incomplete
+2026-04-29 11:27:10,664 - WARNING - Direct JSON parse failed: Unterminated string starting at: line 48 column 16 (char 3246). Trying fallback extraction...
+2026-04-29 11:27:10,664 - ERROR - All JSON extraction methods failed
+2026-04-29 11:27:10,664 - INFO - Falling back to manual JSON extraction for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_22_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:27:10,665 - INFO - Extracted 2 complete objects from incomplete JSON array for /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_22_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:27:10,665 - INFO - Successfully loaded JSON from TXT: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_22_تشخیص_و_تشخیص_افتراقی.txt
+2026-04-29 11:27:10,676 - INFO - Total questions generated in Step 1 for Topic 22: 2
+2026-04-29 11:27:10,677 - INFO - Successfully saved JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_22_تشخیص_و_تشخیص_افتراقی.json (2 records)
+2026-04-29 11:27:10,696 - INFO - Step 1 output saved to: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_22_تشخیص_و_تشخیص_افتراقی.json
+2026-04-29 11:27:10,697 - INFO - [23/23] Step 1 for Topic 'درمان' (Chapter: 'گروه پمفیگوئید', Subchapter: 'اپیدرمولیز بولوزا اکوئیزیتا', Stage J rows: 15)
+2026-04-29 11:27:10,698 - INFO - Loading Word document for Topic 23/23...
+2026-04-29 11:27:10,731 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:27:10,731 - INFO - Processing Stage V - Step 1 for Topic 23/23 (full file)...
+2026-04-29 11:27:10,732 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:27:10,732 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:49:02,250 - ERROR - OpenRouter request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Read timed out.
+2026-04-29 11:49:02,253 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:49:02,253 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:49:02,726 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:05,198 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:09,645 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:10,128 - ERROR - OpenRouter request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/chat/completions (Caused by ProtocolError('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer')))
+2026-04-29 11:49:10,128 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:49:10,129 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:49:10,625 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:13,094 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:17,534 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:17,983 - ERROR - OpenRouter request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/chat/completions (Caused by ProtocolError('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer')))
+2026-04-29 11:49:17,983 - ERROR - No response from model in Step 1
+2026-04-29 11:49:17,987 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 11:49:17,988 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 11:49:17,988 - INFO - Stage V Step 2: Using provider=openrouter, model=z-ai/glm-5
+2026-04-29 11:49:17,988 - INFO - ============================================================
+2026-04-29 11:49:17,990 - INFO - STEP 2: Refining questions and adding QId (each topic: filtered Stage J + topic Step 1 file + Step 2 prompt)...
+2026-04-29 11:49:17,990 - INFO - ============================================================
+2026-04-29 11:49:17,993 - INFO - [1/23] Processing Step 2 for Topic 'مقدمه و تاریخچه' (Chapter: 'گروه پمفیگوئید', Subchapter: 'پمفیگوئید بولوز', Stage J rows: 29)...
+2026-04-29 11:49:17,993 - INFO - 
+2026-04-29 11:49:17,993 - INFO - ================================================================================
+2026-04-29 11:49:17,993 - INFO - PROCESSING TOPIC 1/23: 'مقدمه و تاریخچه'
+2026-04-29 11:49:17,993 - INFO - ================================================================================
+2026-04-29 11:49:17,993 - INFO -   Chapter: 'گروه پمفیگوئید'
+2026-04-29 11:49:17,993 - INFO -   Subchapter: 'پمفیگوئید بولوز'
+2026-04-29 11:49:17,993 - INFO -   Topic: 'مقدمه و تاریخچه'
+2026-04-29 11:49:17,993 - INFO -   Input: filtered Stage J + topic Step 1 file + Step 2 prompt
+2026-04-29 11:49:17,995 - INFO - Loading Word document for Topic 1/23...
+2026-04-29 11:49:18,028 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 11:49:18,028 - INFO - Loading Step 1 output...
+2026-04-29 11:49:18,029 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030_stage_v_step1_topic_1_مقدمه_و_تاریخچه.json
+2026-04-29 11:49:18,029 - INFO - Loaded 11 questions from Step 1
+2026-04-29 11:49:18,029 - INFO - Processing Stage V - Step 2 for Topic 1/23 (full file)...
+2026-04-29 11:49:18,029 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:49:18,029 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:49:18,475 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:20,943 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:25,419 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:25,860 - ERROR - OpenRouter request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/chat/completions (Caused by ProtocolError('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer')))
+2026-04-29 11:49:25,861 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:49:25,861 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:49:26,280 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:28,731 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:33,235 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:33,671 - ERROR - OpenRouter request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/chat/completions (Caused by ProtocolError('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer')))
+2026-04-29 11:49:33,672 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 11:49:33,672 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 11:49:34,150 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:36,636 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:41,075 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /api/v1/chat/completions
+2026-04-29 11:49:41,531 - ERROR - OpenRouter request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/chat/completions (Caused by ProtocolError('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer')))
+2026-04-29 11:49:41,532 - ERROR - No response from model in Step 2
+2026-04-29 11:49:41,534 - ERROR - Error processing a105030.json ↔ a105030.docx: cannot unpack non-iterable NoneType object
+Traceback (most recent call last):
+  File "/Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/main_gui.py", line 9599, in worker
+    output_path = self.stage_v_processor.process_stage_v(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/stage_v_processor.py", line 263, in process_stage_v
+    topic_step2_output, num_questions = self._step2_refine_questions_and_add_qid(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: cannot unpack non-iterable NoneType object
+2026-04-29 13:32:34,808 - INFO - Loaded 16 predefined prompts
+2026-04-29 13:32:34,808 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 13:32:34,808 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 13:32:34,808 - INFO - Loaded stage settings from stage_settings.json
+2026-04-29 13:32:34,868 - INFO - python-docx library is available
+2026-04-29 13:32:34,868 - INFO - python-docx library is available
+2026-04-29 13:34:00,302 - INFO - Current stage set to: stage_v
+2026-04-29 13:34:00,304 - INFO - Starting Stage V processing...
+2026-04-29 13:34:00,308 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-29 13:34:00,323 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-29 13:34:00,324 - INFO - Extracting topic structure directly from Stage J...
+2026-04-29 13:34:00,325 - INFO - ================================================================================
+2026-04-29 13:34:00,325 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-29 13:34:00,325 - INFO - ================================================================================
+2026-04-29 13:34:00,325 - INFO - Found 23 topics to process
+2026-04-29 13:34:00,325 - INFO - Found 3 unique subchapters
+2026-04-29 13:34:00,325 - INFO - 
+2026-04-29 13:34:00,325 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-29 13:34:00,325 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 13:34:00,326 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-29 13:34:00,326 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 13:34:00,326 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 13:34:00,326 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-29 13:34:00,326 - INFO -     Topic 6: 'درمان'
+2026-04-29 13:34:00,326 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-29 13:34:00,326 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-29 13:34:00,326 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-29 13:34:00,326 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 13:34:00,326 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 13:34:00,326 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-29 13:34:00,326 - INFO -     Topic 6: 'تشخیص'
+2026-04-29 13:34:00,326 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-29 13:34:00,326 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-29 13:34:00,326 - INFO -     Topic 9: 'درمان'
+2026-04-29 13:34:00,326 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-29 13:34:00,326 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 13:34:00,326 - INFO -     Topic 2: 'تاریخچه'
+2026-04-29 13:34:00,326 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-29 13:34:00,326 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-29 13:34:00,326 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-29 13:34:00,326 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-29 13:34:00,326 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-29 13:34:00,326 - INFO -     Topic 8: 'درمان'
+2026-04-29 13:34:00,326 - INFO - ================================================================================
+2026-04-29 13:34:00,335 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 13:34:00,335 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 13:34:00,335 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-29 13:34:00,345 - INFO - ============================================================
+2026-04-29 13:34:00,345 - INFO - STEP 1: Generating initial test questions (single run: full Stage J + full test file + Step 1 prompt)...
+2026-04-29 13:34:00,345 - INFO - ============================================================
+2026-04-29 13:34:00,346 - INFO - Loading Word document for Step 1...
+2026-04-29 13:34:00,377 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 13:34:00,395 - INFO - Processing Stage V - Step 1 (single run: full Stage J + full test file)...
+2026-04-29 13:34:00,395 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 13:34:00,395 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 13:47:12,472 - INFO - Loaded 16 predefined prompts
+2026-04-29 13:47:12,472 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 13:47:12,472 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 13:47:12,472 - INFO - Loaded stage settings from stage_settings.json
+2026-04-29 13:47:12,532 - INFO - python-docx library is available
+2026-04-29 13:47:12,532 - INFO - python-docx library is available
+2026-04-29 13:48:14,427 - INFO - Current stage set to: stage_v
+2026-04-29 13:48:14,430 - INFO - Starting Stage V processing...
+2026-04-29 13:48:14,433 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-29 13:48:14,445 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-29 13:48:14,446 - INFO - Extracting topic structure directly from Stage J...
+2026-04-29 13:48:14,446 - INFO - ================================================================================
+2026-04-29 13:48:14,446 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-29 13:48:14,446 - INFO - ================================================================================
+2026-04-29 13:48:14,446 - INFO - Found 23 topics to process
+2026-04-29 13:48:14,447 - INFO - Found 3 unique subchapters
+2026-04-29 13:48:14,447 - INFO - 
+2026-04-29 13:48:14,447 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-29 13:48:14,447 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 13:48:14,447 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-29 13:48:14,447 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 13:48:14,447 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 13:48:14,447 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-29 13:48:14,447 - INFO -     Topic 6: 'درمان'
+2026-04-29 13:48:14,447 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-29 13:48:14,447 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-29 13:48:14,447 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-29 13:48:14,447 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 13:48:14,447 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 13:48:14,447 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-29 13:48:14,447 - INFO -     Topic 6: 'تشخیص'
+2026-04-29 13:48:14,447 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-29 13:48:14,447 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-29 13:48:14,447 - INFO -     Topic 9: 'درمان'
+2026-04-29 13:48:14,447 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-29 13:48:14,447 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 13:48:14,447 - INFO -     Topic 2: 'تاریخچه'
+2026-04-29 13:48:14,447 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-29 13:48:14,447 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-29 13:48:14,447 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-29 13:48:14,447 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-29 13:48:14,448 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-29 13:48:14,448 - INFO -     Topic 8: 'درمان'
+2026-04-29 13:48:14,448 - INFO - ================================================================================
+2026-04-29 13:48:14,468 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 13:48:14,468 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 13:48:14,468 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-29 13:48:14,471 - INFO - ============================================================
+2026-04-29 13:48:14,471 - INFO - STEP 1: Generating initial test questions (single run: full Stage J + full test file + Step 1 prompt)...
+2026-04-29 13:48:14,472 - INFO - ============================================================
+2026-04-29 13:48:14,472 - INFO - Loading Word document for Step 1...
+2026-04-29 13:48:14,504 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 13:48:14,510 - INFO - Processing Stage V - Step 1 (single run: full Stage J + full test file)...
+2026-04-29 13:48:14,510 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 13:48:14,510 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 13:53:45,026 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 13:53:45,030 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 14:05:55,660 - INFO - Loaded 16 predefined prompts
+2026-04-29 14:05:55,660 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 14:05:55,660 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 14:05:55,661 - INFO - Loaded stage settings from stage_settings.json
+2026-04-29 14:05:55,722 - INFO - python-docx library is available
+2026-04-29 14:05:55,722 - INFO - python-docx library is available
+2026-04-29 14:07:00,963 - INFO - Current stage set to: stage_v
+2026-04-29 14:07:00,967 - INFO - Starting Stage V processing...
+2026-04-29 14:07:00,973 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-29 14:07:00,974 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-29 14:07:00,987 - INFO - Extracting topic structure directly from Stage J...
+2026-04-29 14:07:00,987 - INFO - ================================================================================
+2026-04-29 14:07:00,988 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-29 14:07:00,988 - INFO - ================================================================================
+2026-04-29 14:07:00,988 - INFO - Found 23 topics to process
+2026-04-29 14:07:00,988 - INFO - Found 3 unique subchapters
+2026-04-29 14:07:00,988 - INFO - 
+2026-04-29 14:07:00,988 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-29 14:07:00,988 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 14:07:00,988 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-29 14:07:00,988 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 14:07:00,988 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 14:07:00,988 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-29 14:07:00,988 - INFO -     Topic 6: 'درمان'
+2026-04-29 14:07:00,988 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-29 14:07:00,988 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-29 14:07:00,988 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-29 14:07:00,988 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 14:07:00,988 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 14:07:00,988 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-29 14:07:00,989 - INFO -     Topic 6: 'تشخیص'
+2026-04-29 14:07:00,989 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-29 14:07:00,989 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-29 14:07:00,989 - INFO -     Topic 9: 'درمان'
+2026-04-29 14:07:00,989 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-29 14:07:00,989 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 14:07:00,989 - INFO -     Topic 2: 'تاریخچه'
+2026-04-29 14:07:00,989 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-29 14:07:00,989 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-29 14:07:00,989 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-29 14:07:00,989 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-29 14:07:00,989 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-29 14:07:00,989 - INFO -     Topic 8: 'درمان'
+2026-04-29 14:07:00,989 - INFO - ================================================================================
+2026-04-29 14:07:00,990 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 14:07:00,990 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 14:07:00,990 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-29 14:07:01,002 - INFO - ============================================================
+2026-04-29 14:07:01,002 - INFO - STEP 1: Generating initial test questions (single run: full Stage J + full test file + Step 1 prompt)...
+2026-04-29 14:07:01,003 - INFO - ============================================================
+2026-04-29 14:07:01,003 - INFO - Loading Word document for Step 1...
+2026-04-29 14:07:01,029 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 14:07:01,030 - INFO - Processing Stage V - Step 1 (single run: full Stage J + full test file)...
+2026-04-29 14:07:01,030 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 14:07:01,030 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-04-29 14:09:31,097 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectTimeoutError(<HTTPSConnection(host='openrouter.ai', port=443) at 0x125fff6b0>, 'Connection to openrouter.ai timed out. (connect timeout=300.0)')': /api/v1/chat/completions
+2026-04-29 14:12:04,204 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectTimeoutError(<HTTPSConnection(host='openrouter.ai', port=443) at 0x125e5a090>, 'Connection to openrouter.ai timed out. (connect timeout=300.0)')': /api/v1/chat/completions
+2026-04-29 14:14:38,231 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectTimeoutError(<HTTPSConnection(host='openrouter.ai', port=443) at 0x125f071a0>, 'Connection to openrouter.ai timed out. (connect timeout=300.0)')': /api/v1/chat/completions
+2026-04-29 14:16:18,776 - INFO - Loaded 16 predefined prompts
+2026-04-29 14:16:18,776 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 14:16:18,776 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 14:16:18,777 - INFO - Loaded stage settings from stage_settings.json
+2026-04-29 14:16:18,835 - INFO - python-docx library is available
+2026-04-29 14:16:18,835 - INFO - python-docx library is available
+2026-04-29 14:38:06,701 - INFO - Loaded 16 predefined prompts
+2026-04-29 14:38:06,701 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 14:38:06,701 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-04-29 14:38:06,701 - INFO - Loaded stage settings from stage_settings.json
+2026-04-29 14:38:06,763 - INFO - python-docx library is available
+2026-04-29 14:38:06,763 - INFO - python-docx library is available
+2026-04-29 14:39:07,798 - INFO - Current stage set to: stage_v
+2026-04-29 14:39:07,800 - INFO - Starting Stage V processing...
+2026-04-29 14:39:07,805 - INFO - Successfully loaded JSON: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.json
+2026-04-29 14:39:07,818 - INFO - Detected Book ID: 105, Chapter ID: 30
+2026-04-29 14:39:07,818 - INFO - Extracting topic structure directly from Stage J...
+2026-04-29 14:39:07,819 - INFO - ================================================================================
+2026-04-29 14:39:07,819 - INFO - DOCUMENT PROCESSING - PROCESSING BY TOPIC
+2026-04-29 14:39:07,819 - INFO - ================================================================================
+2026-04-29 14:39:07,819 - INFO - Found 23 topics to process
+2026-04-29 14:39:07,819 - INFO - Found 3 unique subchapters
+2026-04-29 14:39:07,819 - INFO - 
+2026-04-29 14:39:07,820 - INFO -   Subchapter 1: 'اپیدرمولیز بولوزا اکوئیزیتا' - 6 topics
+2026-04-29 14:39:07,820 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 14:39:07,820 - INFO -     Topic 2: 'تاریخچه و اپیدمیولوژی'
+2026-04-29 14:39:07,820 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 14:39:07,820 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 14:39:07,820 - INFO -     Topic 5: 'تشخیص و تشخیص افتراقی'
+2026-04-29 14:39:07,820 - INFO -     Topic 6: 'درمان'
+2026-04-29 14:39:07,820 - INFO -   Subchapter 2: 'پمفیگوئید بولوز' - 9 topics
+2026-04-29 14:39:07,820 - INFO -     Topic 1: 'مقدمه و تاریخچه'
+2026-04-29 14:39:07,820 - INFO -     Topic 2: 'اپیدمیولوژی'
+2026-04-29 14:39:07,820 - INFO -     Topic 3: 'پاتوژنز'
+2026-04-29 14:39:07,820 - INFO -     Topic 4: 'ویژگی‌های بالینی'
+2026-04-29 14:39:07,820 - INFO -     Topic 5: 'بیماری‌های همراه'
+2026-04-29 14:39:07,820 - INFO -     Topic 6: 'تشخیص'
+2026-04-29 14:39:07,820 - INFO -     Topic 7: 'تشخیص افتراقی'
+2026-04-29 14:39:07,820 - INFO -     Topic 8: 'پیش‌آگهی و پایش'
+2026-04-29 14:39:07,820 - INFO -     Topic 9: 'درمان'
+2026-04-29 14:39:07,820 - INFO -   Subchapter 3: 'پمفیگوئید مخاطی' - 8 topics
+2026-04-29 14:39:07,820 - INFO -     Topic 1: 'مقدمه'
+2026-04-29 14:39:07,820 - INFO -     Topic 2: 'تاریخچه'
+2026-04-29 14:39:07,820 - INFO -     Topic 3: 'اپیدمیولوژی'
+2026-04-29 14:39:07,820 - INFO -     Topic 4: 'پاتوژنز'
+2026-04-29 14:39:07,820 - INFO -     Topic 5: 'ویژگی‌های بالینی'
+2026-04-29 14:39:07,820 - INFO -     Topic 6: 'تشخیص و تشخیص افتراقی'
+2026-04-29 14:39:07,820 - INFO -     Topic 7: 'پیش‌آگهی'
+2026-04-29 14:39:07,820 - INFO -     Topic 8: 'درمان'
+2026-04-29 14:39:07,820 - INFO - ================================================================================
+2026-04-29 14:39:07,822 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 14:39:07,822 - INFO - Saved stage settings to stage_settings.json
+2026-04-29 14:39:07,822 - INFO - Stage V Step 1: Using provider=openrouter, model=z-ai/glm-5
+2026-04-29 14:39:07,825 - INFO - ============================================================
+2026-04-29 14:39:07,825 - INFO - STEP 1: Generating initial test questions (single run: full Stage J + full test file + Step 1 prompt)...
+2026-04-29 14:39:07,826 - INFO - ============================================================
+2026-04-29 14:39:07,826 - INFO - Loading Word document for Step 1...
+2026-04-29 14:39:07,852 - INFO - Successfully read Word file using python-docx: /Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/testing-docs/a105030.docx (8412 chars)
+2026-04-29 14:39:07,852 - INFO - Processing Stage V - Step 1 (single run: full Stage J + full test file)...
+2026-04-29 14:39:07,852 - INFO - Using OpenRouter API for stage: stage_v
+2026-04-29 14:39:07,852 - INFO - [UnifiedAPIClient] Processing text with OpenRouter model: z-ai/glm-5 (stage: stage_v)
+2026-05-02 09:35:41,425 - INFO - Loaded 16 predefined prompts
+2026-05-02 09:35:41,426 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-02 09:35:41,426 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-02 09:35:41,426 - INFO - Loaded stage settings from stage_settings.json
+2026-05-02 09:35:41,515 - INFO - python-docx library is available
+2026-05-02 09:35:41,515 - INFO - python-docx library is available
+2026-05-03 09:17:08,274 - INFO - Loaded 16 predefined prompts
+2026-05-03 09:17:08,275 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-03 09:17:08,275 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-03 09:17:08,275 - INFO - Loaded stage settings from stage_settings.json
+2026-05-03 09:17:08,348 - INFO - python-docx library is available
+2026-05-03 09:17:08,348 - INFO - python-docx library is available
+2026-05-03 09:21:05,486 - INFO - Loaded 16 predefined prompts
+2026-05-03 09:21:05,487 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-03 09:21:05,487 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-03 09:21:05,487 - INFO - Loaded stage settings from stage_settings.json
+2026-05-03 09:21:05,541 - INFO - python-docx library is available
+2026-05-03 09:21:05,541 - INFO - python-docx library is available

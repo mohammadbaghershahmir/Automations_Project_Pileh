@@ -1,0 +1,22 @@
+# Smaller build context and faster docker build
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.idea
+.vscode
+*.md
+.cursor
+build/
+dist/
+data/
+*.db
+.env
+# Large local artifacts (adjust if you need some copied into the image)
+*.pdf
+*.zip

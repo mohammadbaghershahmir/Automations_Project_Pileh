@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+<h1>Jobs</h1>
+<p class="muted">Recent jobs. Times are <strong>Asia/Tehran</strong> (شمسی). Status reflects pair outcomes when available.</p>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Stage</th><th>Status</th><th>Created</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for row in job_rows %}
+    {% set j = row.job %}
+    {% set c = j|job_cfg %}
+    <tr class="{% if row.list_status in ['running', 'queued'] %}job-row-active{% endif %}">
+      <td>
+        <strong>{{ c.get("display_name", "Test Bank") }}</strong>
+        <span class="muted" style="font-size:11px;margin-left:6px;"><code>{{ j.id[:8] }}</code></span>
+      </td>
+      <td>{{ row.stage_label }}</td>
+      <td>
+        <span class="badge {% if row.list_status == 'succeeded' %}ok{% elif row.list_status == 'failed' %}fail{% elif row.list_status in ['running', 'queued'] %}run{% elif row.list_status == 'cancelled' %}cancelled{% elif row.list_status in ['pending', 'draft'] %}pending{% endif %}">{{ row.list_status }}</span>
+      </td>
+      <td>{{ j.created_at|shamsi }}</td>
+      <td><a href="/jobs/{{ j.id }}">Open</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No jobs yet. <a href="/test-bank/new">Create Test Bank job</a>.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -5,11 +5,13 @@ Runs with cwd = this file's directory (project root) so settings and paths are c
 
 import sys
 import os
+from dotenv import load_dotenv
 
 _project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _project_root)
 if os.getcwd() != _project_root:
     os.chdir(_project_root)
+load_dotenv(os.path.join(_project_root, ".env"))
 
 from main_gui import main
 

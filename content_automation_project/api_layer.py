@@ -3,7 +3,6 @@ API Layer for Content Automation Project
 Handles all interactions with Gemini API for text processing and TTS
 """
 
-import csv
 import os
 import asyncio
 import wave
@@ -69,8 +68,8 @@ class APIConfig:
     ]
     DEFAULT_OPENROUTER_MODEL = "z-ai/glm-5"
     
-    # All available text models (combined)
-    ALL_TEXT_MODELS = TEXT_MODELS + DEEPSEEK_TEXT_MODELS + OPENROUTER_TEXT_MODELS
+    # OpenRouter-only model list
+    ALL_TEXT_MODELS = OPENROUTER_TEXT_MODELS
     
     # Available Gemini TTS voices
     TTS_VOICES = [
@@ -84,7 +83,7 @@ class APIConfig:
     
     # Default settings
     DEFAULT_TTS_MODEL = "gemini-2.5-flash-preview-tts"
-    DEFAULT_TEXT_MODEL = "gemini-2.5-flash"
+    DEFAULT_TEXT_MODEL = DEFAULT_OPENROUTER_MODEL
     DEFAULT_DEEPSEEK_MODEL = "deepseek-reasoner"  # Default DeepSeek model
     DEFAULT_VOICE = "Kore"
     DEFAULT_TEMPERATURE = 0.7
@@ -100,11 +99,12 @@ class APIConfig:
 
 
 class APIKeyManager:
-    """Manages API keys with rotation support"""
+    """Manages a single OpenRouter API key loaded from environment."""
     
     def __init__(self):
         self.api_keys: List[Dict[str, str]] = []
         self.current_index = 0
+        self.load_from_env()
     
     @staticmethod
     def sanitize_error_message(error_msg: str, api_key: Optional[str] = None) -> str:
@@ -133,49 +133,42 @@ class APIKeyManager:
         
         return sanitized
         
-    def load_from_csv(self, file_path: str, delimiter: str = ';') -> bool:
+    def load_from_env(self, env_var_name: str = "OPENROUTER_API_KEY") -> bool:
         """
-        Load API keys from CSV file
-        
+        Load single API key from environment.
+
         Args:
-            file_path: Path to CSV file containing API keys
-            delimiter: CSV delimiter (default: ';')
-            
+            env_var_name: Environment variable that stores the API key.
+
         Returns:
-            True if loaded successfully, False otherwise
-            
-        Expected CSV format:
-            account;project;api_key
+            True if key is available, False otherwise.
         """
         try:
-            if not os.path.exists(file_path):
-                logging.error(f"API key file not found: {file_path}")
+            key = (os.getenv(env_var_name) or "").strip()
+            self.api_keys = []
+            self.current_index = 0
+            if not key:
+                logging.error(f"Missing API key in environment variable: {env_var_name}")
                 return False
-                
-            with open(file_path, 'r', encoding='utf-8') as file:
-                reader = csv.DictReader(file, delimiter=delimiter)
-                self.api_keys = []
-                
-                for row in reader:
-                    if 'api_key' in row and row['api_key'].strip():
-                        self.api_keys.append({
-                            'account': row.get('account', 'Unknown'),
-                            'project': row.get('project', 'Unknown'),
-                            'api_key': row['api_key'].strip()
-                        })
-            
-            if not self.api_keys:
-                logging.error("No valid API keys found in the file")
-                return False
-                
-            logging.info(f"Loaded {len(self.api_keys)} API keys")
+            self.api_keys.append({
+                "account": "ENV",
+                "project": "OPENROUTER",
+                "api_key": key,
+            })
+            logging.info(f"Loaded API key from environment variable: {env_var_name}")
             return True
-            
         except Exception as e:
-            # Sanitize error message to prevent API key leakage
             error_msg = APIKeyManager.sanitize_error_message(str(e))
-            logging.error(f"Error loading API keys: {error_msg}")
+            logging.error(f"Error loading API key from environment: {error_msg}")
             return False
+
+    def load_from_csv(self, file_path: str, delimiter: str = ';') -> bool:
+        """
+        Backward-compatible shim. CSV input is deprecated.
+        Always attempts to load key from environment.
+        """
+        logging.warning("CSV API key loading is deprecated. Using OPENROUTER_API_KEY from .env instead.")
+        return self.load_from_env()
     
     def get_next_key(self) -> Optional[str]:
         """
@@ -184,7 +177,7 @@ class APIKeyManager:
         Returns:
             API key string or None if no keys available
         """
-        if not self.api_keys:
+        if not self.api_keys and not self.load_from_env():
             return None
             
         api_key = self.api_keys[self.current_index]['api_key']
@@ -198,7 +191,7 @@ class APIKeyManager:
         Returns:
             Dictionary with account, project, and api_key or None
         """
-        if not self.api_keys:
+        if not self.api_keys and not self.load_from_env():
             return None
             
         prev_index = (self.current_index - 1) % len(self.api_keys)
@@ -213,12 +206,13 @@ class APIKeyManager:
             account: Account name (optional)
             project: Project name (optional)
         """
-        self.api_keys.append({
+        self.api_keys = [{
             'account': account,
             'project': project,
             'api_key': api_key
-        })
-        logging.info(f"Added API key for account: {account}")
+        }]
+        self.current_index = 0
+        logging.info("Overrode API key manager with provided key")
 
 
 class GeminiAPIClient:

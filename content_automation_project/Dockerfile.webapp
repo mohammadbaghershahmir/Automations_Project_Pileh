@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+# Override via compose build arg if Docker Hub is flaky or you use a mirror (see .env.example).
+ARG PYTHON_BASE_IMAGE=python:3.11-slim-bookworm
+FROM ${PYTHON_BASE_IMAGE}
+
+WORKDIR /app
+
+# Flaky / slow PyPI: long timeouts, many retries. Cache mount keeps wheels between rebuilds.
+ENV PIP_DEFAULT_TIMEOUT=300
+ENV PIP_RETRIES=25
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-docker.txt ./requirements-docker.txt
+# Omit --no-cache-dir so /root/.cache/pip (cache mount) stores wheels; not baked into the image layer.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --retries 25 --timeout 300 -r requirements-docker.txt
+
+COPY . .
+
+# Non-secret defaults only — SECRET_KEY, admins, API keys come from .env / docker-compose at runtime.
+ENV PYTHONPATH=/app
+ENV JOBS_ROOT=/data/jobs
+ENV DATABASE_URL=sqlite:////data/webapp.db
+
+EXPOSE 8000
+
+CMD ["uvicorn", "webapp.main:app", "--host", "0.0.0.0", "--port", "8000"]
