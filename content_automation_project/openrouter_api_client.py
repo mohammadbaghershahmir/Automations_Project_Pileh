@@ -44,6 +44,55 @@ class OpenRouterAPIClient:
         adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
         self.session.mount("https://", adapter)
 
+    @staticmethod
+    def _total_message_chars(messages: List[Dict[str, str]]) -> int:
+        n = 0
+        for m in messages or []:
+            c = m.get("content")
+            if isinstance(c, str):
+                n += len(c)
+        return n
+
+    def _cap_max_tokens_for_context(
+        self,
+        messages: List[Dict[str, str]],
+        requested_max_tokens: int,
+    ) -> int:
+        """
+        Ensure prompt + max_tokens fits the endpoint context window.
+
+        OpenRouter returns 400 when input_tokens + max_tokens exceeds the limit (e.g. z-ai/glm-5: 202752).
+        We approximate input tokens from UTF-8 text length; Persian + JSON skews high vs. English,
+        so use a conservative ratio so we do not underestimate.
+        """
+        ctx = int(os.getenv("OPENROUTER_CONTEXT_LIMIT", "202752"))
+        safety = int(os.getenv("OPENROUTER_CONTEXT_SAFETY_MARGIN", "8192"))
+        chars = self._total_message_chars(messages)
+        # Empirically ~0.35 tokens/char on large Stage J + Word payloads; 0.36 + overhead stays above provider count.
+        estimated_input = int(chars * 0.36) + 4096
+        room = ctx - safety - estimated_input
+        min_out = 1024
+        if room < min_out:
+            self.logger.warning(
+                "OpenRouter: very little output room (room=%s, ~est_input=%s chars=%s, context=%s). "
+                "Consider a smaller Stage J slice or a larger-context model.",
+                room,
+                estimated_input,
+                chars,
+                ctx,
+            )
+        capped = min(requested_max_tokens, max(min_out, room))
+        if capped < requested_max_tokens:
+            self.logger.info(
+                "OpenRouter: capping max_tokens %s -> %s (~chars=%s ~est_input=%s context=%s)",
+                requested_max_tokens,
+                capped,
+                chars,
+                estimated_input,
+                ctx,
+            )
+        return int(capped)
+
     def _resolve_api_key(self, explicit_api_key: Optional[str] = None) -> Optional[str]:
         """Resolve API key from explicit parameter or OPENROUTER_API_KEY env."""
         if explicit_api_key and explicit_api_key.strip():
@@ -101,6 +150,8 @@ class OpenRouterAPIClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_text})
 
+        effective_max = self._cap_max_tokens_for_context(messages, max_tokens)
+
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -111,7 +162,7 @@ class OpenRouterAPIClient:
             "model": model_name,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": effective_max,
             "stream": True,
         }
 
@@ -124,9 +175,10 @@ class OpenRouterAPIClient:
             if not resp.ok:
                 snippet = (resp.text or "")[:4000]
                 self.logger.error(
-                    "OpenRouter streaming HTTP %s (max_tokens=%s model=%s): %s",
+                    "OpenRouter streaming HTTP %s (max_tokens=%s effective=%s model=%s): %s",
                     resp.status_code,
                     max_tokens,
+                    effective_max,
                     model_name,
                     snippet or resp.reason,
                 )
@@ -204,6 +256,8 @@ class OpenRouterAPIClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_text})
 
+        effective_max = self._cap_max_tokens_for_context(messages, max_tokens)
+
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -216,7 +270,7 @@ class OpenRouterAPIClient:
             "model": model_name,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": effective_max,
             "stream": False,
         }
 
@@ -225,9 +279,10 @@ class OpenRouterAPIClient:
             if not resp.ok:
                 snippet = (resp.text or "")[:4000]
                 self.logger.error(
-                    "OpenRouter HTTP %s (max_tokens=%s model=%s): %s",
+                    "OpenRouter HTTP %s (max_tokens=%s effective=%s model=%s): %s",
                     resp.status_code,
                     max_tokens,
+                    effective_max,
                     model_name,
                     snippet or resp.reason,
                 )
