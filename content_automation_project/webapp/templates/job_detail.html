@@ -7,7 +7,10 @@
 {% block content %}
 <p class="muted" style="margin:0 0 8px;"><a href="/jobs">← All jobs</a></p>
 <h1 style="margin-top:0;">{{ cfg.get("display_name", "Test Bank job") }}</h1>
-<p class="muted"><code style="font-size:11px;">{{ job.id }}</code> · Created {{ job.created_at|shamsi }} (Tehran)</p>
+<p class="muted"><code style="font-size:11px;">{{ job.id }}</code> · Created {{ job.created_at|shamsi }} (Tehran) · Creator: <strong>{{ creator_label }}</strong></p>
+{% if not is_job_owner %}
+<p class="muted" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);font-size:13px;">View only — you can browse outputs, downloads, and the log. Only the creator can change Word pairing, run steps, or stop a run.</p>
+{% endif %}
 
 <div id="notify-stack" class="notify-stack" aria-live="polite"></div>
 
@@ -26,6 +29,7 @@
 
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Word pairing</h2>
+  {% if is_job_owner %}
   <p class="muted" style="margin-top:0;">Upload a <strong>.doc</strong> or <strong>.docx</strong> for each pair, or choose files already in this job. <strong>Save pairing</strong> before running Step&nbsp;1.</p>
   <form method="post" action="/jobs/{{ job.id }}/pairing" enctype="multipart/form-data">
     <table>
@@ -56,18 +60,39 @@
     </table>
     <button type="submit" class="btn-cta secondary" style="margin-top:14px;">Save pairing</button>
   </form>
+  {% else %}
+  <p class="muted" style="margin-top:0;">Current pairing (read-only).</p>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Stage J</th><th>Word file</th></tr>
+    </thead>
+    <tbody>
+      {% for p in pairs %}
+      <tr>
+        <td>{{ p.pair_index }}</td>
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">No pairs.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
 
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Initial outputs</h2>
   <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
   {% set p0 = pairs[0] if pairs else none %}
+  {% if is_job_owner %}
   <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="Run Step 1"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% else %}Run Step 1{% endif %}</span></button>
 
   <div id="stop-under-s1" class="stop-under-step" style="display:{% if show_stop_s1 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 1</button>
     <p class="muted" style="margin:8px 0 0;font-size:12px;">Request stop — the worker exits after the current API call (or sooner when it checks).</p>
   </div>
+  {% endif %}
 
   <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 1 outputs</h3>
   <p class="muted" style="margin-top:0;font-size:13px;">Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.</p>
@@ -94,6 +119,7 @@
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Step 2 — Refined outputs</h2>
   <p class="muted" style="margin-top:0;">Uses Step&nbsp;1 results. Run only after Step&nbsp;1 has succeeded and you have checked Step&nbsp;1 outputs above.</p>
+  {% if is_job_owner %}
   {% if job.type == 'test_bank' and not step2_enabled %}
   <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;color:#fbbf24;">Finish Step&nbsp;1 successfully before running Step&nbsp;2.</p>
   {% else %}
@@ -105,6 +131,9 @@
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 2</button>
     <p class="muted" style="margin:8px 0 0;font-size:12px;">Request stop — the worker exits after the current API call (or sooner when it checks).</p>
   </div>
+  {% else %}
+  <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;display:none;"></p>
+  {% endif %}
 
   <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 2 outputs</h3>
   <p class="muted" style="margin-top:0;font-size:13px;">Final and Step&nbsp;2 topic artifacts (updates while Step&nbsp;2 runs).</p>
@@ -128,7 +157,7 @@
   </table>
 </div>
 
-{% if job.type != 'test_bank' %}
+{% if job.type != 'test_bank' and is_job_owner %}
 <div class="card" style="text-align:center;">
   <button type="button" id="btn-full" class="secondary" style="font-size:0.9rem;">Run full pipeline (Step 1 + 2)</button>
   <p class="muted" style="margin:10px 0 0;font-size:12px;">Runs Step&nbsp;1 then Step&nbsp;2 in one queued job (non–Test Bank types).</p>
@@ -164,6 +193,7 @@
 </div>
 
 <script>
+{% if is_job_owner %}
 (function() {
   const jobId = "{{ job.id }}";
   const jobType = "{{ job.type }}";
@@ -260,6 +290,7 @@
     });
   });
 })();
+{% endif %}
 
 (function() {
   const jobId = "{{ job.id }}";

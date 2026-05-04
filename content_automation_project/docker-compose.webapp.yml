@@ -31,9 +31,8 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      ADMIN_EMAIL_1: ${ADMIN_EMAIL_1:-admin@localhost}
-      ADMIN_PASSWORD_1: ${ADMIN_PASSWORD_1:-changeme}
+      # SECRET_KEY / ADMIN_* must NOT use ${VAR} here — Compose interpolates the host .env and
+      # breaks values with `$`, `$$`, etc. Load secrets only via env_file (passed through as-is).
       DATABASE_URL: sqlite:////data/webapp.db
       JOBS_ROOT: /data/jobs
     volumes:
@@ -52,7 +51,6 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       DATABASE_URL: sqlite:////data/webapp.db
       JOBS_ROOT: /data/jobs
     volumes:

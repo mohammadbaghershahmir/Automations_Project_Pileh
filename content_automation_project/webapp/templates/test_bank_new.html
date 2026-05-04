@@ -16,6 +16,12 @@
 
 <form method="post" action="/jobs/test-bank" enctype="multipart/form-data">
   <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">A short label so you and others can find this job in the list (shown instead of an auto-generated filename).</p>
+    <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Biology ch. 3 — winter term" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Stage J JSON files</h2>
     <input type="file" name="stage_j_files" multiple accept=".json,application/json" required/>
   </div>

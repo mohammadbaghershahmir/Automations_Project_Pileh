@@ -26,7 +26,11 @@ except ImportError:
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from webapp.auth_utils import COOKIE_NAME, create_access_token, verify_password
-from webapp.bootstrap import bootstrap_admins
+from webapp.bootstrap import (
+    bootstrap_admins,
+    ensure_missing_env_admins,
+    sync_admin_password_from_env,
+)
 from webapp.default_prompts import get_default_step1_prompt, get_default_step2_prompt
 from webapp.config import (
     DEFAULT_TEST_BANK_MODEL,
@@ -88,6 +92,14 @@ async def _read_upload_bytes(u: Any) -> bytes:
     if r is None:
         return b""
     return bytes(r)
+
+
+def require_job_owner(job: Job, user: CurrentUser) -> None:
+    if job.created_by_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the user who created this job can change pairing, run steps, or cancel.",
+        )
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -278,6 +290,8 @@ def create_app() -> FastAPI:
         db = SessionLocal()
         try:
             bootstrap_admins(db)
+            ensure_missing_env_admins(db)
+            sync_admin_password_from_env(db)
         finally:
             db.close()
 
@@ -291,8 +305,19 @@ def create_app() -> FastAPI:
 
     @app.post("/api/login")
     def api_login(body: LoginBody, db: Session = Depends(get_db)) -> JSONResponse:
-        user = db.query(User).filter(User.email == body.email.strip().lower()).first()
-        if not user or not verify_password(body.password, user.password_hash):
+        norm = body.email.strip().lower()
+        # Match bootstrap normalization; SQLite TEXT compare is case-sensitive for == on stored casing
+        user = db.query(User).filter(func.lower(User.email) == norm).first()
+        raw_pw = body.password or ""
+        pw_ok = False
+        if user is not None:
+            if verify_password(raw_pw, user.password_hash):
+                pw_ok = True
+            elif raw_pw != raw_pw.strip() and verify_password(
+                raw_pw.strip(), user.password_hash
+            ):
+                pw_ok = True
+        if not pw_ok:
             return JSONResponse({"ok": False, "error": "Invalid email or password"}, status_code=401)
         token = create_access_token(subject=user.email, user_id=user.id)
         resp = JSONResponse({"ok": True})
@@ -373,7 +398,7 @@ def create_app() -> FastAPI:
     def jobs_list(request: Request, user: CurrentUser, db: Session = Depends(get_db)) -> Any:
         jobs = (
             db.query(Job)
-            .options(joinedload(Job.pairs))
+            .options(joinedload(Job.pairs), joinedload(Job.created_by_user))
             .order_by(Job.created_at.desc())
             .limit(100)
             .all()
@@ -420,9 +445,15 @@ def create_app() -> FastAPI:
             provider_2: str = Form(DEFAULT_TEST_BANK_PROVIDER),
             model_2: str = Form(DEFAULT_TEST_BANK_MODEL),
             delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
         ) -> RedirectResponse:
             if not stage_j_files or not word_files:
                 raise HTTPException(400, "Stage J and Word files required")
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
 
             tmp = tempfile.mkdtemp(prefix="tb_upload_")
             try:
@@ -460,9 +491,7 @@ def create_app() -> FastAPI:
                     delay_val = 5.0
 
                 j_named = sorted([p for p in j_paths if p], key=lambda x: os.path.basename(x).lower())
-                display_name = "Test Bank"
-                if j_named:
-                    display_name = os.path.splitext(os.path.basename(j_named[0]))[0][:200] or display_name
+                display_name = name_stripped
 
                 prompt_1_eff = prompt_1.strip() or get_default_step1_prompt()
                 prompt_2_eff = prompt_2.strip() or get_default_step2_prompt()
@@ -537,7 +566,12 @@ def create_app() -> FastAPI:
         user: CurrentUser,
         db: Session = Depends(get_db),
     ) -> Any:
-        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        job = (
+            db.query(Job)
+            .options(joinedload(Job.created_by_user))
+            .filter(Job.id == job_id)
+            .one_or_none()
+        )
         if not job:
             raise HTTPException(404)
         pairs = db.query(JobPair).filter(JobPair.job_id == job_id).order_by(JobPair.pair_index).all()
@@ -552,6 +586,9 @@ def create_app() -> FastAPI:
         word_choices = sorted(word_choices, key=lambda s: s.lower())
         step1_artifacts, step2_artifacts, other_artifacts = split_artifacts_for_steps(artifacts)
         step2_enabled = job.type != "test_bank" or all_pairs_step1_succeeded(pairs)
+        creator = job.created_by_user
+        creator_label = creator.email if creator else "Unknown"
+        is_job_owner = job.created_by_id == user.id
         return templates.TemplateResponse(
             request,
             "job_detail.html",
@@ -566,6 +603,8 @@ def create_app() -> FastAPI:
                 "step2_enabled": step2_enabled,
                 "cfg": json.loads(job.config_json or "{}"),
                 "word_choices": word_choices,
+                "is_job_owner": is_job_owner,
+                "creator_label": creator_label,
             },
         )
 
@@ -579,6 +618,7 @@ def create_app() -> FastAPI:
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             raise HTTPException(404)
+        require_job_owner(job, user)
         form = await request.form()
         root = job_root(job_id)
         pairs = db.query(JobPair).filter(JobPair.job_id == job_id).order_by(JobPair.pair_index).all()
@@ -680,6 +720,7 @@ def create_app() -> FastAPI:
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             raise HTTPException(404)
+        require_job_owner(job, user)
         job.status = "queued"
         job.cancel_requested = False
         append_log(db, job_id, "Queued Step 1." + queued_task_log_suffix(), None)
@@ -703,6 +744,7 @@ def create_app() -> FastAPI:
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             raise HTTPException(404)
+        require_job_owner(job, user)
         pairs_all = (
             db.query(JobPair)
             .filter(JobPair.job_id == job_id)
@@ -748,6 +790,7 @@ def create_app() -> FastAPI:
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             raise HTTPException(404)
+        require_job_owner(job, user)
         job.status = "queued"
         job.cancel_requested = False
         append_log(
@@ -775,6 +818,7 @@ def create_app() -> FastAPI:
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             raise HTTPException(404)
+        require_job_owner(job, user)
         if job.status not in ("queued", "running"):
             raise HTTPException(
                 400,
