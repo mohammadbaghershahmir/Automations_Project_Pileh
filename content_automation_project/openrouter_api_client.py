@@ -121,6 +121,15 @@ class OpenRouterAPIClient:
             resp = self.session.post(
                 self.base_url, headers=headers, json=payload, stream=True, timeout=timeout_s
             )
+            if not resp.ok:
+                snippet = (resp.text or "")[:4000]
+                self.logger.error(
+                    "OpenRouter streaming HTTP %s (max_tokens=%s model=%s): %s",
+                    resp.status_code,
+                    max_tokens,
+                    model_name,
+                    snippet or resp.reason,
+                )
             resp.raise_for_status()
             # text/event-stream often has no charset; requests defaults to ISO-8859-1 and mojibakes UTF-8
             # (e.g. Persian) before json.loads. Force UTF-8 for iter_lines decode.
@@ -213,6 +222,15 @@ class OpenRouterAPIClient:
 
         try:
             resp = self.session.post(self.base_url, headers=headers, json=payload, timeout=timeout_s)
+            if not resp.ok:
+                snippet = (resp.text or "")[:4000]
+                self.logger.error(
+                    "OpenRouter HTTP %s (max_tokens=%s model=%s): %s",
+                    resp.status_code,
+                    max_tokens,
+                    model_name,
+                    snippet or resp.reason,
+                )
             resp.raise_for_status()
             data = resp.json()
             return (data.get("choices") or [{}])[0].get("message", {}).get("content")

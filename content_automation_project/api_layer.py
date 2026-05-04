@@ -94,9 +94,9 @@ class APIConfig:
     # gemini-1.5-flash: up to 8192 tokens
     DEFAULT_MAX_TOKENS = 16384  # Maximum for gemini-2.5 models
     DEFAULT_DEEPSEEK_MAX_TOKENS = 65536  # DeepSeek Reasoner: max 64K (docs); DeepSeek Chat: max 8K
-    # OpenRouter (e.g. z-ai/glm-5): GLM-5 supports up to 131K output tokens
-    DEFAULT_OPENROUTER_MAX_TOKENS = 65536  # Safe default for OpenRouter/GLM (model limit ~131K)
-    OPENROUTER_OUTPUT_TOKEN_CEILING = 131072  # Doc-based max output for large generations (e.g. Stage V JSON)
+    # OpenRouter (e.g. z-ai/glm-5): higher advertised limits exist, but requests with very large
+    # max_tokens can return HTTP 400 (provider cap or prompt+max exceeding context). Stage V uses this cap.
+    DEFAULT_OPENROUTER_MAX_TOKENS = 65536
 
 
 class APIKeyManager:

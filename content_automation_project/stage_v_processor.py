@@ -37,8 +37,8 @@ class StageVProcessingContext:
 class StageVProcessor(BaseStageProcessor):
     """Process Stage V: Generate test files from Stage J and Word document"""
     STEP2_BATCH_SIZE = 10
-    # Step 1/2 return large JSON arrays; use OpenRouter-style ceiling (~131K) so long test banks are not cut off.
-    _STAGE_V_OUTPUT_MAX_TOKENS = APIConfig.OPENROUTER_OUTPUT_TOKEN_CEILING
+    # Step 1/2: large JSON; 16k truncates. 131k max_tokens caused OpenRouter 400 for z-ai/glm-5 — keep 64k cap.
+    _STAGE_V_OUTPUT_MAX_TOKENS = APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS
 
     def __init__(self, api_client):
         super().__init__(api_client)
