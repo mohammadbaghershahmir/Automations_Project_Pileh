@@ -16,7 +16,7 @@ from typing import Optional, Dict, List, Any, Callable, Tuple
 from base_stage_processor import BaseStageProcessor
 from word_file_processor import WordFileProcessor
 from api_layer import APIConfig
-from openrouter_api_client import OpenRouterRequestAborted
+from openrouter_api_client import OpenRouterAPIError, OpenRouterRequestAborted
 
 
 @dataclass
@@ -37,7 +37,7 @@ class StageVProcessingContext:
 class StageVProcessor(BaseStageProcessor):
     """Process Stage V: Generate test files from Stage J and Word document"""
     STEP2_BATCH_SIZE = 10
-    # Step 1/2: large JSON; 16k truncates. 131k max_tokens caused OpenRouter 400 for z-ai/glm-5 — keep 64k cap.
+    # Step 1/2 return large JSON arrays; 16k output tokens truncates multi-question banks on OpenRouter.
     _STAGE_V_OUTPUT_MAX_TOKENS = APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS
 
     def __init__(self, api_client):
@@ -681,6 +681,9 @@ Stage J Data (FULL file - all records, without Type column):
                     break
             except OpenRouterRequestAborted:
                 raise
+            except OpenRouterAPIError as e:
+                _progress(str(e))
+                raise
             except Exception as e:
                 self.logger.warning(f"Step 1 attempt {attempt + 1} failed: {e}")
                 if attempt < 2:
@@ -827,6 +830,9 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
                 if part_response:
                     _progress(f"Step 1 response received for Topic {topic_idx} ({len(part_response)} characters)")
                     break
+            except OpenRouterAPIError as e:
+                _progress(str(e))
+                raise
             except Exception as e:
                 self.logger.warning(f"Step 1 attempt {attempt + 1} failed: {e}")
                 if attempt < max_retries - 1:
@@ -1023,6 +1029,9 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
                     _progress(f"Step 2 response received for Topic {topic_idx} ({len(part_response)} characters)")
                     break
             except OpenRouterRequestAborted:
+                raise
+            except OpenRouterAPIError as e:
+                _progress(str(e))
                 raise
             except Exception as e:
                 self.logger.warning(f"Step 2 attempt {attempt + 1} failed: {e}")
