@@ -107,7 +107,7 @@
         <td style="font-size:12px;word-break:break-all;">{{ a.rel_path }}</td>
         <td>{{ a.byte_size }}</td>
         <td><a href="/artifacts/{{ a.id }}/download">Download</a>
-          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=12000" target="_blank">Preview</a></td>
+          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=524288" target="_blank">Preview</a></td>
       </tr>
       {% else %}
       <tr><td colspan="4" class="muted">No Step 1 outputs yet.</td></tr>
@@ -148,7 +148,7 @@
         <td style="font-size:12px;word-break:break-all;">{{ a.rel_path }}</td>
         <td>{{ a.byte_size }}</td>
         <td><a href="/artifacts/{{ a.id }}/download">Download</a>
-          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=12000" target="_blank">Preview</a></td>
+          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=524288" target="_blank">Preview</a></td>
       </tr>
       {% else %}
       <tr><td colspan="4" class="muted">No Step 2 outputs yet.</td></tr>
@@ -179,7 +179,7 @@
         <td style="font-size:12px;word-break:break-all;">{{ a.rel_path }}</td>
         <td>{{ a.byte_size }}</td>
         <td><a href="/artifacts/{{ a.id }}/download">Download</a>
-          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=12000" target="_blank">Preview</a></td>
+          <a href="/artifacts/{{ a.id }}/preview?offset=0&limit=524288" target="_blank">Preview</a></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -369,7 +369,7 @@
         '<td style="font-size:12px;word-break:break-all;">' + escapeHtml(a.rel_path) + "</td>" +
         "<td>" + escapeHtml(String(a.byte_size)) + "</td>" +
         '<td><a href="/artifacts/' + a.id + '/download">Download</a> ' +
-        '<a href="/artifacts/' + a.id + '/preview?offset=0&limit=12000" target="_blank">Preview</a></td></tr>'
+        '<a href="/artifacts/' + a.id + '/preview?offset=0&limit=524288" target="_blank">Preview</a></td></tr>'
       );
     }).join("");
   }

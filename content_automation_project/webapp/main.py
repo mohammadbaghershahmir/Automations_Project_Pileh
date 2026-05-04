@@ -911,8 +911,8 @@ def create_app() -> FastAPI:
         artifact_id: int,
         user: CurrentUser,
         db: Session = Depends(get_db),
-        offset: int = 0,
-        limit: int = 16000,
+        offset: int = Query(0, ge=0),
+        limit: int = Query(524_288, ge=1, le=2_000_000),
     ) -> PlainTextResponse:
         art = db.query(Artifact).filter(Artifact.id == artifact_id).one_or_none()
         if not art:

@@ -96,6 +96,7 @@ class APIConfig:
     DEFAULT_DEEPSEEK_MAX_TOKENS = 65536  # DeepSeek Reasoner: max 64K (docs); DeepSeek Chat: max 8K
     # OpenRouter (e.g. z-ai/glm-5): GLM-5 supports up to 131K output tokens
     DEFAULT_OPENROUTER_MAX_TOKENS = 65536  # Safe default for OpenRouter/GLM (model limit ~131K)
+    OPENROUTER_OUTPUT_TOKEN_CEILING = 131072  # Doc-based max output for large generations (e.g. Stage V JSON)
 
 
 class APIKeyManager:

@@ -37,11 +37,40 @@ class StageVProcessingContext:
 class StageVProcessor(BaseStageProcessor):
     """Process Stage V: Generate test files from Stage J and Word document"""
     STEP2_BATCH_SIZE = 10
-    
+    # Step 1/2 return large JSON arrays; use OpenRouter-style ceiling (~131K) so long test banks are not cut off.
+    _STAGE_V_OUTPUT_MAX_TOKENS = APIConfig.OPENROUTER_OUTPUT_TOKEN_CEILING
+
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
         self.word_processor = WordFileProcessor()
+
+    def _extract_stage_v_question_rows_from_model_text(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Collect question rows from a model response. Merges every JSON block (models often emit
+        multiple ```json``` chunks); falls back to extract_json_from_response / load_txt_as_json_from_text.
+        """
+        if not (text or "").strip():
+            return []
+        blocks = self.extract_json_blocks_from_text(text)
+        merged: List[Dict[str, Any]] = []
+        for block in blocks:
+            if isinstance(block, list):
+                merged.extend(b for b in block if isinstance(b, dict))
+            elif isinstance(block, dict):
+                merged.extend(self.get_data_from_json(block) or [])
+        if merged:
+            return merged
+        part_output = self.extract_json_from_response(text)
+        if not part_output:
+            part_output = self.load_txt_as_json_from_text(text)
+        if not part_output:
+            return []
+        if isinstance(part_output, list):
+            return [x for x in part_output if isinstance(x, dict)]
+        if isinstance(part_output, dict):
+            return self.get_data_from_json(part_output) or []
+        return []
 
     def _normalize_key_part(self, value: Any) -> str:
         """Normalize chapter/subchapter/topic values for robust matching."""
@@ -644,7 +673,7 @@ Stage J Data (FULL file - all records, without Type column):
                     system_prompt=None,
                     model_name=model_name,
                     temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+                    max_tokens=self._STAGE_V_OUTPUT_MAX_TOKENS,
                     cancel_check=cancel_check,
                 )
                 if part_response:
@@ -673,20 +702,18 @@ Stage J Data (FULL file - all records, without Type column):
         except Exception as e:
             self.logger.warning(f"Failed to save TXT file: {e}")
         
-        all_questions = []
-        part_output = self.extract_json_from_response(part_response)
-        if not part_output:
-            part_output = self.load_txt_as_json_from_text(part_response)
-        if part_output:
-            if isinstance(part_output, list):
-                all_questions = part_output
-            elif isinstance(part_output, dict):
-                all_questions = self.get_data_from_json(part_output) or []
+        all_questions = self._extract_stage_v_question_rows_from_model_text(part_response)
+        if not all_questions:
+            try:
+                with open(txt_path, "r", encoding="utf-8") as f:
+                    all_questions = self._extract_stage_v_question_rows_from_model_text(f.read())
+            except OSError as e:
+                self.logger.warning(f"Step 1 TXT re-read for extraction failed: {e}")
         if not all_questions:
             model_output = self.load_txt_as_json(txt_path)
             if model_output:
                 if isinstance(model_output, list):
-                    all_questions = model_output
+                    all_questions = [x for x in model_output if isinstance(x, dict)]
                 elif isinstance(model_output, dict):
                     all_questions = self.get_data_from_json(model_output) or []
         
@@ -795,7 +822,7 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
                     system_prompt=None,
                     model_name=model_name,
                     temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                    max_tokens=self._STAGE_V_OUTPUT_MAX_TOKENS,
                 )
                 if part_response:
                     _progress(f"Step 1 response received for Topic {topic_idx} ({len(part_response)} characters)")
@@ -839,23 +866,10 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
         all_questions = []
         for part_idx, part_response in enumerate(all_raw_responses, 1):
             _progress(f"Extracting JSON from Part {part_idx} response...")
-            part_output = self.extract_json_from_response(part_response)
-            if not part_output:
-                _progress(f"Trying to extract Part {part_idx} JSON from text...")
-                part_output = self.load_txt_as_json_from_text(part_response)
-            
-            if part_output:
-                # Handle both list and dict JSON structures
-                if isinstance(part_output, list):
-                    part_questions = part_output
-                elif isinstance(part_output, dict):
-                    part_questions = self.get_data_from_json(part_output)
-                else:
-                    part_questions = []
-                
-                if part_questions:
-                    all_questions.extend(part_questions)
-                    _progress(f"Extracted {len(part_questions)} questions from Part {part_idx}")
+            part_questions = self._extract_stage_v_question_rows_from_model_text(part_response)
+            if part_questions:
+                all_questions.extend(part_questions)
+                _progress(f"Extracted {len(part_questions)} questions from Part {part_idx}")
         
         if not all_questions:
             self.logger.error("Failed to extract JSON from model responses")
@@ -1002,7 +1016,7 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
                     system_prompt=None,
                     model_name=model_name,
                     temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+                    max_tokens=self._STAGE_V_OUTPUT_MAX_TOKENS,
                     cancel_check=cancel_check,
                 )
                 if part_response:
@@ -1049,23 +1063,10 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
         all_refined_questions = []
         for part_idx, part_response in enumerate(all_raw_responses, 1):
             _progress(f"Extracting JSON from Part {part_idx} response...")
-            part_output = self.extract_json_from_response(part_response)
-            if not part_output:
-                _progress(f"Trying to extract Part {part_idx} JSON from text...")
-                part_output = self.load_txt_as_json_from_text(part_response)
-            
-            if part_output:
-                # Handle both list and dict JSON structures
-                if isinstance(part_output, list):
-                    part_refined = part_output
-                elif isinstance(part_output, dict):
-                    part_refined = self.get_data_from_json(part_output)
-                else:
-                    part_refined = []
-                
-                if part_refined:
-                    all_refined_questions.extend(part_refined)
-                    _progress(f"Extracted {len(part_refined)} refined questions from Part {part_idx}")
+            part_refined = self._extract_stage_v_question_rows_from_model_text(part_response)
+            if part_refined:
+                all_refined_questions.extend(part_refined)
+                _progress(f"Extracted {len(part_refined)} refined questions from Part {part_idx}")
         
         if not all_refined_questions:
             self.logger.error("Failed to extract JSON from model responses")
