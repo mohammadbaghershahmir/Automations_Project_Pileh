@@ -3,3 +3,6 @@ dist/
 
 # Local secrets and env (use .env.example as template)
 .env
+
+# Webapp SQLite + job tree (Docker bind-mount ./data and local uvicorn default)
+data/

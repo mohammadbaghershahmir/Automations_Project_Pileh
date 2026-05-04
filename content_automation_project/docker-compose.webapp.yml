@@ -11,7 +11,8 @@
 # Compose loads ".env" from this directory for ${VAR} substitution and passes it into containers
 # (env_file). No need for export in the shell.
 #
-# Data: volume app-data → /data (SQLite + job files). Reset: docker compose ... down -v
+# Data: bind mount ./data → /data (SQLite + job files on the host beside this file).
+# Rebuild/remove containers does not delete ./data. To wipe: stop compose and rm -rf ./data (after backup).
 
 services:
   redis:
@@ -36,7 +37,7 @@ services:
       DATABASE_URL: sqlite:////data/webapp.db
       JOBS_ROOT: /data/jobs
     volumes:
-      - app-data:/data
+      - ./data:/data
     depends_on:
       - redis
 
@@ -54,9 +55,6 @@ services:
       DATABASE_URL: sqlite:////data/webapp.db
       JOBS_ROOT: /data/jobs
     volumes:
-      - app-data:/data
+      - ./data:/data
     depends_on:
       - redis
-
-volumes:
-  app-data:
