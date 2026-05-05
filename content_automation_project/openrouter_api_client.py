@@ -108,7 +108,8 @@ def _build_openrouter_error_message(
         lines.append(
             "This usually means input + max_tokens (reserved output) exceeds the model context window — "
             "e.g. GLM-5 on OpenRouter is often ~202k tokens combined. "
-            "Fix: shorten the Stage J JSON and/or Word text, reduce max_tokens for this stage, or switch to a model with a larger context."
+            "Admin action required: reduce uploaded input size (Stage J/Word) or pick a model with larger context. "
+            "The system does NOT auto-shrink admin files or auto-reduce LLM output budget."
         )
     full = "\n".join(lines)
     return full, api_msg
