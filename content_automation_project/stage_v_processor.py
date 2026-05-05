@@ -37,6 +37,7 @@ class StageVProcessingContext:
 class StageVProcessor(BaseStageProcessor):
     """Process Stage V: Generate test files from Stage J and Word document"""
     STEP2_BATCH_SIZE = 10
+    STEP2_TOPIC_RETRY_PASSES = 2
     # Step 1/2 return large JSON arrays; 16k output tokens truncates multi-question banks on OpenRouter.
     _STAGE_V_OUTPUT_MAX_TOKENS = APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS
 
@@ -294,82 +295,134 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.error("No valid Step 2 tasks found")
             return None
 
-        total_batches = (len(step2_tasks) + self.STEP2_BATCH_SIZE - 1) // self.STEP2_BATCH_SIZE
-        for batch_idx, start in enumerate(range(0, len(step2_tasks), self.STEP2_BATCH_SIZE), 1):
-            batch_tasks = step2_tasks[start : start + self.STEP2_BATCH_SIZE]
+        pending_tasks = list(step2_tasks)
+        for pass_idx in range(1, self.STEP2_TOPIC_RETRY_PASSES + 1):
+            if not pending_tasks:
+                break
+
+            total_batches = (len(pending_tasks) + self.STEP2_BATCH_SIZE - 1) // self.STEP2_BATCH_SIZE
             _progress(
-                f"STEP 2 batch {batch_idx}/{total_batches}: processing {len(batch_tasks)} topic(s) "
-                f"with concurrency={self.STEP2_BATCH_SIZE}"
+                f"STEP 2 pass {pass_idx}/{self.STEP2_TOPIC_RETRY_PASSES}: "
+                f"{len(pending_tasks)} topic(s) to process"
             )
+            failed_in_pass: List[Dict[str, Any]] = []
 
-            executor = ThreadPoolExecutor(max_workers=self.STEP2_BATCH_SIZE)
-            future_to_task = {}
-            try:
-                for task in batch_tasks:
-                    topic_idx = task["topic_idx"]
-                    chapter_name = task["chapter_name"]
-                    subchapter_name = task["subchapter_name"]
-                    topic_name = task["topic_name"]
-                    self.logger.info("")
-                    self.logger.info("=" * 80)
-                    self.logger.info(f"QUEUE TOPIC {topic_idx}/{len(topics_list)}: '{topic_name}'")
-                    self.logger.info("=" * 80)
-                    self.logger.info(f"  Chapter: '{chapter_name}'")
-                    self.logger.info(f"  Subchapter: '{subchapter_name}'")
-                    self.logger.info(f"  Topic: '{topic_name}'")
-                    self.logger.info("  Input: filtered Stage J + full Step 1 file + Step 2 prompt")
-                    self.logger.info(f"  Batch: {batch_idx}/{total_batches}")
-                    self.logger.info(f"  Stage J rows: {task['filtered_rows_count']}")
+            for batch_idx, start in enumerate(range(0, len(pending_tasks), self.STEP2_BATCH_SIZE), 1):
+                batch_tasks = pending_tasks[start : start + self.STEP2_BATCH_SIZE]
+                _progress(
+                    f"STEP 2 pass {pass_idx}/{self.STEP2_TOPIC_RETRY_PASSES}, batch {batch_idx}/{total_batches}: "
+                    f"processing {len(batch_tasks)} topic(s) with concurrency={self.STEP2_BATCH_SIZE}"
+                )
 
-                    future = executor.submit(
-                        self._step2_refine_questions_and_add_qid,
-                        stage_j_path=stage_j_path,
-                        word_file_path=word_file_path,
-                        full_stage_j_json=task["topic_stage_j_json"],
-                        current_topic_name=topic_name,
-                        current_topic_subchapter=subchapter_name,
-                        step1_output_path=step1_combined_path,
-                        prompt=prompt_2,
-                        model_name=model_name_2,
-                        book_id=book_id,
-                        chapter_id=chapter_id,
-                        topic_idx=topic_idx,
-                        total_topics=len(topics_list),
-                        qid_start_counter=1,
-                        output_dir=output_dir,
-                        progress_callback=progress_callback,
-                        assign_qid=False,
-                        cancel_check=cancel_check,
-                    )
-                    future_to_task[future] = task
+                executor = ThreadPoolExecutor(max_workers=self.STEP2_BATCH_SIZE)
+                future_to_task = {}
+                try:
+                    for task in batch_tasks:
+                        topic_idx = task["topic_idx"]
+                        chapter_name = task["chapter_name"]
+                        subchapter_name = task["subchapter_name"]
+                        topic_name = task["topic_name"]
+                        self.logger.info("")
+                        self.logger.info("=" * 80)
+                        self.logger.info(f"QUEUE TOPIC {topic_idx}/{len(topics_list)}: '{topic_name}'")
+                        self.logger.info("=" * 80)
+                        self.logger.info(f"  Chapter: '{chapter_name}'")
+                        self.logger.info(f"  Subchapter: '{subchapter_name}'")
+                        self.logger.info(f"  Topic: '{topic_name}'")
+                        self.logger.info("  Input: filtered Stage J + full Step 1 file + Step 2 prompt")
+                        self.logger.info(f"  Pass/Batch: {pass_idx}/{self.STEP2_TOPIC_RETRY_PASSES} - {batch_idx}/{total_batches}")
+                        self.logger.info(f"  Stage J rows: {task['filtered_rows_count']}")
 
-                for future in as_completed(future_to_task):
-                    task = future_to_task[future]
-                    topic_idx = task["topic_idx"]
-                    chapter_name = task["chapter_name"]
-                    subchapter_name = task["subchapter_name"]
-                    topic_name = task["topic_name"]
-                    try:
-                        topic_step2_output, num_questions = future.result()
-                        if topic_step2_output:
-                            step2_topic_outputs[topic_idx] = (chapter_name, subchapter_name, topic_name, topic_step2_output)
-                            _progress(f"Step 2 completed for Topic '{topic_name}': {topic_step2_output}")
-                            self.logger.info(
-                                f"  ✓ Step 2 completed for Topic '{topic_name}' in batch {batch_idx}/{total_batches} "
-                                f"({num_questions} questions)"
-                            )
-                        else:
-                            self.logger.warning(
-                                f"  ✗ Step 2 failed for Topic '{topic_name}' in batch {batch_idx}/{total_batches}, skipping..."
-                            )
-                    except OpenRouterRequestAborted:
-                        raise
-                    except Exception as e:
-                        self.logger.warning(
-                            f"  ✗ Step 2 raised exception for Topic '{topic_name}' in batch {batch_idx}/{total_batches}: {e}"
+                        future = executor.submit(
+                            self._step2_refine_questions_and_add_qid,
+                            stage_j_path=stage_j_path,
+                            word_file_path=word_file_path,
+                            full_stage_j_json=task["topic_stage_j_json"],
+                            current_topic_name=topic_name,
+                            current_topic_subchapter=subchapter_name,
+                            step1_output_path=step1_combined_path,
+                            prompt=prompt_2,
+                            model_name=model_name_2,
+                            book_id=book_id,
+                            chapter_id=chapter_id,
+                            topic_idx=topic_idx,
+                            total_topics=len(topics_list),
+                            qid_start_counter=1,
+                            output_dir=output_dir,
+                            progress_callback=progress_callback,
+                            assign_qid=False,
+                            cancel_check=cancel_check,
                         )
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+                        future_to_task[future] = task
+
+                    for future in as_completed(future_to_task):
+                        task = future_to_task[future]
+                        topic_idx = task["topic_idx"]
+                        chapter_name = task["chapter_name"]
+                        subchapter_name = task["subchapter_name"]
+                        topic_name = task["topic_name"]
+                        try:
+                            topic_step2_output, num_questions = future.result()
+                            if topic_step2_output:
+                                step2_topic_outputs[topic_idx] = (chapter_name, subchapter_name, topic_name, topic_step2_output)
+                                _progress(f"Step 2 completed for Topic '{topic_name}': {topic_step2_output}")
+                                self.logger.info(
+                                    f"  ✓ Step 2 completed for Topic '{topic_name}' in pass {pass_idx}, batch {batch_idx} "
+                                    f"({num_questions} questions)"
+                                )
+                            else:
+                                failed_in_pass.append(task)
+                                self.logger.warning(
+                                    f"  ✗ Step 2 failed for Topic '{topic_name}' in pass {pass_idx}, batch {batch_idx}"
+                                )
+                        except OpenRouterRequestAborted:
+                            raise
+                        except Exception as e:
+                            failed_in_pass.append(task)
+                            self.logger.warning(
+                                f"  ✗ Step 2 raised exception for Topic '{topic_name}' in pass {pass_idx}, batch {batch_idx}: {e}"
+                            )
+                finally:
+                    executor.shutdown(wait=False, cancel_futures=True)
+
+            if failed_in_pass and pass_idx < self.STEP2_TOPIC_RETRY_PASSES:
+                _progress(
+                    f"STEP 2 pass {pass_idx} finished: {len(failed_in_pass)} topic(s) failed and will be retried"
+                )
+            elif failed_in_pass:
+                _progress(
+                    f"STEP 2 pass {pass_idx} finished: {len(failed_in_pass)} topic(s) still failed after final retry pass"
+                )
+            pending_tasks = failed_in_pass
+
+        failed_topics_after_retries = list(pending_tasks)
+        if failed_topics_after_retries:
+            failed_topics_payload = {
+                "failed_topics_count": len(failed_topics_after_retries),
+                "retry_passes": self.STEP2_TOPIC_RETRY_PASSES,
+                "failed_topics": [
+                    {
+                        "topic_idx": t.get("topic_idx"),
+                        "chapter_name": t.get("chapter_name", ""),
+                        "subchapter_name": t.get("subchapter_name", ""),
+                        "topic_name": t.get("topic_name", ""),
+                    }
+                    for t in failed_topics_after_retries
+                ],
+            }
+            failed_topics_path = os.path.join(
+                output_dir,
+                f"step2_failed_topics_{book_id:03d}{chapter_id:03d}.json",
+            )
+            try:
+                with open(failed_topics_path, "w", encoding="utf-8") as f:
+                    json.dump(failed_topics_payload, f, ensure_ascii=False, indent=2)
+                _progress(
+                    f"WARNING: {len(failed_topics_after_retries)} topic(s) failed after retries. "
+                    f"Details saved to: {failed_topics_path}"
+                )
+            except Exception as e:
+                self.logger.warning("Failed to save Step 2 failed-topics artifact: %s", e)
 
         if not step2_topic_outputs:
             self.logger.error("Step 2 failed for all topics")

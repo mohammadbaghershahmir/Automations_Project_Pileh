@@ -88,11 +88,14 @@ def register_artifacts_under(
             sha = _sha256_file(abs_path)
             role = role_guess
             low = rel_path.lower()
+            fn_low = fn.lower()
             if "step1_combined" in low:
                 role = "step1_combined"
             elif "stage_v_step2" in low or "_stage_v_step2_" in low:
                 role = "step2_topic"
-            elif low.startswith("b") and low.endswith(".json") and "+" in fn:
+            elif "step2_failed_topics" in low and low.endswith(".json"):
+                role = "step2_failed_topics"
+            elif fn_low.startswith("b") and fn_low.endswith(".json") and "+" in fn:
                 role = "final_b_json"
             elif low.endswith(".txt"):
                 role = "txt_dump"

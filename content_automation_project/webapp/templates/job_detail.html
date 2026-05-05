@@ -311,7 +311,7 @@
   const jobType = "{{ job.type }}";
   const testBank = jobType === "test_bank";
   const STEP1_ROLES = ["step1_combined", "txt_dump"];
-  const STEP2_ROLES = ["step2_topic", "final_b_json"];
+  const STEP2_ROLES = ["step2_topic", "final_b_json", "step2_failed_topics", "output"];
   let afterSeq = 0;
   const logbox = document.getElementById("logbox");
   const notifyStack = document.getElementById("notify-stack");

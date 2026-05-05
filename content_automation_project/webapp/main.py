@@ -236,7 +236,7 @@ def effective_job_list_status(job: Job, pairs: List[JobPair]) -> str:
 
 
 STEP1_ARTIFACT_ROLES = frozenset({"step1_combined", "txt_dump"})
-STEP2_ARTIFACT_ROLES = frozenset({"step2_topic", "final_b_json"})
+STEP2_ARTIFACT_ROLES = frozenset({"step2_topic", "final_b_json", "step2_failed_topics", "output"})
 
 
 def split_artifacts_for_steps(

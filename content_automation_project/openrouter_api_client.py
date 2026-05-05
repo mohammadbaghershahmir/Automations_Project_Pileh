@@ -294,8 +294,9 @@ class OpenRouterAPIClient:
         api_key: Optional[str],
         timeout_s: float = 300.0,
         cancel_check: Optional[Callable[[], bool]] = None,
+        use_streaming: bool = False,
     ) -> Optional[str]:
-        if cancel_check is not None:
+        if use_streaming:
             return self._stream_chat_completions(
                 model_name=model_name,
                 user_text=user_text,
@@ -389,10 +390,12 @@ class OpenRouterAPIClient:
         max_tokens: int = APIConfig.DEFAULT_MAX_TOKENS,
         api_key: Optional[str] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        use_streaming: bool = False,
     ) -> Optional[str]:
         """Process text via OpenRouter chat completions.
 
-        When cancel_check is set, uses streaming so stop requests can take effect during long generations.
+        Non-streaming is the default for higher stability. Set use_streaming=True to enable
+        streamed responses (e.g. when frequent cancel checks during generation are required).
         """
         if not model_name:
             model_name = APIConfig.DEFAULT_OPENROUTER_MODEL
@@ -405,6 +408,7 @@ class OpenRouterAPIClient:
             max_tokens=max_tokens,
             api_key=api_key,
             cancel_check=cancel_check,
+            use_streaming=use_streaming,
         )
 
     def process_pdf_with_prompt(
