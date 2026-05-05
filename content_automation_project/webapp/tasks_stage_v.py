@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -305,18 +307,51 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             abs_j = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
             abs_w = os.path.join(base, pair.word_relpath.replace("/", os.sep))
             out_dir = pair_output(job_id, pair.pair_index)
+            pair_index = pair.pair_index
+            progress_queue: "queue.Queue[str]" = queue.Queue()
+            stop_flush = threading.Event()
+            flush_errors: List[Exception] = []
 
-            log_buf: List[str] = []
+            def _flush_worker() -> None:
+                """Flush Step 2 progress logs using an isolated DB session (thread-safe)."""
+                s = SessionLocal()
+                buf: List[str] = []
+                try:
+                    while True:
+                        try:
+                            msg = progress_queue.get(timeout=0.2)
+                            buf.append(msg)
+                        except queue.Empty:
+                            pass
+                        if len(buf) >= 25:
+                            append_logs_bulk(s, job_id, buf, pair_index=pair_index)
+                            buf.clear()
+                        if stop_flush.is_set() and progress_queue.empty():
+                            if buf:
+                                append_logs_bulk(s, job_id, buf, pair_index=pair_index)
+                                buf.clear()
+                            break
+                except Exception as e:
+                    try:
+                        s.rollback()
+                    except Exception:
+                        pass
+                    logger.exception("Step 2 log flush worker failed")
+                    flush_errors.append(e)
+                finally:
+                    s.close()
+
+            flush_thread = threading.Thread(target=_flush_worker, daemon=True)
+            flush_thread.start()
 
             def progress(msg: str) -> None:
-                log_buf.append(msg)
-                if _scalar_cancel_requested(db, job_id):
+                progress_queue.put(msg)
+                # Use fresh-session cancel checker; never use shared worker session from pool threads.
+                if cancel_check and cancel_check():
                     raise JobCancelled()
-                if len(log_buf) >= 25:
-                    _flush_log_buf(db, job_id, log_buf, pair.pair_index)
 
             try:
-                append_log(db, job_id, f"--- Step 2 start pair {pair.pair_index} ---", pair.pair_index)
+                append_log(db, job_id, f"--- Step 2 start pair {pair_index} ---", pair_index)
                 try:
                     result = processor.process_stage_v_step2(
                         stage_j_path=abs_j,
@@ -333,10 +368,16 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
                         cancel_check=cancel_check,
                     )
                 except (JobCancelled, OpenRouterRequestAborted):
-                    _flush_log_buf(db, job_id, log_buf, pair.pair_index)
+                    stop_flush.set()
+                    flush_thread.join(timeout=10)
+                    if flush_errors:
+                        raise flush_errors[0]
                     _finalize_step2_cancelled(db, job_id, pairs)
                     return
-                _flush_log_buf(db, job_id, log_buf, pair.pair_index)
+                stop_flush.set()
+                flush_thread.join(timeout=10)
+                if flush_errors:
+                    raise flush_errors[0]
                 if result:
                     pair.step2_status = "succeeded"
                     register_artifacts_under(db, job_id, pair.pair_index, base, os.path.relpath(out_dir, base))
@@ -345,7 +386,8 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
                     pair.step2_error = "Step 2 returned no output"
                     append_log(db, job_id, f"pair {pair.pair_index}: Step 2 failed", pair.pair_index)
             except Exception as e:
-                _flush_log_buf(db, job_id, log_buf, pair.pair_index)
+                stop_flush.set()
+                flush_thread.join(timeout=10)
                 logger.exception("Step 2 error")
                 pair.step2_status = "failed"
                 pair.step2_error = str(e)
