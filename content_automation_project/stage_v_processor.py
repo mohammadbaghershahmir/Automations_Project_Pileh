@@ -45,6 +45,43 @@ class StageVProcessor(BaseStageProcessor):
         self.logger = logging.getLogger(__name__)
         self.word_processor = WordFileProcessor()
 
+    def _coerce_stage_v_rows_from_any_json(self, obj: Any) -> List[Dict[str, Any]]:
+        """
+        Convert loose LLM JSON shapes into a list of question rows.
+        Supports:
+        - list[dict]
+        - dict with data/rows/points/chapters (via get_data_from_json)
+        - dict with common wrappers like questions/tests/items
+        - single question dict (e.g., {"Qtext": "...", "Choice1": ...})
+        """
+        if isinstance(obj, list):
+            return [x for x in obj if isinstance(x, dict)]
+        if not isinstance(obj, dict):
+            return []
+
+        # Preferred existing extractor for known stage formats.
+        extracted = self.get_data_from_json(obj) or []
+        if extracted:
+            return [x for x in extracted if isinstance(x, dict)]
+
+        # Common wrapper keys used by models.
+        for key in ("questions", "tests", "items", "records", "result", "results", "output"):
+            val = obj.get(key)
+            if isinstance(val, list):
+                rows = [x for x in val if isinstance(x, dict)]
+                if rows:
+                    return rows
+            if isinstance(val, dict):
+                rows = self._coerce_stage_v_rows_from_any_json(val)
+                if rows:
+                    return rows
+
+        # Single row object fallback (frequent when model returns one JSON object).
+        q_markers = {"Qtext", "Choice1", "Choice2", "Choice3", "Choice4", "Correct", "TestID", "Mainanswer", "Ouranswer"}
+        if any(k in obj for k in q_markers):
+            return [obj]
+        return []
+
     def _extract_stage_v_question_rows_from_model_text(self, text: str) -> List[Dict[str, Any]]:
         """
         Collect question rows from a model response. Merges every JSON block (models often emit
@@ -55,10 +92,7 @@ class StageVProcessor(BaseStageProcessor):
         blocks = self.extract_json_blocks_from_text(text)
         merged: List[Dict[str, Any]] = []
         for block in blocks:
-            if isinstance(block, list):
-                merged.extend(b for b in block if isinstance(b, dict))
-            elif isinstance(block, dict):
-                merged.extend(self.get_data_from_json(block) or [])
+            merged.extend(self._coerce_stage_v_rows_from_any_json(block))
         if merged:
             return merged
         part_output = self.extract_json_from_response(text)
@@ -66,11 +100,7 @@ class StageVProcessor(BaseStageProcessor):
             part_output = self.load_txt_as_json_from_text(text)
         if not part_output:
             return []
-        if isinstance(part_output, list):
-            return [x for x in part_output if isinstance(x, dict)]
-        if isinstance(part_output, dict):
-            return self.get_data_from_json(part_output) or []
-        return []
+        return self._coerce_stage_v_rows_from_any_json(part_output)
 
     def _normalize_key_part(self, value: Any) -> str:
         """Normalize chapter/subchapter/topic values for robust matching."""
