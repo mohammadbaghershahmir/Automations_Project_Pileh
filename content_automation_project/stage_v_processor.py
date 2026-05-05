@@ -1019,7 +1019,7 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
         step1_data = self.load_json_file(step1_output_path)
         step1_questions = []
         if step1_data:
-            step1_questions = self.get_data_from_json(step1_data) or []
+            step1_questions = self._coerce_stage_v_rows_from_any_json(step1_data)
         _progress(f"Loaded {len(step1_questions)} questions from Step 1")
         
         # Replace placeholders in prompt with current topic and subchapter
@@ -1113,10 +1113,7 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
             _progress("Trying to load JSON from TXT file as fallback...")
             model_output = self.load_txt_as_json(txt_path)
             if model_output:
-                if isinstance(model_output, list):
-                    all_refined_questions = model_output
-                elif isinstance(model_output, dict):
-                    all_refined_questions = self.get_data_from_json(model_output)
+                all_refined_questions = self._coerce_stage_v_rows_from_any_json(model_output)
         
         if not all_refined_questions:
             self.logger.error(f"No refined questions generated in Step 2 for Topic {topic_idx}")
