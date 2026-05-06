@@ -1,10 +1,13 @@
-# Slim dependencies for Dockerfile.webapp (API + Celery worker, Stage V / Test Bank).
-# Avoids PyMuPDF, GUI, sentence-transformers, and heavy PDF stacks — not needed for server-side Test Bank.
+# Docker dependencies for webapp API + Celery worker.
+# Includes PDF extraction libs because Pre-OCR / OCR Extraction / Document Processing
+# use pdf_processor.py in worker jobs.
 # For the full desktop app on your machine: pip install -r requirements.txt
 
 requests>=2.31.0
 python-dotenv>=1.0.0
 python-docx>=1.1.0
+PyMuPDF>=1.23.0
+PyPDF2>=3.0.0
 
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
