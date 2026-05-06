@@ -16,7 +16,12 @@ def _get_default_prompts_path() -> str:
     if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
         # Running as PyInstaller onefile/bundle: prompts.json is next to exe in bundle
         return os.path.join(sys._MEIPASS, "prompts.json")
-    # Normal run: project root = parent of this module's directory
+    # Normal run: keep prompts.json alongside this module (content_automation_project/prompts.json)
+    module_dir = Path(__file__).resolve().parent
+    local_prompts = module_dir / "prompts.json"
+    if local_prompts.exists():
+        return str(local_prompts)
+    # Backward-compatible fallback for older layouts
     project_root = Path(__file__).resolve().parents[1]
     return str(project_root / "prompts.json")
 

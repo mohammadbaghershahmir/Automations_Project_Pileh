@@ -117,6 +117,34 @@ class StageVProcessor(BaseStageProcessor):
             self._normalize_key_part(topic_name),
         )
 
+    def _dedup_stage_v_rows(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate Stage V rows while preserving original order."""
+        unique_rows: List[Dict[str, Any]] = []
+        seen_keys = set()
+
+        def _norm(value: Any) -> str:
+            return " ".join(str(value or "").split()).casefold()
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            dedup_key = (
+                _norm(row.get("Qtext", "")),
+                _norm(row.get("Choice1", "")),
+                _norm(row.get("Choice2", "")),
+                _norm(row.get("Choice3", "")),
+                _norm(row.get("Choice4", "")),
+                _norm(row.get("Chapter", row.get("chapter", ""))),
+                _norm(row.get("Subchapter", row.get("subchapter", ""))),
+                _norm(row.get("Topic", row.get("topic", ""))),
+            )
+            if dedup_key in seen_keys:
+                continue
+            seen_keys.add(dedup_key)
+            unique_rows.append(row)
+
+        return unique_rows
+
     def _build_stage_v_processing_context(
         self,
         stage_j_path: str,
@@ -452,6 +480,13 @@ class StageVProcessor(BaseStageProcessor):
                     os.remove(topic_step2_path)
             except Exception:
                 pass
+
+        before_global_dedup = len(step2_combined_data)
+        step2_combined_data = self._dedup_stage_v_rows(step2_combined_data)
+        if len(step2_combined_data) < before_global_dedup:
+            _progress(
+                f"Removed {before_global_dedup - len(step2_combined_data)} duplicate questions across topic outputs"
+            )
 
         if delete_step1_combined_after_success:
             try:
@@ -1070,10 +1105,25 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
         # Load Step 1 output for this topic
         _progress("Loading Step 1 output...")
         step1_data = self.load_json_file(step1_output_path)
-        step1_questions = []
+        step1_questions: List[Dict[str, Any]] = []
         if step1_data:
-            step1_questions = self._coerce_stage_v_rows_from_any_json(step1_data)
-        _progress(f"Loaded {len(step1_questions)} questions from Step 1")
+            all_step1_questions = self._coerce_stage_v_rows_from_any_json(step1_data)
+            current_topic_key = self._build_topic_key("", current_topic_subchapter, current_topic_name)
+            for q in all_step1_questions:
+                if not isinstance(q, dict):
+                    continue
+                row_topic_key = self._build_topic_key(
+                    q.get("Chapter", q.get("chapter", "")),
+                    q.get("Subchapter", q.get("subchapter", "")),
+                    q.get("Topic", q.get("topic", "")),
+                )
+                # Match by (Subchapter, Topic); chapter can be missing or inconsistent in model output.
+                if row_topic_key[1:] == current_topic_key[1:]:
+                    step1_questions.append(q)
+        _progress(
+            f"Loaded {len(step1_questions)} Step 1 questions for topic '{current_topic_name}' "
+            f"(subchapter '{current_topic_subchapter}')"
+        )
         
         # Replace placeholders in prompt with current topic and subchapter
         topic_prompt = prompt.replace("{Topic_NAME}", current_topic_name)
@@ -1175,7 +1225,7 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
         _progress(f"Total refined questions from Step 2 for Topic {topic_idx}: {len(all_refined_questions)}")
         
         # Combine Step 1 and Step 2 questions
-        all_combined_questions = step1_questions + all_refined_questions
+        all_combined_questions = self._dedup_stage_v_rows(step1_questions + all_refined_questions)
         _progress(f"Total combined questions (Step 1 + Step 2) for Topic {topic_idx}: {len(all_combined_questions)}")
         
         # Add QId to all questions after receiving model response

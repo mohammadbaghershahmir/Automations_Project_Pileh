@@ -594,6 +594,13 @@ class MultiPartProcessor:
             else:
                 topics_str = ""  # Empty string if no topics
             subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME}", topics_str)
+            subchapter_prompt += (
+                "\n\nCRITICAL EXTRACTION RULES:\n"
+                "- Extract body text verbatim from the source pages.\n"
+                "- DO NOT translate, paraphrase, rewrite, summarize, or normalize language.\n"
+                "- Keep the original language exactly as printed in the PDF for all `content` fields.\n"
+                "- Persian is allowed only for provided structure labels (chapter/subchapter/topic names) when those labels are already Persian in the input.\n"
+            )
             
             try:
                 # Determine max tokens based on model
@@ -1296,6 +1303,13 @@ class MultiPartProcessor:
             
             subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME_ENDING}", topic_name_ending)
             subchapter_prompt = subchapter_prompt.replace("[TOPIC_NAME_ENDING]", topic_name_ending)
+            subchapter_prompt += (
+                "\n\nCRITICAL EXTRACTION RULES:\n"
+                "- Extract body text verbatim from the source pages.\n"
+                "- DO NOT translate, paraphrase, rewrite, summarize, or normalize language.\n"
+                "- Keep the original language exactly as printed in the PDF for all `content` fields.\n"
+                "- Persian is allowed only for provided structure labels (chapter/subchapter/topic names) when those labels are already Persian in the input.\n"
+            )
             
             self.logger.info(f"Subchapter: {subchapter_name}, Topics: {topics_str}, Ending Topic: {topic_name_ending}")
             
