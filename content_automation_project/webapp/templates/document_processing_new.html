@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted">Upload OCR Extraction JSON outputs (one file per pair). Use a single Start PointId for this run. Default model: DeepSeek (same family as desktop).</p>
+<p class="muted">Upload OCR Extraction JSON outputs (one file per pair). Use a single Start PointId for this run. Default API/model is <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
 
 <form method="post" action="/jobs/document-processing" enctype="multipart/form-data">
   <div class="card">
@@ -34,8 +34,8 @@
     <label>Prompt</label>
     <textarea name="prompt" dir="auto">{{ default_prompt }}</textarea>
     <div class="tb-row">
-      <label>Provider <input type="text" name="provider" value="deepseek" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model" value="deepseek-reasoner" autocomplete="off"/></label>
+      <label>Provider <input type="text" name="provider" value="openrouter" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model" value="z-ai/glm-5" autocomplete="off"/></label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>

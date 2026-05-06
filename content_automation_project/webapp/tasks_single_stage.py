@@ -58,7 +58,7 @@ def run_pre_ocr_topic_step1_job(job_id: str, pair_indices: Optional[List[int]] =
             from webapp.default_prompts import get_default_pre_ocr_prompt
 
             prompt = get_default_pre_ocr_prompt()
-        model_name = (cfg.get("model") or "gemini-2.5-pro").strip()
+        model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
         job.status = "running"
@@ -188,7 +188,7 @@ def run_ocr_extraction_step1_job(job_id: str, pair_indices: Optional[List[int]] 
             from webapp.default_prompts import get_default_ocr_extraction_prompt
 
             prompt = get_default_ocr_extraction_prompt()
-        model_name = (cfg.get("model") or "gemini-2.5-pro").strip()
+        model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
         job.status = "running"
@@ -320,7 +320,7 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
             from webapp.default_prompts import get_default_document_processing_prompt
 
             user_prompt = get_default_document_processing_prompt()
-        model_name = (cfg.get("model") or "deepseek-reasoner").strip()
+        model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
         book_id = cfg.get("book_id")
         chapter_id = cfg.get("chapter_id")
