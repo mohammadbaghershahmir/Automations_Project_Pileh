@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}New Pre-OCR{% endblock %}
+{% block head %}
+<style>
+  .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
+  .tb-row input[type="text"] { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Pre-OCR Topic Extraction</h1>
+{% if multipart_ok is defined and not multipart_ok %}
+<p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
+{% endif %}
+<p class="muted">Upload one or more PDF chapter files. Each file becomes one job pair. Run processing from the job page (same flow as Test Bank). Default model matches the desktop app (Gemini).</p>
+
+<form method="post" action="/jobs/pre-ocr" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Short label for the job list.</p>
+    <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Ch. 3 pre-OCR" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">PDF files</h2>
+    <input type="file" name="pdf_files" multiple accept=".pdf,application/pdf" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Prompt &amp; model</h2>
+    <label>Prompt</label>
+    <textarea name="prompt" dir="auto" placeholder="Default from prompts.json if left empty.">{{ default_prompt }}</textarea>
+    <div class="tb-row">
+      <label>Provider <input type="text" name="provider" value="google" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model" value="gemini-2.5-pro" autocomplete="off"/></label>
+    </div>
+    <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
+    <label class="muted" style="font-size:13px;">Seconds between each PDF (worker sleep)</label>
+    <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+  </div>
+</form>
+{% endblock %}

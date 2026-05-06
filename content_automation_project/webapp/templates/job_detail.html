@@ -6,7 +6,7 @@
 {% endblock %}
 {% block content %}
 <p class="muted" style="margin:0 0 8px;"><a href="/jobs">← All jobs</a></p>
-<h1 style="margin-top:0;">{{ cfg.get("display_name", "Test Bank job") }}</h1>
+<h1 style="margin-top:0;">{{ cfg.get("display_name") or stage_label }}</h1>
 <p class="muted"><code style="font-size:11px;">{{ job.id }}</code> · Created {{ job.created_at|shamsi }} (Tehran) · Creator: <strong>{{ creator_label }}</strong></p>
 {% if not is_job_owner %}
 <p class="muted" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);font-size:13px;">View only — you can browse outputs, downloads, and the log. Only the creator can change Word pairing, run steps, or stop a run.</p>
@@ -25,8 +25,9 @@
 {% endif %}
 {# Match JS poll: Step 1 stop while step1 aggregate ≠ succeeded; Step 2 stop when step1 done and step2 not finished #}
 {% set show_stop_s1 = job.status in ('queued', 'running') and not ns.all_s1_ok %}
-{% set show_stop_s2 = job.status in ('queued', 'running') and ns.all_s1_ok %}
+{% set show_stop_s2 = job.status in ('queued', 'running') and ns.all_s1_ok and not single_stage_job %}
 
+{% if not single_stage_job %}
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Word pairing</h2>
   {% if is_job_owner %}
@@ -80,13 +81,64 @@
   </table>
   {% endif %}
 </div>
+{% else %}
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">Inputs</h2>
+  <p class="muted" style="margin-top:0;font-size:13px;">Files were chosen when this job was created.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        {% if job.type == 'pre_ocr_topic' %}
+        <th>PDF</th>
+        {% elif job.type == 'ocr_extraction' %}
+        <th>PDF</th><th>Topic JSON</th>
+        {% else %}
+        <th>OCR extraction JSON</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pairs %}
+      <tr>
+        <td>{{ p.pair_index }}</td>
+        {% if job.type == 'pre_ocr_topic' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        {% elif job.type == 'ocr_extraction' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename }}</td>
+        {% else %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No pairs.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if cfg.get('pointid_mapping_relpath') %}
+  <p class="muted" style="margin-top:12px;font-size:13px;">PointId mapping: <code style="font-size:11px;word-break:break-all;">{{ cfg.get('pointid_mapping_relpath') }}</code></p>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="card">
+  {% if job.type == 'pre_ocr_topic' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Pre-OCR</h2>
+  <p class="muted" style="margin-top:0;">Extract topics from each PDF in the <strong>background worker</strong>. Outputs appear below when finished.</p>
+  {% elif job.type == 'ocr_extraction' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run OCR extraction</h2>
+  <p class="muted" style="margin-top:0;">Uses each PDF + topic JSON pair. Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'document_processing' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run document processing</h2>
+  <p class="muted" style="margin-top:0;">Processes each OCR extraction JSON. Runs in the <strong>background worker</strong>.</p>
+  {% else %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Initial outputs</h2>
   <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
+  {% endif %}
   {% set p0 = pairs[0] if pairs else none %}
   {% if is_job_owner %}
-  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="Run Step 1"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% else %}Run Step 1{% endif %}</span></button>
+  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% else %}Run document processing{% endif %}{% else %}Run Step 1{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% else %}Run document processing{% endif %}{% else %}Run Step 1{% endif %}</span></button>
 
   <div id="stop-under-s1" class="stop-under-step" style="display:{% if show_stop_s1 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 1</button>
@@ -94,8 +146,8 @@
   </div>
   {% endif %}
 
-  <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 1 outputs</h3>
-  <p class="muted" style="margin-top:0;font-size:13px;">Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.</p>
+  <h3 style="margin:20px 0 8px;font-size:0.95rem;">{% if single_stage_job %}Outputs{% else %}Step 1 outputs{% endif %}</h3>
+  <p class="muted" style="margin-top:0;font-size:13px;">{% if single_stage_job %}Preview or download result files.{% else %}Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.{% endif %}</p>
   <table>
     <thead>
       <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
@@ -116,6 +168,7 @@
   </table>
 </div>
 
+{% if not single_stage_job %}
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Step 2 — Refined outputs</h2>
   <p class="muted" style="margin-top:0;">Uses Step&nbsp;1 results. Run only after Step&nbsp;1 has succeeded and you have checked Step&nbsp;1 outputs above.</p>
@@ -156,8 +209,9 @@
     </tbody>
   </table>
 </div>
+{% endif %}
 
-{% if job.type != 'test_bank' and is_job_owner %}
+{% if job.type != 'test_bank' and is_job_owner and not single_stage_job %}
 <div class="card" style="text-align:center;">
   <button type="button" id="btn-full" class="secondary" style="font-size:0.9rem;">Run full pipeline (Step 1 + 2)</button>
   <p class="muted" style="margin:10px 0 0;font-size:12px;">Runs Step&nbsp;1 then Step&nbsp;2 in one queued job (non–Test Bank types).</p>
@@ -250,11 +304,15 @@
     }
   }
   document.getElementById("btn-s1").onclick = function (ev) { post("/jobs/" + jobId + "/enqueue-step1", ev.currentTarget); };
-  document.getElementById("btn-s2").onclick = function (ev) {
-    var b = ev.currentTarget;
-    if (b.disabled) return;
-    post("/jobs/" + jobId + "/enqueue-step2", b);
-  };
+  (function () {
+    var b2 = document.getElementById("btn-s2");
+    if (!b2) return;
+    b2.onclick = function (ev) {
+      var b = ev.currentTarget;
+      if (b.disabled) return;
+      post("/jobs/" + jobId + "/enqueue-step2", b);
+    };
+  })();
   var bf = document.getElementById("btn-full");
   if (bf) bf.onclick = function (ev) { post("/jobs/" + jobId + "/enqueue-full", ev.currentTarget); };
 
@@ -310,8 +368,9 @@
   const jobId = "{{ job.id }}";
   const jobType = "{{ job.type }}";
   const testBank = jobType === "test_bank";
-  const STEP1_ROLES = ["step1_combined", "txt_dump"];
-  const STEP2_ROLES = ["step2_topic", "final_b_json", "step2_failed_topics", "output"];
+  const singleStage = {{ single_stage_job | tojson }};
+  const STEP1_ROLES = {{ step1_poll_roles_json | safe }};
+  const STEP2_ROLES = {{ step2_poll_roles_json | safe }};
   let afterSeq = 0;
   const logbox = document.getElementById("logbox");
   const notifyStack = document.getElementById("notify-stack");
@@ -452,13 +511,16 @@
 
       if (prevS1 !== null) {
         if (prevS1 === "running" && a1 === "succeeded") {
-          addBanner("ok", "Step 1 finished — review Step 1 outputs above, then run Step 2 when ready.");
+          addBanner(
+            "ok",
+            singleStage ? "Processing finished — review outputs above." : "Step 1 finished — review Step 1 outputs above, then run Step 2 when ready."
+          );
         }
         if (prevS1 === "running" && a1 === "failed") {
-          addBanner("fail", "Step 1 failed. Check the log below.");
+          addBanner("fail", singleStage ? "Processing failed. Check the log below." : "Step 1 failed. Check the log below.");
         }
       }
-      if (prevS2 !== null) {
+      if (!singleStage && prevS2 !== null) {
         if (prevS2 === "running" && a2 === "succeeded") {
           addBanner("ok", "Step 2 finished — review Step 2 outputs below.");
         }
@@ -499,29 +561,31 @@
 
       setStepButton(btnS1, a1);
 
-      if (testBank && btnS2) {
-        if (a1 !== "succeeded") {
-          btnS2.setAttribute("data-keep-disabled", "1");
-          btnS2.disabled = true;
-          btnS2.classList.remove("is-running", "is-failed");
-          var lb2 = btnS2.querySelector(".btn-label");
-          if (lb2) lb2.textContent = btnS2.getAttribute("data-default-label");
-          if (step2Hint) {
-            step2Hint.style.display = "";
-            step2Hint.textContent = "Finish Step 1 successfully before running Step 2.";
+      if (!singleStage) {
+        if (testBank && btnS2) {
+          if (a1 !== "succeeded") {
+            btnS2.setAttribute("data-keep-disabled", "1");
+            btnS2.disabled = true;
+            btnS2.classList.remove("is-running", "is-failed");
+            var lb2 = btnS2.querySelector(".btn-label");
+            if (lb2) lb2.textContent = btnS2.getAttribute("data-default-label");
+            if (step2Hint) {
+              step2Hint.style.display = "";
+              step2Hint.textContent = "Finish Step 1 successfully before running Step 2.";
+            }
+          } else {
+            btnS2.removeAttribute("data-keep-disabled");
+            setStepButton(btnS2, a2);
+            if (step2Hint) step2Hint.style.display = "none";
           }
         } else {
-          btnS2.removeAttribute("data-keep-disabled");
+          if (btnS2) btnS2.removeAttribute("data-keep-disabled");
           setStepButton(btnS2, a2);
-          if (step2Hint) step2Hint.style.display = "none";
         }
-      } else {
-        if (btnS2) btnS2.removeAttribute("data-keep-disabled");
-        setStepButton(btnS2, a2);
       }
 
       if (j.artifacts && tbodyS1) renderArtifactRows(tbodyS1, j.artifacts, STEP1_ROLES);
-      if (j.artifacts && tbodyS2) renderArtifactRows(tbodyS2, j.artifacts, STEP2_ROLES);
+      if (!singleStage && j.artifacts && tbodyS2) renderArtifactRows(tbodyS2, j.artifacts, STEP2_ROLES);
 
       if (j.log_lines && j.log_lines.length) {
         let chunk = "";

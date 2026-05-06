@@ -1094,3 +1094,33 @@ TypeError: cannot unpack non-iterable NoneType object
 2026-05-03 09:21:05,487 - INFO - Loaded stage settings from stage_settings.json
 2026-05-03 09:21:05,541 - INFO - python-docx library is available
 2026-05-03 09:21:05,541 - INFO - python-docx library is available
+2026-05-05 14:04:20,070 - INFO - Loaded 16 predefined prompts
+2026-05-05 14:04:20,070 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 14:04:20,070 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 14:04:20,071 - INFO - Loaded stage settings from stage_settings.json
+2026-05-05 14:04:20,149 - INFO - python-docx library is available
+2026-05-05 14:04:20,149 - INFO - python-docx library is available
+2026-05-05 17:01:11,051 - INFO - Loaded 16 predefined prompts
+2026-05-05 17:01:11,051 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 17:01:11,051 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 17:01:11,052 - INFO - Loaded stage settings from stage_settings.json
+2026-05-05 17:01:11,134 - INFO - python-docx library is available
+2026-05-05 17:01:11,134 - INFO - python-docx library is available
+2026-05-05 17:07:27,546 - INFO - Loaded 16 predefined prompts
+2026-05-05 17:07:27,546 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 17:07:27,546 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 17:07:27,546 - INFO - Loaded stage settings from stage_settings.json
+2026-05-05 17:07:27,607 - INFO - python-docx library is available
+2026-05-05 17:07:27,607 - INFO - python-docx library is available
+2026-05-05 20:26:35,792 - INFO - Loaded 16 predefined prompts
+2026-05-05 20:26:35,792 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 20:26:35,792 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-05 20:26:35,793 - INFO - Loaded stage settings from stage_settings.json
+2026-05-05 20:26:35,885 - INFO - python-docx library is available
+2026-05-05 20:26:35,885 - INFO - python-docx library is available
+2026-05-06 12:04:32,376 - INFO - Loaded 16 predefined prompts
+2026-05-06 12:04:32,377 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-06 12:04:32,377 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-06 12:04:32,377 - INFO - Loaded stage settings from stage_settings.json
+2026-05-06 12:04:32,460 - INFO - python-docx library is available
+2026-05-06 12:04:32,460 - INFO - python-docx library is available

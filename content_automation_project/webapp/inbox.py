@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from webapp.job_runner_common import SINGLE_STAGE_JOB_TYPES
 from webapp.models import InboxNotification, Job, JobPair
 
 
@@ -42,13 +43,18 @@ def notify_step1_finished(db: Session, job: Job, pairs: List[JobPair]) -> None:
             body,
         )
     else:
+        body_ok = (
+            "Outputs are available on the job page."
+            if (job.type or "").strip() in SINGLE_STAGE_JOB_TYPES
+            else "You can review outputs and run Step 2 when ready."
+        )
         _add(
             db,
             job.created_by_id,
             job.id,
             "step1_ok",
             f"{name}: Step 1 succeeded",
-            "You can review outputs and run Step 2 when ready.",
+            body_ok,
         )
 
 

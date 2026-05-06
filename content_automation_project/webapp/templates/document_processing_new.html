@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}New Document Processing{% endblock %}
+{% block head %}
+<style>
+  .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
+  .tb-row input[type="text"] { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Document Processing</h1>
+{% if multipart_ok is defined and not multipart_ok %}
+<p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
+{% endif %}
+<p class="muted">Upload OCR Extraction JSON outputs (one file per pair). Use a single Start PointId for this run. Default model: DeepSeek (same family as desktop).</p>
+
+<form method="post" action="/jobs/document-processing" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
+    <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Ch.3 lesson notes" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">OCR Extraction JSON files</h2>
+    <input type="file" name="ocr_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Start PointId</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">10-digit value like <code>1050030001</code> (book: 105, chapter: 003, start index: 0001).</p>
+    <input type="text" name="start_pointid" value="1050030001" required pattern="\d{10}" inputmode="numeric" maxlength="10" style="width:100%;max-width:240px;padding:10px 12px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Prompt &amp; model</h2>
+    <label>Prompt</label>
+    <textarea name="prompt" dir="auto">{{ default_prompt }}</textarea>
+    <div class="tb-row">
+      <label>Provider <input type="text" name="provider" value="deepseek" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model" value="deepseek-reasoner" autocomplete="off"/></label>
+    </div>
+    <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
+    <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+  </div>
+</form>
+{% endblock %}

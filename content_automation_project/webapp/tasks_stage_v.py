@@ -39,61 +39,19 @@ from webapp.job_files import (
 from webapp.default_prompts import get_default_step1_prompt, get_default_step2_prompt
 from webapp.inbox import notify_job_crash, notify_step1_finished, notify_step2_finished
 from webapp.models import Job, JobPair
+from webapp.job_runner_common import (
+    JobCancelled,
+    SINGLE_STAGE_JOB_TYPES,
+    _cancel_check_session,
+    _finalize_step1_cancelled,
+    _finalize_step2_cancelled,
+    _scalar_cancel_requested,
+)
 from webapp.processor_context import build_stage_v_processor
 
 from openrouter_api_client import OpenRouterRequestAborted
 
 logger = logging.getLogger(__name__)
-
-
-class JobCancelled(Exception):
-    """Raised when the user requested stop (`Job.cancel_requested`)."""
-
-
-def _scalar_cancel_requested(db: Session, job_id: str) -> bool:
-    v = db.query(Job.cancel_requested).filter(Job.id == job_id).scalar()
-    return bool(v)
-
-
-def _cancel_check_session(job_id: str):
-    """Fresh SQLite read each call (safe with API commits and with Step 2 thread pool workers)."""
-
-    def check() -> bool:
-        s = SessionLocal()
-        try:
-            return _scalar_cancel_requested(s, job_id)
-        finally:
-            s.close()
-
-    return check
-
-
-def _finalize_step1_cancelled(db: Session, job_id: str, pairs: List[JobPair]) -> None:
-    append_log(db, job_id, "--- Step 1 stopped by user ---", None)
-    for p in pairs:
-        if p.step1_status == "running":
-            p.step1_status = "failed"
-            p.step1_error = "Cancelled by user"
-    job = db.query(Job).filter(Job.id == job_id).one()
-    job.status = "cancelled"
-    job.error_summary = "Stopped by user"
-    job.cancel_requested = False
-    job.finished_at = datetime.utcnow()
-    db.commit()
-
-
-def _finalize_step2_cancelled(db: Session, job_id: str, pairs: List[JobPair]) -> None:
-    append_log(db, job_id, "--- Step 2 stopped by user ---", None)
-    for p in pairs:
-        if p.step2_status == "running":
-            p.step2_status = "failed"
-            p.step2_error = "Cancelled by user"
-    job = db.query(Job).filter(Job.id == job_id).one()
-    job.status = "cancelled"
-    job.error_summary = "Stopped by user"
-    job.cancel_requested = False
-    job.finished_at = datetime.utcnow()
-    db.commit()
 
 
 def _flush_log_buf(db: Session, job_id: str, buf: List[str], pair_index: Optional[int]) -> None:
@@ -109,6 +67,26 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             logger.error("Job not found: %s", job_id)
+            return
+
+        jt = (job.type or "test_bank").strip()
+        if jt == "pre_ocr_topic":
+            db.close()
+            from webapp.tasks_single_stage import run_pre_ocr_topic_step1_job
+
+            run_pre_ocr_topic_step1_job(job_id, pair_indices)
+            return
+        if jt == "ocr_extraction":
+            db.close()
+            from webapp.tasks_single_stage import run_ocr_extraction_step1_job
+
+            run_ocr_extraction_step1_job(job_id, pair_indices)
+            return
+        if jt == "document_processing":
+            db.close()
+            from webapp.tasks_single_stage import run_document_processing_step1_job
+
+            run_document_processing_step1_job(job_id, pair_indices)
             return
 
         cfg = json.loads(job.config_json or "{}")
@@ -246,6 +224,9 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             logger.error("Job not found: %s", job_id)
+            return
+
+        if (job.type or "test_bank").strip() in SINGLE_STAGE_JOB_TYPES:
             return
 
         cfg = json.loads(job.config_json or "{}")
@@ -443,6 +424,15 @@ def run_full_pipeline_job(job_id: str, pair_indices: Optional[List[int]] = None)
     Step 2 always runs after Step 1 returns: pairs without Step 1 success are skipped inside
     run_step2_job, so partial Step 1 failure still allows Step 2 on pairs that succeeded Step 1.
     """
+    db = SessionLocal()
+    try:
+        j = db.query(Job).filter(Job.id == job_id).one_or_none()
+        jt = (j.type or "test_bank").strip() if j else ""
+    finally:
+        db.close()
+    if jt in SINGLE_STAGE_JOB_TYPES:
+        run_step1_job(job_id, pair_indices)
+        return
     run_step1_job(job_id, pair_indices)
     db = SessionLocal()
     try:

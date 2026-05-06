@@ -31,7 +31,13 @@ from webapp.bootstrap import (
     ensure_missing_env_admins,
     sync_admin_password_from_env,
 )
-from webapp.default_prompts import get_default_step1_prompt, get_default_step2_prompt
+from webapp.default_prompts import (
+    get_default_document_processing_prompt,
+    get_default_ocr_extraction_prompt,
+    get_default_pre_ocr_prompt,
+    get_default_step1_prompt,
+    get_default_step2_prompt,
+)
 from webapp.config import (
     DEFAULT_TEST_BANK_MODEL,
     DEFAULT_TEST_BANK_PROVIDER,
@@ -53,6 +59,7 @@ from webapp.job_files import (
     pair_inputs,
     register_input_artifact,
 )
+from webapp.job_runner_common import SINGLE_STAGE_JOB_TYPES
 from webapp.models import Artifact, InboxNotification, Job, JobLogLine, JobPair, User
 from webapp.tasks_stage_v import run_full_pipeline_job, run_step1_job, run_step2_job
 from stage_v_pairing import auto_pair_stage_v_files
@@ -164,6 +171,10 @@ def parse_pair_indices(raw: Optional[str]) -> Optional[List[int]]:
     return [int(x.strip()) for x in str(raw).split(",") if x.strip()]
 
 
+def _sorted_nonempty_paths(paths: List[str]) -> List[str]:
+    return sorted([p for p in paths if p], key=lambda p: os.path.basename(p).lower())
+
+
 # Labels align with main_gui.py tab titles (Content Automation - Pileh).
 # Keys include likely Job.type values plus stage_* aliases for APIs / imports.
 JOB_STAGE_LABELS = {
@@ -207,6 +218,9 @@ JOB_STAGE_LABELS = {
     "rich_text": "RichText Generation",
     "richtext": "RichText Generation",
     "stage_z": "RichText Generation",
+    # Web single-stage jobs
+    "pre_ocr_topic": "Pre-OCR Topic Extraction",
+    "ocr_extraction": "OCR Extraction",
 }
 
 
@@ -226,6 +240,15 @@ def effective_job_list_status(job: Job, pairs: List[JobPair]) -> str:
         return "draft"
     if not pairs:
         return st
+    jt = (job.type or "").strip()
+    if jt in SINGLE_STAGE_JOB_TYPES:
+        if any(p.step1_status == "failed" for p in pairs):
+            return "failed"
+        if any(p.step1_status == "running" for p in pairs):
+            return "running"
+        if all(p.step1_status == "succeeded" for p in pairs):
+            return "succeeded"
+        return "pending"
     if any(p.step1_status == "failed" or p.step2_status == "failed" for p in pairs):
         return "failed"
     if any(p.step1_status == "running" or p.step2_status == "running" for p in pairs):
@@ -241,14 +264,16 @@ STEP2_ARTIFACT_ROLES = frozenset({"step2_topic", "final_b_json", "step2_failed_t
 
 def split_artifacts_for_steps(
     artifacts: List[Artifact],
+    job_type: Optional[str] = None,
 ) -> tuple[List[Artifact], List[Artifact], List[Artifact]]:
+    jt = (job_type or "").strip()
     s1: List[Artifact] = []
     s2: List[Artifact] = []
     other: List[Artifact] = []
     for a in artifacts:
-        if a.role in STEP1_ARTIFACT_ROLES:
+        if a.role in STEP1_ARTIFACT_ROLES or (jt in SINGLE_STAGE_JOB_TYPES and a.role == "output"):
             s1.append(a)
-        elif a.role in STEP2_ARTIFACT_ROLES:
+        elif a.role in STEP2_ARTIFACT_ROLES and not (jt in SINGLE_STAGE_JOB_TYPES and a.role == "output"):
             s2.append(a)
         else:
             other.append(a)
@@ -430,6 +455,42 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/pre-ocr/new", response_class=HTMLResponse)
+    def pre_ocr_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "pre_ocr_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_pre_ocr_prompt(),
+            },
+        )
+
+    @app.get("/ocr-extraction/new", response_class=HTMLResponse)
+    def ocr_extraction_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "ocr_extraction_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_ocr_extraction_prompt(),
+            },
+        )
+
+    @app.get("/document-processing/new", response_class=HTMLResponse)
+    def document_processing_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "document_processing_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_document_processing_prompt(),
+            },
+        )
+
     if HAS_MULTIPART:
 
         @app.post("/jobs/test-bank")
@@ -550,6 +611,312 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/pre-ocr")
+        async def create_pre_ocr_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            pdf_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("google"),
+            model: str = Form("gemini-2.5-pro"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            if not pdf_files:
+                raise HTTPException(400, "At least one PDF is required")
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="preocr_upload_")
+            try:
+                pdf_paths: List[str] = []
+                for uf in pdf_files:
+                    if not uf.filename:
+                        continue
+                    low = uf.filename.lower()
+                    if not low.endswith(".pdf"):
+                        raise HTTPException(400, f"Not a PDF: {uf.filename}")
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    pdf_paths.append(dest)
+                if not pdf_paths:
+                    raise HTTPException(400, "No PDF files uploaded")
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_pre_ocr_prompt()
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="pre_ocr_topic",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                sorted_pdfs = _sorted_nonempty_paths(pdf_paths)
+                for pair_index, pdf_path in enumerate(sorted_pdfs):
+                    ensure_dirs(job_id, pair_index)
+                    base_name = os.path.basename(pdf_path)
+                    rel_pdf = f"pair_{pair_index}/inputs/{base_name}"
+                    shutil.copy2(pdf_path, os.path.join(root, rel_pdf.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=base_name,
+                            word_filename="",
+                            stage_j_relpath=rel_pdf,
+                            word_relpath=None,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_pdf, "upload_pdf")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/ocr-extraction")
+        async def create_ocr_extraction_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            pdf_files: List[UploadFile] = File(...),
+            topic_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("google"),
+            model: str = Form("gemini-2.5-pro"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="ocr_ext_upload_")
+            try:
+                pdf_paths: List[str] = []
+                for uf in pdf_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "pdf", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    pdf_paths.append(dest)
+
+                json_paths: List[str] = []
+                for uf in topic_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "json", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    json_paths.append(dest)
+
+                pdfs = _sorted_nonempty_paths(pdf_paths)
+                topics = _sorted_nonempty_paths(json_paths)
+                if len(pdfs) != len(topics):
+                    raise HTTPException(
+                        400,
+                        f"PDF count ({len(pdfs)}) must match topic JSON count ({len(topics)}). "
+                        "Sort order is by filename within each group.",
+                    )
+                if not pdfs:
+                    raise HTTPException(400, "Upload at least one PDF and one topic JSON")
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_ocr_extraction_prompt()
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="ocr_extraction",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, (pdf_p, top_p) in enumerate(zip(pdfs, topics)):
+                    ensure_dirs(job_id, pair_index)
+                    pj = os.path.basename(pdf_p)
+                    tj = os.path.basename(top_p)
+                    rel_pdf = f"pair_{pair_index}/inputs/{pj}"
+                    rel_topic = f"pair_{pair_index}/inputs/{tj}"
+                    shutil.copy2(pdf_p, os.path.join(root, rel_pdf.replace("/", os.sep)))
+                    shutil.copy2(top_p, os.path.join(root, rel_topic.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=pj,
+                            word_filename=tj,
+                            stage_j_relpath=rel_pdf,
+                            word_relpath=rel_topic,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_pdf, "upload_pdf")
+                    register_input_artifact(db, job_id, pair_index, root, rel_topic, "upload_topic_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/document-processing")
+        async def create_document_processing_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            ocr_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("deepseek"),
+            model: str = Form("deepseek-reasoner"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+            start_pointid: str = Form("1050030001"),
+            pointid_txt: Optional[UploadFile] = File(None),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+            start_pointid_str = (start_pointid or "").strip()
+            if not (start_pointid_str.isdigit() and len(start_pointid_str) == 10):
+                raise HTTPException(400, "Start PointId must be a 10-digit number, e.g. 1050030001.")
+            book_id = int(start_pointid_str[0:3])
+            chapter_id = int(start_pointid_str[3:6])
+            start_point_index = int(start_pointid_str[6:10])
+
+            tmp = tempfile.mkdtemp(prefix="docproc_upload_")
+            try:
+                json_paths: List[str] = []
+                for uf in ocr_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    json_paths.append(dest)
+                if not json_paths:
+                    raise HTTPException(400, "At least one OCR JSON file is required")
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_document_processing_prompt()
+                pointid_rel: Optional[str] = None
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                if _is_nonempty_file_upload(pointid_txt):
+                    pn = os.path.basename(pointid_txt.filename or "pointid_mapping.txt")
+                    pointid_rel = f"mappings/{pn}"
+                    dest_pi = os.path.join(root, pointid_rel.replace("/", os.sep))
+                    os.makedirs(os.path.dirname(dest_pi), exist_ok=True)
+                    data = await _read_upload_bytes(pointid_txt)
+                    with open(dest_pi, "wb") as f:
+                        f.write(data)
+
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                    "book_id": book_id,
+                    "chapter_id": chapter_id,
+                    "start_point_index": start_point_index,
+                    "start_pointid": start_pointid_str,
+                }
+                if pointid_rel:
+                    cfg["pointid_mapping_relpath"] = pointid_rel.replace("\\", "/")
+
+                job = Job(
+                    id=job_id,
+                    type="document_processing",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                sorted_json = _sorted_nonempty_paths(json_paths)
+                for pair_index, jp in enumerate(sorted_json):
+                    ensure_dirs(job_id, pair_index)
+                    jn = os.path.basename(jp)
+                    rel_j = f"pair_{pair_index}/inputs/{jn}"
+                    shutil.copy2(jp, os.path.join(root, rel_j.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=jn,
+                            word_filename="",
+                            stage_j_relpath=rel_j,
+                            word_relpath=None,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_j, "upload_ocr_json")
+                if pointid_rel:
+                    register_input_artifact(db, job_id, 0, root, pointid_rel.replace("\\", "/"), "upload_pointid_txt")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
     else:
 
         @app.post("/jobs/test-bank")
@@ -558,6 +925,18 @@ def create_app() -> FastAPI:
                 503,
                 "Install python-multipart (pip install python-multipart) to enable Test Bank file uploads.",
             )
+
+        @app.post("/jobs/pre-ocr")
+        def create_pre_ocr_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/ocr-extraction")
+        def create_ocr_extraction_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/document-processing")
+        def create_document_processing_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
     def job_detail(
@@ -584,11 +963,25 @@ def create_app() -> FastAPI:
                     word_choices.append(p.word_filename)
                     seen.add(p.word_filename)
         word_choices = sorted(word_choices, key=lambda s: s.lower())
-        step1_artifacts, step2_artifacts, other_artifacts = split_artifacts_for_steps(artifacts)
-        step2_enabled = job.type != "test_bank" or all_pairs_step1_succeeded(pairs)
+        jt = (job.type or "").strip()
+        single_stage = jt in SINGLE_STAGE_JOB_TYPES
+        step1_artifacts, step2_artifacts, other_artifacts = split_artifacts_for_steps(artifacts, job.type)
+        if single_stage:
+            step2_enabled = False
+        else:
+            step2_enabled = job.type != "test_bank" or all_pairs_step1_succeeded(pairs)
         creator = job.created_by_user
         creator_label = creator.email if creator else "Unknown"
         is_job_owner = job.created_by_id == user.id
+        if single_stage:
+            step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump", "output"])
+            step2_poll_roles_json = "[]"
+        else:
+            step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump"])
+            step2_poll_roles_json = json.dumps(
+                ["step2_topic", "final_b_json", "step2_failed_topics", "output"]
+            )
+        stage_label = job_stage_label(job)
         return templates.TemplateResponse(
             request,
             "job_detail.html",
@@ -605,6 +998,10 @@ def create_app() -> FastAPI:
                 "word_choices": word_choices,
                 "is_job_owner": is_job_owner,
                 "creator_label": creator_label,
+                "single_stage_job": single_stage,
+                "step1_poll_roles_json": step1_poll_roles_json,
+                "step2_poll_roles_json": step2_poll_roles_json,
+                "stage_label": stage_label,
             },
         )
 
@@ -745,6 +1142,8 @@ def create_app() -> FastAPI:
         if not job:
             raise HTTPException(404)
         require_job_owner(job, user)
+        if (job.type or "").strip() in SINGLE_STAGE_JOB_TYPES:
+            raise HTTPException(400, "Step 2 is not used for this job type.")
         pairs_all = (
             db.query(JobPair)
             .filter(JobPair.job_id == job_id)

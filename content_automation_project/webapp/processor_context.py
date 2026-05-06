@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import Tuple
 
 # Ensure project root on path when running as webapp.worker
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -19,8 +20,8 @@ from unified_api_client import UnifiedAPIClient  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-def build_stage_v_processor():
-    """Return (api_client, stage_settings_manager, stage_v_processor)."""
+def build_unified_api_client() -> Tuple[UnifiedAPIClient, StageSettingsManager]:
+    """Return (api_client, stage_settings_manager) without Stage V processor — for Pre-OCR, OCR, Document Processing workers."""
     km = APIKeyManager()
     km.load_from_env()
     ssm = StageSettingsManager()
@@ -30,5 +31,11 @@ def build_stage_v_processor():
         openrouter_api_key_manager=km,
         stage_settings_manager=ssm,
     )
+    return client, ssm
+
+
+def build_stage_v_processor():
+    """Return (api_client, stage_settings_manager, stage_v_processor)."""
+    client, ssm = build_unified_api_client()
     proc = StageVProcessor(client)
     return client, ssm, proc
