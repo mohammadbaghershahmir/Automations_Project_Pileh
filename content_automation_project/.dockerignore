@@ -20,3 +20,4 @@ data/
 # Large local artifacts (adjust if you need some copied into the image)
 *.pdf
 *.zip
+content_automation_project/data/webapp.db
