@@ -345,7 +345,7 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
                         stage_settings_manager=ssm,
                         output_dir=out_dir,
                         progress_callback=progress,
-                        delete_step1_combined_after_success=True,
+                        delete_step1_combined_after_success=False,
                         cancel_check=cancel_check,
                     )
                 except (JobCancelled, OpenRouterRequestAborted):

@@ -290,10 +290,15 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.info(f"Stage V Step 2: Using provider={provider_2}, model={model_name_2}")
 
         _progress("=" * 60)
-        _progress("STEP 2: Refining questions and adding QId (each topic: filtered Stage J + full Step 1 file + Step 2 prompt)...")
+        _progress("STEP 2: Refining questions and adding QId (each topic: filtered Stage J + filtered Step 1 + Step 2 prompt)...")
         _progress("=" * 60)
 
         step2_topic_outputs: Dict[int, Tuple[str, str, str, str]] = {}
+        all_step1_questions: List[Dict[str, Any]] = []
+        step1_data = self.load_json_file(step1_combined_path)
+        if step1_data:
+            all_step1_questions = self._coerce_stage_v_rows_from_any_json(step1_data)
+        _progress(f"Loaded {len(all_step1_questions)} total questions from Step 1 combined file")
 
         step2_tasks: List[Dict[str, Any]] = []
         for topic_idx, (chapter_name, subchapter_name, topic_name) in enumerate(topics_list, 1):
@@ -308,6 +313,19 @@ class StageVProcessor(BaseStageProcessor):
                     f"Skipping Step 2 for Topic '{topic_name}' (chapter='{chapter_name}', subchapter='{subchapter_name}') because no Stage J rows were found."
                 )
                 continue
+
+            filtered_step1_records = []
+            for q in all_step1_questions:
+                if not isinstance(q, dict):
+                    continue
+                row_topic_key = self._build_topic_key(
+                    q.get("Chapter", q.get("chapter", "")),
+                    q.get("Subchapter", q.get("subchapter", "")),
+                    q.get("Topic", q.get("topic", "")),
+                )
+                if row_topic_key[1:] == topic_key[1:]:
+                    filtered_step1_records.append(q)
+
             step2_tasks.append(
                 {
                     "topic_idx": topic_idx,
@@ -316,6 +334,8 @@ class StageVProcessor(BaseStageProcessor):
                     "topic_name": topic_name,
                     "topic_stage_j_json": json.dumps(filtered_stage_j_records, ensure_ascii=False, indent=2),
                     "filtered_rows_count": len(filtered_stage_j_records),
+                    "topic_step1_json": json.dumps(filtered_step1_records, ensure_ascii=False, indent=2),
+                    "filtered_step1_count": len(filtered_step1_records),
                 }
             )
 
@@ -357,9 +377,10 @@ class StageVProcessor(BaseStageProcessor):
                         self.logger.info(f"  Chapter: '{chapter_name}'")
                         self.logger.info(f"  Subchapter: '{subchapter_name}'")
                         self.logger.info(f"  Topic: '{topic_name}'")
-                        self.logger.info("  Input: filtered Stage J + full Step 1 file + Step 2 prompt")
+                        self.logger.info("  Input: filtered Stage J + filtered Step 1 + Step 2 prompt")
                         self.logger.info(f"  Pass/Batch: {pass_idx}/{self.STEP2_TOPIC_RETRY_PASSES} - {batch_idx}/{total_batches}")
                         self.logger.info(f"  Stage J rows: {task['filtered_rows_count']}")
+                        self.logger.info(f"  Step 1 rows: {task['filtered_step1_count']}")
 
                         future = executor.submit(
                             self._step2_refine_questions_and_add_qid,
@@ -368,6 +389,7 @@ class StageVProcessor(BaseStageProcessor):
                             full_stage_j_json=task["topic_stage_j_json"],
                             current_topic_name=topic_name,
                             current_topic_subchapter=subchapter_name,
+                            topic_step1_json=task["topic_step1_json"],
                             step1_output_path=step1_combined_path,
                             prompt=prompt_2,
                             model_name=model_name_2,
@@ -1046,6 +1068,7 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
         full_stage_j_json: str,
         current_topic_name: str,
         current_topic_subchapter: str,
+        topic_step1_json: str,
         step1_output_path: str,
         prompt: str,
         model_name: str,
@@ -1069,7 +1092,8 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
             full_stage_j_json: Full Stage J JSON string (all records)
             current_topic_name: Current topic name to focus on
             current_topic_subchapter: Current topic's subchapter
-            step1_output_path: Path to Step 1 output file for this topic
+            topic_step1_json: Step 1 questions JSON string for current topic only
+            step1_output_path: Path to combined Step 1 output file (metadata/reference)
             prompt: Prompt for refinement (should contain {Topic_NAME} and {Subchapter_Name})
             model_name: Gemini model name
             book_id: Book ID
@@ -1102,24 +1126,14 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
             context="Test Questions"
         )
         
-        # Load Step 1 output for this topic
-        _progress("Loading Step 1 output...")
-        step1_data = self.load_json_file(step1_output_path)
+        # Load Step 1 output for this topic (pre-filtered upstream)
+        _progress("Loading topic-filtered Step 1 questions...")
         step1_questions: List[Dict[str, Any]] = []
-        if step1_data:
-            all_step1_questions = self._coerce_stage_v_rows_from_any_json(step1_data)
-            current_topic_key = self._build_topic_key("", current_topic_subchapter, current_topic_name)
-            for q in all_step1_questions:
-                if not isinstance(q, dict):
-                    continue
-                row_topic_key = self._build_topic_key(
-                    q.get("Chapter", q.get("chapter", "")),
-                    q.get("Subchapter", q.get("subchapter", "")),
-                    q.get("Topic", q.get("topic", "")),
-                )
-                # Match by (Subchapter, Topic); chapter can be missing or inconsistent in model output.
-                if row_topic_key[1:] == current_topic_key[1:]:
-                    step1_questions.append(q)
+        try:
+            parsed_topic_step1 = json.loads(topic_step1_json or "[]")
+            step1_questions = self._coerce_stage_v_rows_from_any_json(parsed_topic_step1)
+        except Exception:
+            step1_questions = []
         _progress(
             f"Loaded {len(step1_questions)} Step 1 questions for topic '{current_topic_name}' "
             f"(subchapter '{current_topic_subchapter}')"
@@ -1136,6 +1150,9 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
 
 Word Document (Test Questions):
 {word_content_formatted}
+
+Step 1 Questions (ONLY this topic):
+{topic_step1_json}
 
 Stage J Data (FULL file - all records, without Type column):
 {full_stage_j_json}
