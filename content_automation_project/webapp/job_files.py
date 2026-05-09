@@ -91,6 +91,8 @@ def register_artifacts_under(
             fn_low = fn.lower()
             if "step1_combined" in low:
                 role = "step1_combined"
+            elif "prompt_input" in low and "stage_v_step2" in low and low.endswith(".txt"):
+                role = "step2_prompt_input"
             elif "stage_v_step2" in low or "_stage_v_step2_" in low:
                 role = "step2_topic"
             elif "step2_failed_topics" in low and low.endswith(".json"):

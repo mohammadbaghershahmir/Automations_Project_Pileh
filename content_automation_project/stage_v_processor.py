@@ -765,7 +765,7 @@ class StageVProcessor(BaseStageProcessor):
         Args:
             stage_j_path: Path to Stage J JSON file
             word_file_path: Path to Word test file
-            full_stage_j_json: Full Stage J JSON string (all records)
+            full_stage_j_json: Stage J JSON string for current topic
             prompt: Step 1 prompt (no topic placeholders)
             model_name: Model name for API
             book_id: Book ID for output metadata
@@ -1113,19 +1113,6 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
                 progress_callback(msg)
             self.logger.info(msg)
         
-        _progress(f"Loading Word document for Topic {topic_idx}/{total_topics}...")
-        
-        # Load Word file
-        word_content = self.word_processor.read_word_file(word_file_path)
-        if not word_content:
-            self.logger.error("Failed to read Word file")
-            return None
-        
-        word_content_formatted = self.word_processor.prepare_word_for_model(
-            word_content,
-            context="Test Questions"
-        )
-        
         # Load Step 1 output for this topic (pre-filtered upstream)
         _progress("Loading topic-filtered Step 1 questions...")
         step1_questions: List[Dict[str, Any]] = []
@@ -1144,26 +1131,38 @@ IMPORTANT: Focus on generating test questions for the topic: "{current_topic_nam
         topic_prompt = topic_prompt.replace("{Subchapter_Name}", current_topic_subchapter)
         topic_prompt = topic_prompt.replace("{TOPIC_NAME}", current_topic_name)
         topic_prompt = topic_prompt.replace("{SUBCHAPTER_NAME}", current_topic_subchapter)
+        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
+        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
+        safe_topic_name = current_topic_name.replace('/', '_').replace(' ', '_').replace('\\', '_')
+        safe_topic_name = ''.join(c for c in safe_topic_name if c.isalnum() or c in ('_', '-', '.'))
 
-        # Prepare full prompt with FULL Stage J data
+        # Prepare full prompt with topic-scoped structured inputs
         full_prompt = f"""{topic_prompt}
-
-Word Document (Test Questions):
-{word_content_formatted}
 
 Step 1 Questions (ONLY this topic):
 {topic_step1_json}
 
-Stage J Data (FULL file - all records, without Type column):
+Stage J Data (ONLY this topic, without Type column):
 {full_stage_j_json}
 
 IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}" (Subchapter: "{current_topic_subchapter}")."""
+
+        prompt_input_path = os.path.join(
+            base_dir,
+            f"{base_name}_stage_v_step2_topic_{topic_idx}_{safe_topic_name}_prompt_input.txt",
+        )
+        try:
+            with open(prompt_input_path, "w", encoding="utf-8") as f:
+                f.write(full_prompt)
+            _progress(f"Saved Step 2 prompt input to: {prompt_input_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to save Step 2 prompt input TXT file: {e}")
         
         # Call model once and collect raw response
         all_raw_responses = []
         max_retries = 3
         
-        _progress(f"Processing Stage V - Step 2 for Topic {topic_idx}/{total_topics} (full file)...")
+        _progress(f"Processing Stage V - Step 2 for Topic {topic_idx}/{total_topics} (topic-scoped inputs)...")
         part_response = None
         for attempt in range(max_retries):
             try:
@@ -1202,10 +1201,6 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
             return None
         
         # Save all raw responses to TXT file
-        base_dir = os.path.dirname(stage_j_path) or os.getcwd()
-        base_name, _ = os.path.splitext(os.path.basename(stage_j_path))
-        safe_topic_name = current_topic_name.replace('/', '_').replace(' ', '_').replace('\\', '_')
-        safe_topic_name = ''.join(c for c in safe_topic_name if c.isalnum() or c in ('_', '-', '.'))
         txt_path = os.path.join(base_dir, f"{base_name}_stage_v_step2_topic_{topic_idx}_{safe_topic_name}.txt")
         
         try:

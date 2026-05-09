@@ -259,7 +259,7 @@ def effective_job_list_status(job: Job, pairs: List[JobPair]) -> str:
 
 
 STEP1_ARTIFACT_ROLES = frozenset({"step1_combined", "txt_dump"})
-STEP2_ARTIFACT_ROLES = frozenset({"step2_topic", "final_b_json", "step2_failed_topics", "output"})
+STEP2_ARTIFACT_ROLES = frozenset({"step2_topic", "final_b_json", "step2_failed_topics", "step2_prompt_input", "output"})
 
 
 def split_artifacts_for_steps(
@@ -979,7 +979,7 @@ def create_app() -> FastAPI:
         else:
             step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump"])
             step2_poll_roles_json = json.dumps(
-                ["step2_topic", "final_b_json", "step2_failed_topics", "output"]
+                ["step2_topic", "final_b_json", "step2_failed_topics", "step2_prompt_input", "output"]
             )
         stage_label = job_stage_label(job)
         return templates.TemplateResponse(
