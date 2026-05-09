@@ -1147,11 +1147,14 @@ Stage J Data (ONLY this topic, without Type column):
 
 IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}" (Subchapter: "{current_topic_subchapter}")."""
 
+        # Save prompt input under Step 2 output dir so web artifact indexing (pair_*/output) can show it.
+        prompt_artifact_dir = output_dir or base_dir
         prompt_input_path = os.path.join(
-            base_dir,
+            prompt_artifact_dir,
             f"{base_name}_stage_v_step2_topic_{topic_idx}_{safe_topic_name}_prompt_input.txt",
         )
         try:
+            os.makedirs(prompt_artifact_dir, exist_ok=True)
             with open(prompt_input_path, "w", encoding="utf-8") as f:
                 f.write(full_prompt)
             _progress(f"Saved Step 2 prompt input to: {prompt_input_path}")
