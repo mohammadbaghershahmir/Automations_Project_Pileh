@@ -24,10 +24,36 @@ class StageEProcessor(BaseStageProcessor):
     SUBCHAPTER_RETRY_BACKOFF_CAP_S = 120.0
     # Subchapter JSON arrays are large; low completion caps truncate mid-object → unparseable JSON.
     SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS = 32768
+    STAGE_E_STAGE4_CHUNK_MAX_POINTS = 280
 
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
+
+    def _coerce_filepic_rows(self, filepic_data: Any, persian_subchapter_name: str) -> List[Dict[str, Any]]:
+        """Normalize model output (list or dict with data/rows/payload) to row dicts."""
+        self.logger.info(
+            f"Processing filepic_data for subchapter '{persian_subchapter_name}': type={type(filepic_data)}"
+        )
+        if isinstance(filepic_data, list):
+            self.logger.info(f"filepic_data is a list with {len(filepic_data)} items")
+            return filepic_data
+        if isinstance(filepic_data, dict):
+            self.logger.info(f"filepic_data is a dict with keys: {list(filepic_data.keys())}")
+            rows = filepic_data.get("data", filepic_data.get("rows", filepic_data.get("payload", [])))
+            self.logger.info(
+                f"Extracted records from dict: {len(rows) if isinstance(rows, list) else 'not a list'} items"
+            )
+            if isinstance(rows, list) and rows:
+                return rows
+            for key, value in filepic_data.items():
+                if isinstance(value, list) and value:
+                    self.logger.info(f"  Found list in key '{key}' with {len(value)} items")
+                    return value
+            self.logger.warning("No list found in any dict value")
+            return []
+        self.logger.warning(f"Unexpected JSON structure from model: {type(filepic_data)}")
+        return []
     
     def process_stage_e(
         self,
@@ -192,18 +218,59 @@ class StageEProcessor(BaseStageProcessor):
             ocr_slice = self._filter_ocr_extraction_for_subchapter(
                 ocr_extraction_data, persian_subchapter_name
             )
-            ocr_extraction_json_str = json.dumps(ocr_slice, ensure_ascii=False, indent=2)
-            
-            # Convert filtered points to JSON string
-            stage4_json_str = json.dumps(filtered_stage4_points, ensure_ascii=False, indent=2)
-            
-            # Replace {SUBCHAPTER_NAME} placeholder in prompt with Persian subchapter name from OCR Extraction JSON
+            pre_ocr_chars = len(
+                json.dumps(ocr_slice, ensure_ascii=False, separators=(",", ":"))
+            )
+            # Strip bulk paragraph text — Stage E only needs figure/table captions vs Stage 4 refs.
+            ocr_slice = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
+            # Compact JSON (no indent) — OCR slices can still be huge in token count.
+            ocr_extraction_json_str = json.dumps(
+                ocr_slice, ensure_ascii=False, separators=(",", ":")
+            )
+            post_ocr_chars = len(ocr_extraction_json_str)
+            if post_ocr_chars < pre_ocr_chars:
+                _progress(
+                    f"OCR JSON trimmed for image notes (figures/tables only): "
+                    f"{pre_ocr_chars:,} → {post_ocr_chars:,} characters."
+                )
+
+            chunk_sz = self.STAGE_E_STAGE4_CHUNK_MAX_POINTS
+            point_chunks = [
+                filtered_stage4_points[i : i + chunk_sz]
+                for i in range(0, len(filtered_stage4_points), chunk_sz)
+            ]
+            if len(point_chunks) > 1:
+                _progress(
+                    f"Large subchapter ({len(filtered_stage4_points)} Stage 4 points): splitting into "
+                    f"{len(point_chunks)} API chunk(s) to stay within model context limits."
+                )
+
+            # Reserve a smaller completion budget per call when split — frees context for OCR + JSON.
+            chunk_max_tokens = (
+                16384
+                if len(point_chunks) > 1
+                else self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS
+            )
+
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
-            
             _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
-            
-            # Prepare full prompt with filtered Stage 4 JSON for this subchapter
-            full_prompt = f"""{prompt_with_subchapter}
+
+            subchapter_filepic_records: List[Dict[str, Any]] = []
+            chunk_loop_failed = False
+
+            for cidx, chunk_points in enumerate(point_chunks):
+                chunk_suffix = ""
+                if len(point_chunks) > 1:
+                    chunk_suffix = (
+                        f"\n\n[این بخش {cidx + 1} از {len(point_chunks)} برای همین زیرفصل است؛ "
+                        f"فقط برای نقاط همین JSON یادداشت تصویر تولید کن — بقیه نقاط این زیرفصل در درخواست‌های جدا آمده‌اند.]\n"
+                    )
+
+                stage4_json_str = json.dumps(
+                    chunk_points, ensure_ascii=False, separators=(",", ":")
+                )
+
+                full_prompt = f"""{prompt_with_subchapter}{chunk_suffix}
 
 ==================================================
 فایل JSON متن درسی استخراج‌شده از کتاب درماتولوژی (OCR Extraction JSON — فقط این زیرفصل):
@@ -211,140 +278,171 @@ class StageEProcessor(BaseStageProcessor):
 {ocr_extraction_json_str}
 
 ==================================================
-فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON - Filtered for subchapter '{persian_subchapter_name}' - {len(filtered_stage4_points)} points):
+فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — بخش {cidx + 1}/{len(point_chunks)} — {len(chunk_points)} نقطه):
 ==================================================
 {stage4_json_str}
 """
-            
-            # Call model with retry mechanism
-            _progress(f"Calling model {model_name} for subchapter '{persian_subchapter_name}'...")
-            response_text = None
-            filepic_data = None
-            
-            for attempt in range(1, self.SUBCHAPTER_MODEL_MAX_ATTEMPTS + 1):
-                if attempt > 1:
-                    backoff = min(
-                        8.0 * (2 ** (attempt - 2)),
-                        self.SUBCHAPTER_RETRY_BACKOFF_CAP_S,
+
+                chunk_label = (
+                    f" — chunk {cidx + 1}/{len(point_chunks)}" if len(point_chunks) > 1 else ""
+                )
+                _progress(
+                    f"Calling model {model_name} for subchapter '{persian_subchapter_name}'{chunk_label}..."
+                )
+                response_text = None
+                filepic_data = None
+
+                for attempt in range(1, self.SUBCHAPTER_MODEL_MAX_ATTEMPTS + 1):
+                    if attempt > 1:
+                        backoff = min(
+                            8.0 * (2 ** (attempt - 2)),
+                            self.SUBCHAPTER_RETRY_BACKOFF_CAP_S,
+                        )
+                        _progress(
+                            f"Waiting {backoff:.0f}s before retry "
+                            f"(attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})..."
+                        )
+                        time.sleep(backoff)
+                        _progress(
+                            f"Retrying model call (attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})..."
+                        )
+
+                    try:
+                        response_text = self.api_client.process_text(
+                            text=full_prompt,
+                            system_prompt=None,
+                            model_name=model_name,
+                            temperature=APIConfig.DEFAULT_TEMPERATURE,
+                            max_tokens=chunk_max_tokens,
+                            timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
+                        )
+
+                        if not response_text:
+                            continue
+
+                        _progress("Extracting JSON from model response...")
+                        self.logger.info(f"Response text length: {len(response_text)} chars")
+                        self.logger.debug(f"Response text preview: {response_text[:200]}")
+                        filepic_data = self.extract_json_from_response(response_text)
+                        self.logger.info(
+                            f"Extracted filepic_data type: {type(filepic_data)}, value: {filepic_data}"
+                        )
+                        if not filepic_data:
+                            self.logger.warning(
+                                "First extraction failed, trying load_txt_as_json_from_text..."
+                            )
+                            filepic_data = self.load_txt_as_json_from_text(response_text)
+                            self.logger.info(
+                                f"Second extraction result type: {type(filepic_data)}, value: {filepic_data}"
+                            )
+                        if not filepic_data and response_text:
+                            tail = (
+                                response_text[-800:]
+                                if len(response_text) > 800
+                                else response_text
+                            )
+                            self.logger.warning(
+                                "Model returned non-parseable JSON (%d chars). Often truncation or unescaped "
+                                "quotes in strings. Response tail: %r",
+                                len(response_text),
+                                tail,
+                            )
+
+                        if filepic_data:
+                            _progress(f"Successfully extracted JSON (attempt {attempt})")
+                            self.logger.info(
+                                f"Successfully extracted JSON: {type(filepic_data)} with keys: "
+                                f"{filepic_data.keys() if isinstance(filepic_data, dict) else 'N/A'}"
+                            )
+                            break
+                        _progress(f"JSON extraction failed (attempt {attempt}), retrying...")
+                        self.logger.warning(
+                            f"Failed to extract JSON from response (attempt {attempt})"
+                        )
+
+                    except Exception as e:
+                        self.logger.warning(f"Error calling model (attempt {attempt}): {e}")
+                        response_text = None
+
+                if not response_text:
+                    self.logger.error(
+                        f"No response from model after retries for subchapter '{persian_subchapter_name}' "
+                        f"(chunk {cidx + 1}/{len(point_chunks)})"
                     )
                     _progress(
-                        f"Waiting {backoff:.0f}s before retry "
-                        f"(attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})..."
+                        f"Error: Failed to get response from model for subchapter "
+                        f"'{persian_subchapter_name}'{chunk_label}."
                     )
-                    time.sleep(backoff)
-                    _progress(f"Retrying model call (attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})...")
-                
+                    subchapter_errors.append(
+                        f"{persian_subchapter_name}: no model response (chunk {cidx + 1}/{len(point_chunks)})"
+                    )
+                    chunk_loop_failed = True
+                    break
+
+                if not filepic_data:
+                    self.logger.error(
+                        f"Failed to extract JSON from model response for subchapter "
+                        f"'{persian_subchapter_name}' (chunk {cidx + 1}/{len(point_chunks)})"
+                    )
+                    _progress(
+                        f"Error: Failed to extract JSON from model response for subchapter "
+                        f"'{persian_subchapter_name}'{chunk_label}."
+                    )
+                    subchapter_errors.append(
+                        f"{persian_subchapter_name}: JSON parse failed (chunk {cidx + 1}/{len(point_chunks)})"
+                    )
+                    chunk_loop_failed = True
+                    break
+
                 try:
-                    response_text = self.api_client.process_text(
-                        text=full_prompt,
-                        system_prompt=None,
-                        model_name=model_name,
-                        temperature=APIConfig.DEFAULT_TEMPERATURE,
-                        max_tokens=self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
-                        timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
+                    with open(output_path, "r", encoding="utf-8") as f:
+                        current_data = json.load(f)
+
+                    raw_response_entry = {
+                        "subchapter_index": part_num,
+                        "subchapter": persian_subchapter_name,
+                        "chunk_index": cidx + 1,
+                        "chunk_total": len(point_chunks),
+                        "stage4_points_in_chunk": len(chunk_points),
+                        "response_text": response_text,
+                        "response_size_bytes": len(response_text.encode("utf-8")),
+                        "processed_at": datetime.now().isoformat(),
+                    }
+                    current_data["raw_responses"].append(raw_response_entry)
+                    current_data["metadata"]["subchapters_processed"] = len(
+                        current_data["raw_responses"]
                     )
-                    
-                    if not response_text:
-                        continue
-                    
-                    # Try to extract JSON directly from response
-                    _progress("Extracting JSON from model response...")
-                    self.logger.info(f"Response text length: {len(response_text)} chars")
-                    self.logger.debug(f"Response text preview: {response_text[:200]}")
-                    filepic_data = self.extract_json_from_response(response_text)
-                    self.logger.info(f"Extracted filepic_data type: {type(filepic_data)}, value: {filepic_data}")
-                    if not filepic_data:
-                        self.logger.warning("First extraction failed, trying load_txt_as_json_from_text...")
-                        filepic_data = self.load_txt_as_json_from_text(response_text)
-                        self.logger.info(f"Second extraction result type: {type(filepic_data)}, value: {filepic_data}")
-                    if not filepic_data and response_text:
-                        tail = response_text[-800:] if len(response_text) > 800 else response_text
-                        self.logger.warning(
-                            "Model returned non-parseable JSON (%d chars). Often truncation or unescaped "
-                            "quotes in strings. Response tail: %r",
-                            len(response_text),
-                            tail,
-                        )
-                    
-                    if filepic_data:
-                        _progress(f"Successfully extracted JSON (attempt {attempt})")
-                        self.logger.info(f"Successfully extracted JSON: {type(filepic_data)} with keys: {filepic_data.keys() if isinstance(filepic_data, dict) else 'N/A'}")
-                        break
-                    else:
-                        _progress(f"JSON extraction failed (attempt {attempt}), retrying...")
-                        self.logger.warning(f"Failed to extract JSON from response (attempt {attempt})")
-                        
+                    current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(current_data, f, ensure_ascii=False, indent=2)
+
+                    self.logger.info(
+                        f"  ✓ Added raw response for '{persian_subchapter_name}' "
+                        f"(chunk {cidx + 1}/{len(point_chunks)})"
+                    )
                 except Exception as e:
-                    self.logger.warning(f"Error calling model (attempt {attempt}): {e}")
-                    response_text = None
-            
-            if not response_text:
-                self.logger.error(f"No response from model after retries for subchapter '{persian_subchapter_name}'")
-                _progress(f"Error: Failed to get response from model for subchapter '{persian_subchapter_name}'.")
-                subchapter_errors.append(f"{persian_subchapter_name}: no model response after retries")
+                    self.logger.error(
+                        f"Failed to write raw response for subchapter '{persian_subchapter_name}': {e}",
+                        exc_info=True,
+                    )
+
+                chunk_rows = self._coerce_filepic_rows(filepic_data, persian_subchapter_name)
+                subchapter_filepic_records.extend(chunk_rows)
+
+            if chunk_loop_failed:
                 continue
-            
-            if not filepic_data:
-                self.logger.error(f"Failed to extract JSON from model response for subchapter '{persian_subchapter_name}'")
-                _progress(f"Error: Failed to extract JSON from model response for subchapter '{persian_subchapter_name}'.")
-                subchapter_errors.append(f"{persian_subchapter_name}: could not parse JSON from model response")
-                continue
-            
-            # Immediately add raw response to JSON file (incremental write)
-            try:
-                with open(output_path, "r", encoding="utf-8") as f:
-                    current_data = json.load(f)
-                
-                raw_response_entry = {
-                    "subchapter_index": part_num,
-                    "subchapter": persian_subchapter_name,
-                    "response_text": response_text,
-                    "response_size_bytes": len(response_text.encode('utf-8')),
-                    "processed_at": datetime.now().isoformat()
-                }
-                current_data["raw_responses"].append(raw_response_entry)
-                
-                current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
-                current_data["metadata"]["processed_at"] = datetime.now().isoformat()
-                
-                with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(current_data, f, ensure_ascii=False, indent=2)
-                
-                self.logger.info(f"  ✓ Added raw response for subchapter '{persian_subchapter_name}' to JSON file immediately")
-            except Exception as e:
-                self.logger.error(f"Failed to write raw response for subchapter '{persian_subchapter_name}' to file: {e}", exc_info=True)
-            
-            # Handle different JSON structures
-            self.logger.info(f"Processing filepic_data for subchapter '{persian_subchapter_name}': type={type(filepic_data)}")
-            if isinstance(filepic_data, list):
-                subchapter_filepic_records = filepic_data
-                self.logger.info(f"filepic_data is a list with {len(subchapter_filepic_records)} items")
-            elif isinstance(filepic_data, dict):
-                self.logger.info(f"filepic_data is a dict with keys: {list(filepic_data.keys())}")
-                # Try common keys: data, rows, payload
-                subchapter_filepic_records = filepic_data.get("data", filepic_data.get("rows", filepic_data.get("payload", [])))
-                self.logger.info(f"Extracted records from dict: {len(subchapter_filepic_records) if isinstance(subchapter_filepic_records, list) else 'not a list'} items")
-                if not subchapter_filepic_records:
-                    # Try to extract from nested structure - get first list value
-                    self.logger.info("No records found in common keys, trying to find first list value...")
-                    for key, value in filepic_data.items():
-                        self.logger.debug(f"  Checking key '{key}': type={type(value)}")
-                        if isinstance(value, list):
-                            subchapter_filepic_records = value
-                            self.logger.info(f"  Found list in key '{key}' with {len(value)} items")
-                            break
-                    if not subchapter_filepic_records:
-                        subchapter_filepic_records = []
-                        self.logger.warning("No list found in any dict value")
-            else:
-                self.logger.warning(f"Unexpected JSON structure from model for subchapter '{persian_subchapter_name}': {type(filepic_data)}")
-                subchapter_filepic_records = []
-            
+
             if subchapter_filepic_records:
                 all_filepic_records.extend(subchapter_filepic_records)
-                _progress(f"Extracted {len(subchapter_filepic_records)} image note records from subchapter '{persian_subchapter_name}'")
+                _progress(
+                    f"Extracted {len(subchapter_filepic_records)} image note records from "
+                    f"subchapter '{persian_subchapter_name}'"
+                )
             else:
-                self.logger.warning(f"No records found in filepic data for subchapter '{persian_subchapter_name}'")
+                self.logger.warning(
+                    f"No records found in filepic data for subchapter '{persian_subchapter_name}'"
+                )
             
             # Add delay between parts to avoid rate limiting (429 errors)
             if part_num < num_parts:  # Don't delay after the last part

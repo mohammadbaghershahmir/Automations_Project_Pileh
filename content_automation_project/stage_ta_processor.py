@@ -239,7 +239,9 @@ class StageTAProcessor(BaseStageProcessor):
             ocr_slice = self._filter_ocr_extraction_for_subchapter(
                 ocr_extraction_data, persian_subchapter_name
             )
-            ocr_extraction_json_str = json.dumps(ocr_slice, ensure_ascii=False, indent=2)
+            ocr_extraction_json_str = json.dumps(
+                ocr_slice, ensure_ascii=False, separators=(",", ":")
+            )
 
             chunk_sz = self.TA_STAGE_E_CHUNK_MAX_POINTS
             point_chunks = [
@@ -251,6 +253,12 @@ class StageTAProcessor(BaseStageProcessor):
                     f"Large subchapter ({len(filtered_stage_e_points)} Stage E points): splitting into "
                     f"{len(point_chunks)} API chunk(s) to stay within model context limits."
                 )
+
+            chunk_max_tokens = (
+                16384
+                if len(point_chunks) > 1
+                else self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS
+            )
 
             tables_json_str = json.dumps(subchapter_tables, ensure_ascii=False, indent=2)
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
@@ -317,7 +325,7 @@ class StageTAProcessor(BaseStageProcessor):
                             system_prompt=None,
                             model_name=model_name,
                             temperature=APIConfig.DEFAULT_TEMPERATURE,
-                            max_tokens=self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
+                            max_tokens=chunk_max_tokens,
                             timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
                         )
 

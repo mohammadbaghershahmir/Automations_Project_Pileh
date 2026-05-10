@@ -3,6 +3,7 @@ Base class for all stage processors.
 Provides common functionality for JSON handling, file operations, and PointId management.
 """
 
+import copy
 import json
 import logging
 import os
@@ -453,7 +454,59 @@ class BaseStageProcessor:
                 subchapter_name,
             )
         return result
-    
+
+    def _slim_ocr_for_stage_e_image_notes(self, ocr_slice: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Image-note prompts only need figure/table captions from OCR. Bulk `text` extractions
+        often dominate token count and can push requests over the provider context limit,
+        while adding little for caption writing for تصویر/جدول lines.
+        """
+        slim = copy.deepcopy(ocr_slice)
+
+        def _slim_extractions(extractions: Any) -> Any:
+            if isinstance(extractions, list):
+                return [
+                    item
+                    for item in extractions
+                    if isinstance(item, dict)
+                    and (item.get("type") or "").strip().lower() != "text"
+                ]
+            if isinstance(extractions, dict):
+                out: Dict[str, Any] = {}
+                for key in ("tables", "figs", "figures", "images"):
+                    if key in extractions:
+                        out[key] = extractions[key]
+                return out
+            return extractions
+
+        for chapter_obj in slim.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+            new_subs: List[Dict[str, Any]] = []
+            for sub in chapter_obj.get("subchapters", []) or []:
+                if not isinstance(sub, dict):
+                    continue
+                new_topics: List[Dict[str, Any]] = []
+                for topic_obj in sub.get("topics", []) or []:
+                    if not isinstance(topic_obj, dict):
+                        continue
+                    ex = topic_obj.get("extractions")
+                    slim_ex = _slim_extractions(ex)
+                    if isinstance(slim_ex, list) and not slim_ex:
+                        continue
+                    if isinstance(slim_ex, dict) and not slim_ex:
+                        continue
+                    topic_obj = dict(topic_obj)
+                    topic_obj["extractions"] = slim_ex
+                    new_topics.append(topic_obj)
+                if not new_topics:
+                    continue
+                sub = dict(sub)
+                sub["topics"] = new_topics
+                new_subs.append(sub)
+            chapter_obj["subchapters"] = new_subs
+        return slim
+
     def save_json_file(self, data: List[Dict], file_path: str, 
                       metadata: Dict, stage_name: str) -> bool:
         """
