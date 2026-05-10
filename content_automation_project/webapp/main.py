@@ -260,8 +260,10 @@ def effective_job_list_status(job: Job, pairs: List[JobPair]) -> str:
     return "pending"
 
 
-STEP1_ARTIFACT_ROLES = frozenset({"step1_combined", "txt_dump"})
-STEP2_ARTIFACT_ROLES = frozenset({"step2_topic", "final_b_json", "step2_failed_topics", "step2_prompt_input", "output"})
+STEP1_ARTIFACT_ROLES = frozenset({"step1_combined", "txt_dump", "llm_prompt_step1"})
+STEP2_ARTIFACT_ROLES = frozenset(
+    {"step2_topic", "final_b_json", "step2_failed_topics", "step2_prompt_input", "output", "llm_prompt_step2"}
+)
 
 
 def split_artifacts_for_steps(
@@ -1354,12 +1356,21 @@ def create_app() -> FastAPI:
         creator_label = creator.email if creator else "Unknown"
         is_job_owner = job.created_by_id == user.id
         if single_stage:
-            step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump", "output"])
+            step1_poll_roles_json = json.dumps(
+                ["step1_combined", "txt_dump", "output", "llm_prompt_step1"]
+            )
             step2_poll_roles_json = "[]"
         else:
-            step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump"])
+            step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump", "llm_prompt_step1"])
             step2_poll_roles_json = json.dumps(
-                ["step2_topic", "final_b_json", "step2_failed_topics", "step2_prompt_input", "output"]
+                [
+                    "step2_topic",
+                    "final_b_json",
+                    "step2_failed_topics",
+                    "step2_prompt_input",
+                    "output",
+                    "llm_prompt_step2",
+                ]
             )
         stage_label = job_stage_label(job)
         return templates.TemplateResponse(

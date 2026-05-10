@@ -95,7 +95,8 @@ class UnifiedAPIClient:
                     temperature: float = 0.7,
                     max_tokens: int = APIConfig.DEFAULT_MAX_TOKENS,
                     api_key: Optional[str] = None,
-                    cancel_check: Optional[Callable[[], bool]] = None) -> Optional[str]:
+                    cancel_check: Optional[Callable[[], bool]] = None,
+                    timeout_s: float = 600.0) -> Optional[str]:
         """
         Process text using appropriate API for current stage
         
@@ -115,6 +116,7 @@ class UnifiedAPIClient:
             max_tokens,
             api_key or stage_api_key,
             cancel_check=cancel_check,
+            timeout_s=timeout_s,
         )
     
     def process_pdf_with_prompt(self,

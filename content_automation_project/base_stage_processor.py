@@ -414,6 +414,45 @@ class BaseStageProcessor:
         except Exception as e:
             self.logger.error(f"Error loading {file_path}: {e}")
             return None
+
+    def _filter_ocr_extraction_for_subchapter(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+    ) -> Dict[str, Any]:
+        """
+        Build a minimal OCR Extraction JSON containing only the subtree for one subchapter.
+        Sending the full multi-subchapter OCR blob on every API call often exceeds model context.
+        """
+        target = (subchapter_name or "").strip()
+        if not target:
+            return {"chapters": []}
+
+        out_chapters: List[Dict[str, Any]] = []
+        for chapter_obj in ocr_extraction_data.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+            subs = chapter_obj.get("subchapters", []) or []
+            matched = [
+                s
+                for s in subs
+                if isinstance(s, dict) and (s.get("subchapter", "") or "").strip() == target
+            ]
+            if matched:
+                out_chapters.append(
+                    {"chapter": chapter_obj.get("chapter", ""), "subchapters": matched}
+                )
+
+        result: Dict[str, Any] = {"chapters": out_chapters}
+        for key in ("metadata", "book", "title", "source_file"):
+            if key in ocr_extraction_data:
+                result[key] = ocr_extraction_data[key]
+        if not out_chapters:
+            self.logger.warning(
+                "OCR slice has no chapters for subchapter %r — prompt will omit full OCR text for this name",
+                subchapter_name,
+            )
+        return result
     
     def save_json_file(self, data: List[Dict], file_path: str, 
                       metadata: Dict, stage_name: str) -> bool:

@@ -292,7 +292,7 @@ class OpenRouterAPIClient:
         temperature: float,
         max_tokens: int,
         api_key: Optional[str],
-        timeout_s: float = 300.0,
+        timeout_s: float = 600.0,
         cancel_check: Optional[Callable[[], bool]] = None,
         use_streaming: bool = False,
     ) -> Optional[str]:
@@ -391,6 +391,7 @@ class OpenRouterAPIClient:
         api_key: Optional[str] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         use_streaming: bool = False,
+        timeout_s: float = 600.0,
     ) -> Optional[str]:
         """Process text via OpenRouter chat completions.
 
@@ -407,6 +408,7 @@ class OpenRouterAPIClient:
             temperature=temperature,
             max_tokens=max_tokens,
             api_key=api_key,
+            timeout_s=timeout_s,
             cancel_check=cancel_check,
             use_streaming=use_streaming,
         )

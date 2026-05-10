@@ -48,6 +48,7 @@ from webapp.job_runner_common import (
     _scalar_cancel_requested,
 )
 from webapp.processor_context import build_stage_v_processor
+from webapp.prompt_capture import wrap_prompt_capture
 
 from openrouter_api_client import OpenRouterRequestAborted
 
@@ -139,7 +140,8 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             _finalize_step1_cancelled(db, job_id, pairs)
             return
 
-        _, ssm, processor = build_stage_v_processor()
+        client, ssm, processor = build_stage_v_processor()
+        jt = (job.type or "test_bank").strip()
         base = job_root(job_id)
         cancel_check = _cancel_check_session(job_id)
 
@@ -169,6 +171,9 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             try:
                 append_log(db, job_id, f"--- Step 1 start pair {pair.pair_index} ---", pair.pair_index)
+                processor.api_client = wrap_prompt_capture(
+                    client, db, job_id, pair.pair_index, jt, "step1"
+                )
                 try:
                     result = processor.process_stage_v_step1(
                         stage_j_path=abs_j,
@@ -277,7 +282,8 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             _finalize_step2_cancelled(db, job_id, pairs)
             return
 
-        _, ssm, processor = build_stage_v_processor()
+        client, ssm, processor = build_stage_v_processor()
+        jt = (job.type or "test_bank").strip()
         base = job_root(job_id)
         cancel_check = _cancel_check_session(job_id)
 
@@ -351,6 +357,9 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             try:
                 append_log(db, job_id, f"--- Step 2 start pair {pair_index} ---", pair_index)
+                processor.api_client = wrap_prompt_capture(
+                    client, db, job_id, pair.pair_index, jt, "step2"
+                )
                 try:
                     result = processor.process_stage_v_step2(
                         stage_j_path=abs_j,

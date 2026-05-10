@@ -17,7 +17,14 @@ from api_layer import APIConfig
 
 class StageEProcessor(BaseStageProcessor):
     """Process Stage E: Generate image notes and merge with Stage 4 data"""
-    
+
+    # Large subchapter prompts (Stage 4 chunk + full OCR JSON): longer HTTP timeout + more attempts.
+    SUBCHAPTER_MODEL_MAX_ATTEMPTS = 6
+    SUBCHAPTER_MODEL_TIMEOUT_S = 900.0
+    SUBCHAPTER_RETRY_BACKOFF_CAP_S = 120.0
+    # Subchapter JSON arrays are large; low completion caps truncate mid-object → unparseable JSON.
+    SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS = 32768
+
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
@@ -159,12 +166,9 @@ class StageEProcessor(BaseStageProcessor):
             self.logger.error(f"Failed to initialize output file: {e}")
             return None
         
-        # Prepare OCR Extraction JSON string (complete - for context)
-        ocr_extraction_json_str = json.dumps(ocr_extraction_data, ensure_ascii=False, indent=2)
-        
-        max_retries = 2
         all_filepic_records = []  # Collect all filepic records from all subchapters
-        
+        subchapter_errors: List[str] = []  # Non-empty => abort — avoids marking job succeeded with partial output
+
         # Process each subchapter individually
         for part_num, persian_subchapter_name in enumerate(ocr_subchapters, 1):
             _progress("=" * 60)
@@ -184,6 +188,11 @@ class StageEProcessor(BaseStageProcessor):
                 self.logger.warning(f"No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping this subchapter.")
                 _progress(f"Warning: No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping...")
                 continue
+
+            ocr_slice = self._filter_ocr_extraction_for_subchapter(
+                ocr_extraction_data, persian_subchapter_name
+            )
+            ocr_extraction_json_str = json.dumps(ocr_slice, ensure_ascii=False, indent=2)
             
             # Convert filtered points to JSON string
             stage4_json_str = json.dumps(filtered_stage4_points, ensure_ascii=False, indent=2)
@@ -197,7 +206,7 @@ class StageEProcessor(BaseStageProcessor):
             full_prompt = f"""{prompt_with_subchapter}
 
 ==================================================
-فایل JSON متن درسی استخراج‌شده از کتاب درماتولوژی (OCR Extraction JSON):
+فایل JSON متن درسی استخراج‌شده از کتاب درماتولوژی (OCR Extraction JSON — فقط این زیرفصل):
 ==================================================
 {ocr_extraction_json_str}
 
@@ -212,9 +221,18 @@ class StageEProcessor(BaseStageProcessor):
             response_text = None
             filepic_data = None
             
-            for attempt in range(1, max_retries + 2):  # Initial attempt + max retries
+            for attempt in range(1, self.SUBCHAPTER_MODEL_MAX_ATTEMPTS + 1):
                 if attempt > 1:
-                    _progress(f"Retrying model call (attempt {attempt}/{max_retries + 1})...")
+                    backoff = min(
+                        8.0 * (2 ** (attempt - 2)),
+                        self.SUBCHAPTER_RETRY_BACKOFF_CAP_S,
+                    )
+                    _progress(
+                        f"Waiting {backoff:.0f}s before retry "
+                        f"(attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})..."
+                    )
+                    time.sleep(backoff)
+                    _progress(f"Retrying model call (attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})...")
                 
                 try:
                     response_text = self.api_client.process_text(
@@ -222,7 +240,8 @@ class StageEProcessor(BaseStageProcessor):
                         system_prompt=None,
                         model_name=model_name,
                         temperature=APIConfig.DEFAULT_TEMPERATURE,
-                        max_tokens=APIConfig.DEFAULT_MAX_TOKENS
+                        max_tokens=self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
+                        timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
                     )
                     
                     if not response_text:
@@ -238,6 +257,14 @@ class StageEProcessor(BaseStageProcessor):
                         self.logger.warning("First extraction failed, trying load_txt_as_json_from_text...")
                         filepic_data = self.load_txt_as_json_from_text(response_text)
                         self.logger.info(f"Second extraction result type: {type(filepic_data)}, value: {filepic_data}")
+                    if not filepic_data and response_text:
+                        tail = response_text[-800:] if len(response_text) > 800 else response_text
+                        self.logger.warning(
+                            "Model returned non-parseable JSON (%d chars). Often truncation or unescaped "
+                            "quotes in strings. Response tail: %r",
+                            len(response_text),
+                            tail,
+                        )
                     
                     if filepic_data:
                         _progress(f"Successfully extracted JSON (attempt {attempt})")
@@ -254,11 +281,13 @@ class StageEProcessor(BaseStageProcessor):
             if not response_text:
                 self.logger.error(f"No response from model after retries for subchapter '{persian_subchapter_name}'")
                 _progress(f"Error: Failed to get response from model for subchapter '{persian_subchapter_name}'.")
+                subchapter_errors.append(f"{persian_subchapter_name}: no model response after retries")
                 continue
             
             if not filepic_data:
                 self.logger.error(f"Failed to extract JSON from model response for subchapter '{persian_subchapter_name}'")
                 _progress(f"Error: Failed to extract JSON from model response for subchapter '{persian_subchapter_name}'.")
+                subchapter_errors.append(f"{persian_subchapter_name}: could not parse JSON from model response")
                 continue
             
             # Immediately add raw response to JSON file (incremental write)
@@ -322,6 +351,15 @@ class StageEProcessor(BaseStageProcessor):
                 delay_seconds = 5  # 2 seconds delay between parts
                 _progress(f"Waiting {delay_seconds} seconds before processing next subchapter...")
                 time.sleep(delay_seconds)
+
+        if subchapter_errors:
+            summary = "; ".join(subchapter_errors)
+            self.logger.error("Stage E aborted due to subchapter failure(s): %s", summary)
+            _progress(
+                "Error: Stage E incomplete — one or more subchapters failed (job not saved as success). "
+                f"Failures: {summary}"
+            )
+            return None
         
         if not all_filepic_records:
             self.logger.error("No filepic records found from any subchapter")

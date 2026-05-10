@@ -175,7 +175,7 @@
   {% endif %}
 
   <h3 style="margin:20px 0 8px;font-size:0.95rem;">{% if single_stage_job %}Outputs{% else %}Step 1 outputs{% endif %}</h3>
-  <p class="muted" style="margin-top:0;font-size:13px;">{% if single_stage_job %}Preview or download result files.{% else %}Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.{% endif %}</p>
+  <p class="muted" style="margin-top:0;font-size:13px;">{% if single_stage_job %}Preview or download result files.{% else %}Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.{% endif %} Full text sent to the LLM on each OpenRouter call is saved under <code style="font-size:11px;">pair_*/prompts/</code> with role <strong>llm_prompt_step1</strong> (download / preview).</p>
   <table>
     <thead>
       <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
@@ -217,7 +217,7 @@
   {% endif %}
 
   <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 2 outputs</h3>
-  <p class="muted" style="margin-top:0;font-size:13px;">Final and Step&nbsp;2 topic artifacts (updates while Step&nbsp;2 runs).</p>
+  <p class="muted" style="margin-top:0;font-size:13px;">Final and Step&nbsp;2 topic artifacts (updates while Step&nbsp;2 runs). LLM request dumps: role <strong>llm_prompt_step2</strong> under <code style="font-size:11px;">pair_*/prompts/</code>.</p>
   <table>
     <thead>
       <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>

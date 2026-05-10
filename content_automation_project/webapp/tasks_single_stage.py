@@ -25,6 +25,7 @@ from webapp.job_runner_common import (
     _scalar_cancel_requested,
 )
 from webapp.processor_context import build_unified_api_client
+from webapp.prompt_capture import wrap_prompt_capture
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def run_pre_ocr_topic_step1_job(job_id: str, pair_indices: Optional[List[int]] =
             return
 
         client, _ssm = build_unified_api_client()
-        processor = PreOCRTopicProcessor(client)
+        jt = (job.type or "pre_ocr_topic").strip()
         base = job_root(job_id)
         cancel_check = _cancel_check_session(job_id)
 
@@ -100,6 +101,9 @@ def run_pre_ocr_topic_step1_job(job_id: str, pair_indices: Optional[List[int]] =
             db.commit()
 
             out_dir = pair_output(job_id, pair.pair_index)
+            processor = PreOCRTopicProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -203,6 +207,7 @@ def run_ocr_extraction_step1_job(job_id: str, pair_indices: Optional[List[int]] 
             return
 
         client, _ssm = build_unified_api_client()
+        jt = (job.type or "ocr_extraction").strip()
         base = job_root(job_id)
         cancel_check = _cancel_check_session(job_id)
 
@@ -231,7 +236,10 @@ def run_ocr_extraction_step1_job(job_id: str, pair_indices: Optional[List[int]] 
 
             out_dir = pair_output(job_id, pair.pair_index)
             os.makedirs(out_dir, exist_ok=True)
-            mproc = MultiPartProcessor(client, output_dir=None)
+            mproc = MultiPartProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1"),
+                output_dir=None,
+            )
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -342,7 +350,7 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
             return
 
         client, _ssm = build_unified_api_client()
-        post = MultiPartPostProcessor(client)
+        jt = (job.type or "document_processing").strip()
         base = job_root(job_id)
 
         pointid_rel = (cfg.get("pointid_mapping_relpath") or "").strip()
@@ -369,6 +377,10 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
             pair.step1_status = "running"
             pair.step1_error = None
             db.commit()
+
+            post = MultiPartPostProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
 
             file_pointid_txt: Optional[str] = None
             if all_pointids and i < len(all_pointids):
@@ -505,7 +517,7 @@ def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             return
 
         client, _ssm = build_unified_api_client()
-        processor = StageEProcessor(client)
+        jt = (job.type or "image_notes").strip()
         base = job_root(job_id)
 
         for i, pair in enumerate(pairs):
@@ -531,6 +543,10 @@ def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             pair.step1_status = "running"
             pair.step1_error = None
             db.commit()
+
+            processor = StageEProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -635,7 +651,7 @@ def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             return
 
         client, _ssm = build_unified_api_client()
-        processor = StageTAProcessor(client)
+        jt = (job.type or "table_notes").strip()
         base = job_root(job_id)
 
         for i, pair in enumerate(pairs):
@@ -661,6 +677,10 @@ def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             pair.step1_status = "running"
             pair.step1_error = None
             db.commit()
+
+            processor = StageTAProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -759,7 +779,7 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
             return
 
         client, _ssm = build_unified_api_client()
-        processor = StageFProcessor(client)
+        jt = (job.type or "image_file_catalog").strip()
         base = job_root(job_id)
 
         for i, pair in enumerate(pairs):
@@ -787,6 +807,10 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
 
             out_dir = pair_output(job_id, pair.pair_index)
             os.makedirs(out_dir, exist_ok=True)
+
+            processor = StageFProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
