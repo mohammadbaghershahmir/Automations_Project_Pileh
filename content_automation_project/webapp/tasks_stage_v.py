@@ -88,6 +88,24 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             run_document_processing_step1_job(job_id, pair_indices)
             return
+        if jt == "image_notes":
+            db.close()
+            from webapp.tasks_single_stage import run_image_notes_step1_job
+
+            run_image_notes_step1_job(job_id, pair_indices)
+            return
+        if jt == "table_notes":
+            db.close()
+            from webapp.tasks_single_stage import run_table_notes_step1_job
+
+            run_table_notes_step1_job(job_id, pair_indices)
+            return
+        if jt == "image_file_catalog":
+            db.close()
+            from webapp.tasks_single_stage import run_image_file_catalog_step1_job
+
+            run_image_file_catalog_step1_job(job_id, pair_indices)
+            return
 
         cfg = json.loads(job.config_json or "{}")
         prompt_1 = (cfg.get("prompt_1") or "").strip() or get_default_step1_prompt()

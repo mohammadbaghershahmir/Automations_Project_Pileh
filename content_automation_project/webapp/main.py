@@ -33,10 +33,12 @@ from webapp.bootstrap import (
 )
 from webapp.default_prompts import (
     get_default_document_processing_prompt,
+    get_default_image_notes_prompt,
     get_default_ocr_extraction_prompt,
     get_default_pre_ocr_prompt,
     get_default_step1_prompt,
     get_default_step2_prompt,
+    get_default_table_notes_prompt,
 )
 from webapp.config import (
     DEFAULT_TEST_BANK_MODEL,
@@ -218,7 +220,7 @@ JOB_STAGE_LABELS = {
     "rich_text": "RichText Generation",
     "richtext": "RichText Generation",
     "stage_z": "RichText Generation",
-    # Web single-stage jobs
+    # Web single-stage jobs (additional labels)
     "pre_ocr_topic": "Pre-OCR Topic Extraction",
     "ocr_extraction": "OCR Extraction",
 }
@@ -488,6 +490,41 @@ def create_app() -> FastAPI:
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": get_default_document_processing_prompt(),
+            },
+        )
+
+    @app.get("/image-notes/new", response_class=HTMLResponse)
+    def image_notes_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "image_notes_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_image_notes_prompt(),
+            },
+        )
+
+    @app.get("/table-notes/new", response_class=HTMLResponse)
+    def table_notes_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "table_notes_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_table_notes_prompt(),
+            },
+        )
+
+    @app.get("/image-file-catalog/new", response_class=HTMLResponse)
+    def image_file_catalog_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "image_file_catalog_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
             },
         )
 
@@ -917,6 +954,337 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/image-notes")
+        async def create_image_notes_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            stage4_json_files: List[UploadFile] = File(...),
+            ocr_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("openrouter"),
+            model: str = Form("z-ai/glm-5"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="imgnotes_upload_")
+            try:
+                s4_paths: List[str] = []
+                for uf in stage4_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "s4", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    s4_paths.append(dest)
+
+                ocr_paths: List[str] = []
+                for uf in ocr_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "ocr", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    ocr_paths.append(dest)
+
+                s4_sorted = _sorted_nonempty_paths(s4_paths)
+                ocr_sorted = _sorted_nonempty_paths(ocr_paths)
+                if len(s4_sorted) != len(ocr_sorted):
+                    raise HTTPException(
+                        400,
+                        f"Document processing JSON count ({len(s4_sorted)}) must match OCR extraction JSON count ({len(ocr_sorted)}). "
+                        "Sort order is by filename within each group.",
+                    )
+                if not s4_sorted:
+                    raise HTTPException(
+                        400,
+                        "Upload at least one Document processing (Stage 4) JSON and one OCR extraction JSON.",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_image_notes_prompt()
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="image_notes",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, (s4_p, ocr_p) in enumerate(zip(s4_sorted, ocr_sorted)):
+                    ensure_dirs(job_id, pair_index)
+                    s4n = os.path.basename(s4_p)
+                    ocrn = os.path.basename(ocr_p)
+                    rel_s4 = f"pair_{pair_index}/inputs/{s4n}"
+                    rel_ocr = f"pair_{pair_index}/inputs/{ocrn}"
+                    shutil.copy2(s4_p, os.path.join(root, rel_s4.replace("/", os.sep)))
+                    shutil.copy2(ocr_p, os.path.join(root, rel_ocr.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=s4n,
+                            word_filename=ocrn,
+                            stage_j_relpath=rel_s4,
+                            word_relpath=rel_ocr,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_s4, "upload_stage4_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_ocr, "upload_ocr_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/table-notes")
+        async def create_table_notes_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            stage_e_json_files: List[UploadFile] = File(...),
+            ocr_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("openrouter"),
+            model: str = Form("z-ai/glm-5"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="tblnotes_upload_")
+            try:
+                se_paths: List[str] = []
+                for uf in stage_e_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "se", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    se_paths.append(dest)
+
+                ocr_paths: List[str] = []
+                for uf in ocr_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "ocr", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    ocr_paths.append(dest)
+
+                se_sorted = _sorted_nonempty_paths(se_paths)
+                ocr_sorted = _sorted_nonempty_paths(ocr_paths)
+                if len(se_sorted) != len(ocr_sorted):
+                    raise HTTPException(
+                        400,
+                        f"Image notes (Stage E) JSON count ({len(se_sorted)}) must match OCR extraction JSON count ({len(ocr_sorted)}). "
+                        "Sort order is by filename within each group.",
+                    )
+                if not se_sorted:
+                    raise HTTPException(
+                        400,
+                        "Upload at least one Image notes (Stage E) JSON and one OCR extraction JSON.",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_table_notes_prompt()
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="table_notes",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, (se_p, ocr_p) in enumerate(zip(se_sorted, ocr_sorted)):
+                    ensure_dirs(job_id, pair_index)
+                    sen = os.path.basename(se_p)
+                    ocrn = os.path.basename(ocr_p)
+                    rel_se = f"pair_{pair_index}/inputs/{sen}"
+                    rel_ocr = f"pair_{pair_index}/inputs/{ocrn}"
+                    shutil.copy2(se_p, os.path.join(root, rel_se.replace("/", os.sep)))
+                    shutil.copy2(ocr_p, os.path.join(root, rel_ocr.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=sen,
+                            word_filename=ocrn,
+                            stage_j_relpath=rel_se,
+                            word_relpath=rel_ocr,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_se, "upload_stage_e_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_ocr, "upload_ocr_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/image-file-catalog")
+        async def create_image_file_catalog_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            stage_e_json_files: List[UploadFile] = File(...),
+            filepic_json_files: Optional[List[UploadFile]] = File(None),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            # Stage F reads optional *_filepic.json beside image-notes JSON; pair filepic uploads by sorted order when counts match.
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="imgfcat_upload_")
+            try:
+                se_paths: List[str] = []
+                for uf in stage_e_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "se", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    se_paths.append(dest)
+
+                fp_paths: List[str] = []
+                pic_inputs = filepic_json_files if filepic_json_files else []
+                for uf in pic_inputs:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "fp", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    fp_paths.append(dest)
+
+                se_sorted = _sorted_nonempty_paths(se_paths)
+                fp_sorted = _sorted_nonempty_paths(fp_paths)
+                if not se_sorted:
+                    raise HTTPException(400, "Upload at least one Image notes (Stage E) JSON.")
+                if fp_sorted and len(fp_sorted) != len(se_sorted):
+                    raise HTTPException(
+                        400,
+                        f"If filepic JSON files are uploaded, count ({len(fp_sorted)}) must match Image notes (Stage E) JSON count ({len(se_sorted)}).",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                cfg = {
+                    "display_name": name_stripped,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="image_file_catalog",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, se_p in enumerate(se_sorted):
+                    ensure_dirs(job_id, pair_index)
+                    sen = os.path.basename(se_p)
+                    rel_se = f"pair_{pair_index}/inputs/{sen}"
+                    shutil.copy2(se_p, os.path.join(root, rel_se.replace("/", os.sep)))
+
+                    rel_fp: Optional[str] = None
+                    wfn = ""
+                    if fp_sorted:
+                        fp_p = fp_sorted[pair_index]
+                        wfn = os.path.basename(fp_p)
+                        rel_fp = f"pair_{pair_index}/inputs/{wfn}"
+                        shutil.copy2(fp_p, os.path.join(root, rel_fp.replace("/", os.sep)))
+
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=sen,
+                            word_filename=wfn,
+                            stage_j_relpath=rel_se,
+                            word_relpath=rel_fp,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_se, "upload_stage_e_json")
+                    if rel_fp:
+                        register_input_artifact(db, job_id, pair_index, root, rel_fp, "upload_filepic_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
     else:
 
         @app.post("/jobs/test-bank")
@@ -936,6 +1304,18 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/document-processing")
         def create_document_processing_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/image-notes")
+        def create_image_notes_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/table-notes")
+        def create_table_notes_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/image-file-catalog")
+        def create_image_file_catalog_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)

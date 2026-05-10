@@ -93,6 +93,14 @@
         <th>PDF</th>
         {% elif job.type == 'ocr_extraction' %}
         <th>PDF</th><th>Topic JSON</th>
+        {% elif job.type == 'document_processing' %}
+        <th>OCR extraction JSON</th>
+        {% elif job.type == 'image_notes' %}
+        <th>Document processing (Stage 4)</th><th>OCR extraction JSON</th>
+        {% elif job.type == 'table_notes' %}
+        <th>Image notes (Stage E)</th><th>OCR extraction JSON</th>
+        {% elif job.type == 'image_file_catalog' %}
+        <th>Image notes (Stage E)</th><th>Filepic JSON</th>
         {% else %}
         <th>OCR extraction JSON</th>
         {% endif %}
@@ -107,6 +115,17 @@
         {% elif job.type == 'ocr_extraction' %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         <td style="font-size:13px;">{{ p.word_filename }}</td>
+        {% elif job.type == 'document_processing' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        {% elif job.type == 'image_notes' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename }}</td>
+        {% elif job.type == 'table_notes' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename }}</td>
+        {% elif job.type == 'image_file_catalog' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
         {% else %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         {% endif %}
@@ -132,13 +151,22 @@
   {% elif job.type == 'document_processing' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run document processing</h2>
   <p class="muted" style="margin-top:0;">Processes each OCR extraction JSON. Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'image_notes' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image notes</h2>
+  <p class="muted" style="margin-top:0;">Document processing (Stage 4) + OCR extraction JSON → Image notes (Stage E) per pair. Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'table_notes' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run table notes</h2>
+  <p class="muted" style="margin-top:0;">Image notes (Stage E) + OCR extraction JSON → Table notes (Stage TA) per pair. Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'image_file_catalog' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
+  <p class="muted" style="margin-top:0;">Image notes (Stage E) → catalog JSON (<code>f_*.json</code>) per pair. Runs in the <strong>background worker</strong>.</p>
   {% else %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Initial outputs</h2>
   <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
   {% endif %}
   {% set p0 = pairs[0] if pairs else none %}
   {% if is_job_owner %}
-  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% else %}Run document processing{% endif %}{% else %}Run Step 1{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% else %}Run document processing{% endif %}{% else %}Run Step 1{% endif %}</span></button>
+  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'image_file_catalog' %}Run image file catalog{% else %}Run processing{% endif %}{% else %}Run Step 1{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'image_file_catalog' %}Run image file catalog{% else %}Run processing{% endif %}{% else %}Run Step 1{% endif %}</span></button>
 
   <div id="stop-under-s1" class="stop-under-step" style="display:{% if show_stop_s1 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 1</button>

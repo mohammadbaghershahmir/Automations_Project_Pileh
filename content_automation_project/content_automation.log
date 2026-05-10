@@ -1124,3 +1124,21 @@ TypeError: cannot unpack non-iterable NoneType object
 2026-05-06 12:04:32,377 - INFO - Loaded stage settings from stage_settings.json
 2026-05-06 12:04:32,460 - INFO - python-docx library is available
 2026-05-06 12:04:32,460 - INFO - python-docx library is available
+2026-05-10 09:13:05,806 - INFO - Loaded 17 predefined prompts
+2026-05-10 09:13:05,807 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-10 09:13:05,807 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-10 09:13:05,807 - INFO - Loaded stage settings from stage_settings.json
+2026-05-10 09:13:05,872 - INFO - python-docx library is available
+2026-05-10 09:13:05,872 - INFO - python-docx library is available
+2026-05-10 09:14:54,462 - INFO - Loaded 17 predefined prompts
+2026-05-10 09:14:54,462 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-10 09:14:54,462 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-10 09:14:54,462 - INFO - Loaded stage settings from stage_settings.json
+2026-05-10 09:14:54,519 - INFO - python-docx library is available
+2026-05-10 09:14:54,520 - INFO - python-docx library is available
+2026-05-10 10:02:20,797 - INFO - Loaded 17 predefined prompts
+2026-05-10 10:02:20,798 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-10 10:02:20,798 - INFO - Loaded API key from environment variable: OPENROUTER_API_KEY
+2026-05-10 10:02:20,798 - INFO - Loaded stage settings from stage_settings.json
+2026-05-10 10:02:20,952 - INFO - python-docx library is available
+2026-05-10 10:02:20,952 - INFO - python-docx library is available

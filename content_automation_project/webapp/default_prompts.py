@@ -12,6 +12,8 @@ _STEP2_KEY = "Test Bank Generation - Step 2 Prompt"
 _PRE_OCR_KEY = "Pre OCR Topic"
 _OCR_EXTRACTION_KEY = "OCR Extraction Prompt"
 _DOCUMENT_PROCESSING_KEY = "Document Processing Prompt"
+_IMAGE_NOTES_KEY = "Image Notes Prompt"
+_TABLE_NOTES_KEY = "Table Notes Prompt"
 
 
 def _read_prompts() -> dict:
@@ -37,6 +39,19 @@ def get_default_ocr_extraction_prompt() -> str:
 
 def get_default_document_processing_prompt() -> str:
     return _read_prompts()[_DOCUMENT_PROCESSING_KEY].strip()
+
+
+def get_default_image_notes_prompt() -> str:
+    return _read_prompts()[_IMAGE_NOTES_KEY].strip()
+
+
+def get_default_table_notes_prompt() -> str:
+    """Prefer prompts.json 'Table Notes Prompt'; add that key for a dedicated TA prompt."""
+    data = _read_prompts()
+    raw = data.get(_TABLE_NOTES_KEY)
+    if raw and str(raw).strip():
+        return str(raw).strip()
+    return data[_IMAGE_NOTES_KEY].strip()
 
 
 DEFAULT_TEST_BANK_STEP1_PROMPT = get_default_step1_prompt()

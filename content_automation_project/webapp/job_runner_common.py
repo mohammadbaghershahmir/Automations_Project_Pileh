@@ -17,7 +17,16 @@ class JobCancelled(Exception):
 
 
 # Jobs that only use Step 1 in the web UI (no Test Bank Step 2).
-SINGLE_STAGE_JOB_TYPES = frozenset({"pre_ocr_topic", "ocr_extraction", "document_processing"})
+SINGLE_STAGE_JOB_TYPES = frozenset(
+    {
+        "pre_ocr_topic",
+        "ocr_extraction",
+        "document_processing",
+        "image_notes",
+        "table_notes",
+        "image_file_catalog",
+    }
+)
 
 
 def _scalar_cancel_requested(db: Session, job_id: str) -> bool:

@@ -471,3 +471,386 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
             db.rollback()
     finally:
         db.close()
+
+
+def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Stage E: document processing (Stage 4) JSON + OCR extraction JSON → image notes JSON (writes beside inputs)."""
+    from stage_e_processor import StageEProcessor
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        prompt = (cfg.get("prompt") or "").strip()
+        if not prompt:
+            from webapp.default_prompts import get_default_image_notes_prompt
+
+            prompt = get_default_image_notes_prompt()
+        model_name = (cfg.get("model") or "z-ai/glm-5").strip()
+        delay_seconds = float(cfg.get("delay_seconds", 5))
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "Image Notes runner started (document processing / Stage 4 JSON + OCR extraction JSON per pair).", None)
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        client, _ssm = build_unified_api_client()
+        processor = StageEProcessor(client)
+        base = job_root(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if not pair.stage_j_relpath or not pair.word_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing document processing (Stage 4) or OCR extraction JSON path"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (incomplete pair)", pair.pair_index)
+                continue
+
+            abs_stage4 = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            abs_ocr = os.path.join(base, pair.word_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_stage4) or not os.path.isfile(abs_ocr):
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing document processing (Stage 4) or OCR JSON on disk"
+                db.commit()
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            def progress(msg: str) -> None:
+                append_log(db, job_id, msg, pair.pair_index)
+                if _scalar_cancel_requested(db, job_id):
+                    raise JobCancelled()
+
+            try:
+                append_log(db, job_id, f"--- Image Notes (Stage E) start pair {pair.pair_index} ---", pair.pair_index)
+                try:
+                    result = processor.process_stage_e(
+                        stage4_path=abs_stage4,
+                        ocr_extraction_json_path=abs_ocr,
+                        prompt=prompt,
+                        model_name=model_name,
+                        output_dir=None,
+                        progress_callback=progress,
+                    )
+                except JobCancelled:
+                    _finalize_step1_cancelled(db, job_id, pairs)
+                    return
+                if result and os.path.isfile(result):
+                    pair.step1_status = "succeeded"
+                    rel_inputs = f"pair_{pair.pair_index}/inputs"
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_inputs)
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Image Notes returned no output"
+                    append_log(db, job_id, f"pair {pair.pair_index}: Image Notes failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("Image Notes error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if i < len(pairs) - 1 and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- Image Notes job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_image_notes_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "Image Notes", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+
+def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Stage TA: image notes (Stage E) JSON + OCR extraction JSON → table notes JSON (writes beside inputs)."""
+    from stage_ta_processor import StageTAProcessor
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        prompt = (cfg.get("prompt") or "").strip()
+        if not prompt:
+            from webapp.default_prompts import get_default_table_notes_prompt
+
+            prompt = get_default_table_notes_prompt()
+        model_name = (cfg.get("model") or "z-ai/glm-5").strip()
+        delay_seconds = float(cfg.get("delay_seconds", 5))
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "Table Notes runner started (image notes / Stage E JSON + OCR extraction JSON per pair).", None)
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        client, _ssm = build_unified_api_client()
+        processor = StageTAProcessor(client)
+        base = job_root(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if not pair.stage_j_relpath or not pair.word_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing image notes (Stage E) or OCR extraction JSON path"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (incomplete pair)", pair.pair_index)
+                continue
+
+            abs_stage_e = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            abs_ocr = os.path.join(base, pair.word_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_stage_e) or not os.path.isfile(abs_ocr):
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing image notes (Stage E) or OCR JSON on disk"
+                db.commit()
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            def progress(msg: str) -> None:
+                append_log(db, job_id, msg, pair.pair_index)
+                if _scalar_cancel_requested(db, job_id):
+                    raise JobCancelled()
+
+            try:
+                append_log(db, job_id, f"--- Table Notes (Stage TA) start pair {pair.pair_index} ---", pair.pair_index)
+                try:
+                    result = processor.process_stage_ta(
+                        stage_e_path=abs_stage_e,
+                        ocr_extraction_json_path=abs_ocr,
+                        prompt=prompt,
+                        model_name=model_name,
+                        output_dir=None,
+                        progress_callback=progress,
+                    )
+                except JobCancelled:
+                    _finalize_step1_cancelled(db, job_id, pairs)
+                    return
+                if result and os.path.isfile(result):
+                    pair.step1_status = "succeeded"
+                    rel_inputs = f"pair_{pair.pair_index}/inputs"
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_inputs)
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Table Notes returned no output"
+                    append_log(db, job_id, f"pair {pair.pair_index}: Table Notes failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("Table Notes error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if i < len(pairs) - 1 and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- Table Notes job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_table_notes_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "Table Notes", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+
+def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Stage F: image notes (Stage E) JSON → catalog JSON f_*.json under pair output (optional filepic JSON beside Stage E in inputs)."""
+    from stage_f_processor import StageFProcessor
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        delay_seconds = float(cfg.get("delay_seconds", 5))
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "Image File Catalog runner started (image notes / Stage E JSON → f_*.json per pair).", None)
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        client, _ssm = build_unified_api_client()
+        processor = StageFProcessor(client)
+        base = job_root(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if not pair.stage_j_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "No image notes (Stage E) JSON input"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (no image notes / Stage E JSON)", pair.pair_index)
+                continue
+
+            abs_stage_e = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_stage_e):
+                pair.step1_status = "failed"
+                pair.step1_error = "Image notes (Stage E) JSON missing on disk"
+                db.commit()
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            out_dir = pair_output(job_id, pair.pair_index)
+            os.makedirs(out_dir, exist_ok=True)
+
+            def progress(msg: str) -> None:
+                append_log(db, job_id, msg, pair.pair_index)
+                if _scalar_cancel_requested(db, job_id):
+                    raise JobCancelled()
+
+            try:
+                append_log(db, job_id, f"--- Image File Catalog (Stage F) start pair {pair.pair_index} ---", pair.pair_index)
+                try:
+                    result = processor.process_stage_f(
+                        stage_e_path=abs_stage_e,
+                        output_dir=out_dir,
+                        progress_callback=progress,
+                    )
+                except JobCancelled:
+                    _finalize_step1_cancelled(db, job_id, pairs)
+                    return
+                if result and os.path.isfile(result):
+                    pair.step1_status = "succeeded"
+                    rel_out = os.path.relpath(out_dir, base).replace("\\", "/")
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_out)
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Image File Catalog returned no output"
+                    append_log(db, job_id, f"pair {pair.pair_index}: Stage F failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("Image File Catalog error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if i < len(pairs) - 1 and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- Image File Catalog job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_image_file_catalog_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "Image File Catalog", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
