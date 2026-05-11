@@ -11,7 +11,7 @@ import os
 import re
 import time
 from datetime import datetime
-from typing import Optional, Dict, List, Any, Callable
+from typing import Optional, Dict, List, Any, Callable, Tuple
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
 
@@ -131,6 +131,286 @@ class StageEProcessor(BaseStageProcessor):
                 f"'{persian_subchapter_name}' (image notes are figures only)."
             )
         return kept
+
+    @staticmethod
+    def _is_openrouter_context_limit_error(exc: BaseException) -> bool:
+        """True when the provider rejected the request because prompt + max_tokens exceed context."""
+        msg = str(exc).lower()
+        if "maximum context length" in msg:
+            return True
+        if "maximum context" in msg and "token" in msg:
+            return True
+        if "context length" in msg and ("exceed" in msg or "reduce" in msg):
+            return True
+        if "you requested about" in msg and "tokens" in msg:
+            return True
+        return False
+
+    @staticmethod
+    def _stage4_points_grouped_by_topic_in_order(
+        points: List[Dict[str, Any]],
+    ) -> List[Tuple[str, List[Dict[str, Any]]]]:
+        """Stable topic order (first-seen); empty/missing topic → single bucket."""
+        order: List[str] = []
+        buckets: Dict[str, List[Dict[str, Any]]] = {}
+        for p in points:
+            key = (p.get("topic") or "").strip() or "(بدون مبحث)"
+            if key not in buckets:
+                order.append(key)
+                buckets[key] = []
+            buckets[key].append(p)
+        return [(k, buckets[k]) for k in order]
+
+    def _build_image_notes_stage_e_prompt(
+        self,
+        prompt_with_subchapter: str,
+        ocr_extraction_json_str: str,
+        persian_subchapter_name: str,
+        stage4_points: List[Dict[str, Any]],
+        scope_note: str = "",
+    ) -> str:
+        """Assemble Stage E user prompt: optional scope note + OCR slice + Stage 4 JSON."""
+        stage4_json_str = json.dumps(stage4_points, ensure_ascii=False, separators=(",", ":"))
+        note = scope_note.strip()
+        if note and not note.startswith("\n"):
+            note = "\n\n" + note
+        if note and not note.endswith("\n"):
+            note = note + "\n"
+        return f"""{prompt_with_subchapter}{note}
+
+==================================================
+فایل JSON متن درسی استخراج‌شده از کتاب درماتولوژی (OCR Extraction JSON — فقط این زیرفصل):
+==================================================
+{ocr_extraction_json_str}
+
+==================================================
+فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — {len(stage4_points)} نقطه):
+==================================================
+{stage4_json_str}
+"""
+
+    def _append_stage_e_raw_response_entry(
+        self, output_path: str, entry: Dict[str, Any]
+    ) -> None:
+        """Append one raw model response to the Stage E incremental JSON file."""
+        with open(output_path, "r", encoding="utf-8") as f:
+            current_data = json.load(f)
+        current_data["raw_responses"].append(entry)
+        current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
+        current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(current_data, f, ensure_ascii=False, indent=2)
+
+    def _call_image_notes_llm_with_retries(
+        self,
+        full_prompt: str,
+        model_name: str,
+        max_tokens: int,
+        max_attempts: int,
+        attempt_label: str,
+        _progress: Callable[[str], None],
+    ) -> Tuple[Optional[str], Optional[Any], bool]:
+        """
+        Call the model and parse filepic JSON. Retries on transient failures.
+
+        Returns:
+            (response_text, filepic_data, context_window_exceeded)
+            If context_window_exceeded is True, the prompt must be shrunk — do not retry as-is.
+        """
+        response_text: Optional[str] = None
+        filepic_data: Optional[Any] = None
+
+        for attempt in range(1, max_attempts + 1):
+            if attempt > 1:
+                backoff = min(
+                    8.0 * (2 ** (attempt - 2)),
+                    self.SUBCHAPTER_RETRY_BACKOFF_CAP_S,
+                )
+                _progress(
+                    f"Waiting {backoff:.0f}s before retry "
+                    f"(attempt {attempt}/{max_attempts}) [{attempt_label}]..."
+                )
+                time.sleep(backoff)
+                _progress(f"Retrying model call (attempt {attempt}/{max_attempts}) [{attempt_label}]...")
+
+            try:
+                response_text = self.api_client.process_text(
+                    text=full_prompt,
+                    system_prompt=None,
+                    model_name=model_name,
+                    temperature=APIConfig.DEFAULT_TEMPERATURE,
+                    max_tokens=max_tokens,
+                    timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
+                )
+            except Exception as e:
+                if self._is_openrouter_context_limit_error(e):
+                    self.logger.warning(
+                        "Context window limit (%s, attempt %s/%s); not retrying same prompt: %s",
+                        attempt_label,
+                        attempt,
+                        max_attempts,
+                        e,
+                    )
+                    return None, None, True
+                self.logger.warning(
+                    "Error calling model (%s, attempt %s/%s): %s",
+                    attempt_label,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+                response_text = None
+                continue
+
+            if not response_text:
+                continue
+
+            _progress("Extracting JSON from model response...")
+            self.logger.info(f"Response text length: {len(response_text)} chars")
+            self.logger.debug(f"Response text preview: {response_text[:200]}")
+            filepic_data = self.extract_json_from_response(response_text)
+            self.logger.info(
+                f"Extracted filepic_data type: {type(filepic_data)}, value: {filepic_data}"
+            )
+            if not filepic_data:
+                self.logger.warning(
+                    "First extraction failed, trying load_txt_as_json_from_text..."
+                )
+                filepic_data = self.load_txt_as_json_from_text(response_text)
+                self.logger.info(
+                    f"Second extraction result type: {type(filepic_data)}, value: {filepic_data}"
+                )
+            if not filepic_data and response_text:
+                tail = (
+                    response_text[-800:]
+                    if len(response_text) > 800
+                    else response_text
+                )
+                self.logger.warning(
+                    "Model returned non-parseable JSON (%d chars). Often truncation or unescaped "
+                    "quotes in strings. Response tail: %r",
+                    len(response_text),
+                    tail,
+                )
+
+            if filepic_data:
+                _progress(f"Successfully extracted JSON (attempt {attempt}) [{attempt_label}]")
+                self.logger.info(
+                    f"Successfully extracted JSON: {type(filepic_data)} with keys: "
+                    f"{filepic_data.keys() if isinstance(filepic_data, dict) else 'N/A'}"
+                )
+                return response_text, filepic_data, False
+
+            _progress(f"JSON extraction failed (attempt {attempt}), retrying... [{attempt_label}]")
+            self.logger.warning(f"Failed to extract JSON from response (attempt {attempt})")
+
+        return response_text, filepic_data, False
+
+    def _stage_e_topic_fallback(
+        self,
+        *,
+        prompt_with_subchapter: str,
+        ocr_extraction_json_str: str,
+        persian_subchapter_name: str,
+        image_stage4_points: List[Dict[str, Any]],
+        model_name: str,
+        output_path: str,
+        part_num: int,
+        _progress: Callable[[str], None],
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """
+        After a context-window rejection on the full subchapter prompt: process Stage 4 in
+        topic order (no bisect). If a topic itself still exceeds context, it is reported as error.
+
+        Returns (merged_image_note_rows, shard_error_messages).
+        """
+        topic_groups = self._stage4_points_grouped_by_topic_in_order(image_stage4_points)
+        _progress(
+            f"Context limit on full subchapter — processing {len(topic_groups)} topic group(s) "
+            "(without bisect)..."
+        )
+        self.logger.info(
+            "Stage E context fallback: %s topic group(s) for subchapter %r",
+            len(topic_groups),
+            persian_subchapter_name,
+        )
+
+        merged_rows: List[Dict[str, Any]] = []
+        shard_errors: List[str] = []
+
+        for topic_name, pts in topic_groups:
+            scope = (
+                f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
+                f"تعداد نقاط Stage 4 در این درخواست: {len(pts)}. "
+                "خروجی JSON را فقط برای تصاویر/مواردی که در این فهرست نقاط هستند تولید کن.]"
+            )
+            full_prompt = self._build_image_notes_stage_e_prompt(
+                prompt_with_subchapter,
+                ocr_extraction_json_str,
+                persian_subchapter_name,
+                pts,
+                scope_note=scope,
+            )
+            label = f"topic «{topic_name}» ({len(pts)} Stage 4 row(s))"
+            response_text, filepic_data, ctx_hit = self._call_image_notes_llm_with_retries(
+                full_prompt,
+                model_name,
+                self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
+                self.SUBCHAPTER_MODEL_MAX_ATTEMPTS,
+                label,
+                _progress,
+            )
+
+            if filepic_data:
+                rows = self._filepic_rows_images_only(
+                    self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
+                    persian_subchapter_name,
+                )
+                merged_rows.extend(rows)
+                try:
+                    entry: Dict[str, Any] = {
+                        "subchapter_index": part_num,
+                        "subchapter": persian_subchapter_name,
+                        "stage4_point_count": len(pts),
+                        "context_fallback": "topic_only",
+                        "topic": topic_name,
+                        "response_text": response_text,
+                        "response_size_bytes": len((response_text or "").encode("utf-8")),
+                        "processed_at": datetime.now().isoformat(),
+                    }
+                    self._append_stage_e_raw_response_entry(output_path, entry)
+                    self.logger.info(
+                        "  ✓ Raw response (context fallback shard) for subchapter %r topic %r",
+                        persian_subchapter_name,
+                        topic_name,
+                    )
+                    _progress(
+                        f"  ✓ Fallback shard: {len(rows)} image row(s) for topic «{topic_name}» "
+                        f"({len(pts)} Stage 4 point(s))"
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        "Failed to write raw response (fallback) for %r: %s",
+                        persian_subchapter_name,
+                        e,
+                        exc_info=True,
+                    )
+                continue
+
+            if ctx_hit:
+                msg = (
+                    f"topic «{topic_name}»: context window exceeded "
+                    f"({len(pts)} Stage 4 row(s)); no bisect configured"
+                )
+                self.logger.error("Stage E fallback: %s", msg)
+                shard_errors.append(msg)
+                continue
+
+            msg = f"topic «{topic_name}» ({len(pts)} rows): no model response / JSON after retries"
+            self.logger.error("Stage E fallback: %s", msg)
+            shard_errors.append(msg)
+
+        return merged_rows, shard_errors
 
     def process_stage_e(
         self,
@@ -353,102 +633,87 @@ class StageEProcessor(BaseStageProcessor):
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
             _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
 
-            stage4_json_str = json.dumps(
-                image_stage4_points, ensure_ascii=False, separators=(",", ":")
+            full_prompt = self._build_image_notes_stage_e_prompt(
+                prompt_with_subchapter,
+                ocr_extraction_json_str,
+                persian_subchapter_name,
+                image_stage4_points,
             )
-
-            full_prompt = f"""{prompt_with_subchapter}
-
-==================================================
-فایل JSON متن درسی استخراج‌شده از کتاب درماتولوژی (OCR Extraction JSON — فقط این زیرفصل):
-==================================================
-{ocr_extraction_json_str}
-
-==================================================
-فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — {len(image_stage4_points)} نقطه):
-==================================================
-{stage4_json_str}
-"""
 
             _progress(
                 f"Calling model {model_name} for subchapter '{persian_subchapter_name}'..."
             )
-            response_text = None
-            filepic_data = None
+            response_text, filepic_data, context_hit = self._call_image_notes_llm_with_retries(
+                full_prompt,
+                model_name,
+                self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
+                self.SUBCHAPTER_MODEL_MAX_ATTEMPTS,
+                f"full subchapter ({len(image_stage4_points)} Stage 4 row(s))",
+                _progress,
+            )
 
-            for attempt in range(1, self.SUBCHAPTER_MODEL_MAX_ATTEMPTS + 1):
-                if attempt > 1:
-                    backoff = min(
-                        8.0 * (2 ** (attempt - 2)),
-                        self.SUBCHAPTER_RETRY_BACKOFF_CAP_S,
-                    )
-                    _progress(
-                        f"Waiting {backoff:.0f}s before retry "
-                        f"(attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})..."
-                    )
-                    time.sleep(backoff)
-                    _progress(
-                        f"Retrying model call (attempt {attempt}/{self.SUBCHAPTER_MODEL_MAX_ATTEMPTS})..."
-                    )
+            subchapter_filepic_records: List[Dict[str, Any]] = []
 
+            if filepic_data:
                 try:
-                    response_text = self.api_client.process_text(
-                        text=full_prompt,
-                        system_prompt=None,
-                        model_name=model_name,
-                        temperature=APIConfig.DEFAULT_TEMPERATURE,
-                        max_tokens=self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
-                        timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
-                    )
-
-                    if not response_text:
-                        continue
-
-                    _progress("Extracting JSON from model response...")
-                    self.logger.info(f"Response text length: {len(response_text)} chars")
-                    self.logger.debug(f"Response text preview: {response_text[:200]}")
-                    filepic_data = self.extract_json_from_response(response_text)
+                    raw_response_entry = {
+                        "subchapter_index": part_num,
+                        "subchapter": persian_subchapter_name,
+                        "stage4_point_count": len(image_stage4_points),
+                        "response_text": response_text,
+                        "response_size_bytes": len((response_text or "").encode("utf-8")),
+                        "processed_at": datetime.now().isoformat(),
+                    }
+                    self._append_stage_e_raw_response_entry(output_path, raw_response_entry)
                     self.logger.info(
-                        f"Extracted filepic_data type: {type(filepic_data)}, value: {filepic_data}"
+                        f"  ✓ Added raw response for subchapter '{persian_subchapter_name}' "
+                        "to JSON file immediately"
                     )
-                    if not filepic_data:
-                        self.logger.warning(
-                            "First extraction failed, trying load_txt_as_json_from_text..."
-                        )
-                        filepic_data = self.load_txt_as_json_from_text(response_text)
-                        self.logger.info(
-                            f"Second extraction result type: {type(filepic_data)}, value: {filepic_data}"
-                        )
-                    if not filepic_data and response_text:
-                        tail = (
-                            response_text[-800:]
-                            if len(response_text) > 800
-                            else response_text
-                        )
-                        self.logger.warning(
-                            "Model returned non-parseable JSON (%d chars). Often truncation or unescaped "
-                            "quotes in strings. Response tail: %r",
-                            len(response_text),
-                            tail,
-                        )
-
-                    if filepic_data:
-                        _progress(f"Successfully extracted JSON (attempt {attempt})")
-                        self.logger.info(
-                            f"Successfully extracted JSON: {type(filepic_data)} with keys: "
-                            f"{filepic_data.keys() if isinstance(filepic_data, dict) else 'N/A'}"
-                        )
-                        break
-                    _progress(f"JSON extraction failed (attempt {attempt}), retrying...")
-                    self.logger.warning(
-                        f"Failed to extract JSON from response (attempt {attempt})"
-                    )
-
                 except Exception as e:
-                    self.logger.warning(f"Error calling model (attempt {attempt}): {e}")
-                    response_text = None
+                    self.logger.error(
+                        f"Failed to write raw response for subchapter '{persian_subchapter_name}': {e}",
+                        exc_info=True,
+                    )
 
-            if not response_text:
+                subchapter_filepic_records = self._filepic_rows_images_only(
+                    self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
+                    persian_subchapter_name,
+                )
+            elif context_hit:
+                fb_rows, fb_errs = self._stage_e_topic_fallback(
+                    prompt_with_subchapter=prompt_with_subchapter,
+                    ocr_extraction_json_str=ocr_extraction_json_str,
+                    persian_subchapter_name=persian_subchapter_name,
+                    image_stage4_points=image_stage4_points,
+                    model_name=model_name,
+                    output_path=output_path,
+                    part_num=part_num,
+                    _progress=_progress,
+                )
+                subchapter_filepic_records = fb_rows
+                if not subchapter_filepic_records:
+                    detail = "; ".join(fb_errs) if fb_errs else "no shard returned usable JSON/rows"
+                    subchapter_errors.append(
+                        f"{persian_subchapter_name}: context limit — topic fallback produced "
+                        f"no rows ({detail})"
+                    )
+                    self.logger.error(
+                        "No image rows after context fallback for subchapter %r",
+                        persian_subchapter_name,
+                    )
+                    _progress(
+                        f"Error: Context fallback found no usable image rows for "
+                        f"'{persian_subchapter_name}'."
+                    )
+                    continue
+                if fb_errs:
+                    for fe in fb_errs:
+                        self.logger.warning(
+                            "Partial fallback issue for subchapter %r: %s",
+                            persian_subchapter_name,
+                            fe,
+                        )
+            elif not response_text:
                 self.logger.error(
                     f"No response from model after retries for subchapter '{persian_subchapter_name}'"
                 )
@@ -460,8 +725,7 @@ class StageEProcessor(BaseStageProcessor):
                     f"{persian_subchapter_name}: no model response after retries"
                 )
                 continue
-
-            if not filepic_data:
+            else:
                 self.logger.error(
                     f"Failed to extract JSON from model response for subchapter "
                     f"'{persian_subchapter_name}'"
@@ -474,41 +738,6 @@ class StageEProcessor(BaseStageProcessor):
                     f"{persian_subchapter_name}: JSON parse failed after retries"
                 )
                 continue
-
-            try:
-                with open(output_path, "r", encoding="utf-8") as f:
-                    current_data = json.load(f)
-
-                raw_response_entry = {
-                    "subchapter_index": part_num,
-                    "subchapter": persian_subchapter_name,
-                    "stage4_point_count": len(image_stage4_points),
-                    "response_text": response_text,
-                    "response_size_bytes": len(response_text.encode("utf-8")),
-                    "processed_at": datetime.now().isoformat(),
-                }
-                current_data["raw_responses"].append(raw_response_entry)
-                current_data["metadata"]["subchapters_processed"] = len(
-                    current_data["raw_responses"]
-                )
-                current_data["metadata"]["processed_at"] = datetime.now().isoformat()
-
-                with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(current_data, f, ensure_ascii=False, indent=2)
-
-                self.logger.info(
-                    f"  ✓ Added raw response for subchapter '{persian_subchapter_name}' to JSON file immediately"
-                )
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to write raw response for subchapter '{persian_subchapter_name}': {e}",
-                    exc_info=True,
-                )
-
-            subchapter_filepic_records = self._filepic_rows_images_only(
-                self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
-                persian_subchapter_name,
-            )
 
             if subchapter_filepic_records:
                 all_filepic_records.extend(subchapter_filepic_records)
