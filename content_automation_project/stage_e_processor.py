@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable
@@ -54,22 +55,61 @@ class StageEProcessor(BaseStageProcessor):
         self.logger.warning(f"Unexpected JSON structure from model: {type(filepic_data)}")
         return []
 
+    _STAGE4_TEXT_KEYS = (
+        "Points",
+        "point_text",
+        "points",
+        "PointText",
+        "text",
+        "content",
+        "point",
+        "narrative",
+    )
+    _FIG_REF_RE = re.compile(
+        r"(تصویر(\s+الکترونیکی)?|fig\.?\s*\d|figure\s+\d|e[-\s]?fig\w*|electronic\s+figure)",
+        re.IGNORECASE | re.UNICODE,
+    )
+
+    @classmethod
+    def _stage4_row_primary_text(cls, point: Dict[str, Any]) -> str:
+        """Best-effort main lesson line — schemas vary (Points vs point_text vs nested)."""
+        for key in cls._STAGE4_TEXT_KEYS:
+            v = point.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return ""
+
     @staticmethod
-    def _stage4_point_is_image_anchor(point: Dict[str, Any]) -> bool:
-        """True if this lesson row is an image slot (تصویر / Fig…), not a table (جدول / Table…)."""
-        ref = (point.get("point_text") or point.get("Points") or "").strip()
-        if not ref:
+    def _stage4_text_is_table_anchor(text: str) -> bool:
+        s = (text or "").strip()
+        if not s:
             return False
-        if ref.startswith("جدول"):
-            return False
-        low = ref.lower()
-        if low.startswith("table"):
-            return False
-        if ref.startswith("تصویر"):
+        if s.startswith("جدول"):
             return True
-        if low.startswith("fig.") or low.startswith("figure"):
+        ls = s.lower()
+        if ls.startswith("table ") or ls.startswith("table:") or ls.startswith("table\n"):
+            return True
+        if ls == "table":
             return True
         return False
+
+    @classmethod
+    def _stage4_text_looks_like_figure_ref(cls, text: str) -> bool:
+        """True when the row text clearly references a figure (not used for table-only rows)."""
+        t = (text or "").strip()
+        if not t or cls._stage4_text_is_table_anchor(t):
+            return False
+        if t.startswith("تصویر"):
+            return True
+        low = t.lower()
+        if low.startswith(("fig.", "figure", "fig ")):
+            return True
+        return cls._FIG_REF_RE.search(t) is not None
+
+    @classmethod
+    def _stage4_point_is_image_anchor(cls, point: Dict[str, Any]) -> bool:
+        """True if this lesson row clearly tags a figure (تصویر / Fig …), not a table row."""
+        return cls._stage4_text_looks_like_figure_ref(cls._stage4_row_primary_text(point))
 
     def _filepic_rows_images_only(
         self, rows: List[Dict[str, Any]], persian_subchapter_name: str
@@ -80,8 +120,8 @@ class StageEProcessor(BaseStageProcessor):
         for r in rows:
             if not isinstance(r, dict):
                 continue
-            pt = (r.get("point_text") or "").strip()
-            if pt.startswith("جدول") or pt.lower().startswith("table"):
+            pt = (r.get("point_text") or r.get("Points") or "").strip()
+            if self._stage4_text_is_table_anchor(pt):
                 dropped += 1
                 continue
             kept.append(r)
@@ -256,19 +296,39 @@ class StageEProcessor(BaseStageProcessor):
                 p for p in filtered_stage4_points if self._stage4_point_is_image_anchor(p)
             ]
             if not image_stage4_points:
+                # Some Stage 4 exports use only plain bullets (no "تصویر" prefix) — fall back to
+                # all subchapter rows except obvious table-placeholder lines; model + post-filter
+                # still enforce figures-only output.
+                non_table = [
+                    p
+                    for p in filtered_stage4_points
+                    if not self._stage4_text_is_table_anchor(self._stage4_row_primary_text(p))
+                ]
+                if not non_table:
+                    self.logger.warning(
+                        f"No usable Stage 4 rows for subchapter '{persian_subchapter_name}' "
+                        f"(all rows look like table anchors)."
+                    )
+                    _progress(
+                        f"Warning: No non-table Stage 4 rows for '{persian_subchapter_name}'. Skipping..."
+                    )
+                    continue
                 self.logger.warning(
-                    f"No image-anchor Stage 4 rows (تصویر/…) for subchapter '{persian_subchapter_name}'; "
-                    f"skipping (tables belong to Table Notes)."
+                    "No explicit figure-reference rows (تصویر / Fig…) in Stage 4 for subchapter %r; "
+                    "using %s non-table Stage 4 row(s) as context (schema without image prefixes).",
+                    persian_subchapter_name,
+                    len(non_table),
                 )
                 _progress(
-                    f"Warning: No image rows in Stage 4 for '{persian_subchapter_name}' "
-                    f"({len(filtered_stage4_points)} non-image or unlabeled points). Skipping..."
+                    f"Note: No dedicated image-reference rows in Points; sending {len(non_table)} "
+                    f"Stage 4 row(s) for this subchapter (table-style rows excluded). "
+                    "Model output is still filtered to drop any جدول rows."
                 )
-                continue
-            if len(image_stage4_points) < len(filtered_stage4_points):
+                image_stage4_points = non_table
+            elif len(image_stage4_points) < len(filtered_stage4_points):
                 _progress(
                     f"Using {len(image_stage4_points)} image-anchor Stage 4 row(s) for this call "
-                    f"(excluded {len(filtered_stage4_points) - len(image_stage4_points)} non-image rows including جدول)."
+                    f"(excluded {len(filtered_stage4_points) - len(image_stage4_points)} other rows including جدول)."
                 )
 
             ocr_slice = self._filter_ocr_extraction_for_subchapter(
@@ -277,7 +337,7 @@ class StageEProcessor(BaseStageProcessor):
             pre_ocr_chars = len(
                 json.dumps(ocr_slice, ensure_ascii=False, separators=(",", ":"))
             )
-            # Strip bulk paragraph text — Stage E only needs figure/table captions vs Stage 4 refs.
+            # Strip bulk paragraph text — Stage E only needs figure captions vs Stage 4 refs.
             ocr_slice = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
             # Compact JSON (no indent) — OCR slices can still be huge in token count.
             ocr_extraction_json_str = json.dumps(
@@ -286,7 +346,7 @@ class StageEProcessor(BaseStageProcessor):
             post_ocr_chars = len(ocr_extraction_json_str)
             if post_ocr_chars < pre_ocr_chars:
                 _progress(
-                    f"OCR JSON trimmed for image notes (figures/tables only): "
+                    f"OCR JSON trimmed for image notes (figures only): "
                     f"{pre_ocr_chars:,} → {post_ocr_chars:,} characters."
                 )
 
@@ -305,7 +365,7 @@ class StageEProcessor(BaseStageProcessor):
 {ocr_extraction_json_str}
 
 ==================================================
-فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — فقط ردیف‌های تصویر — {len(image_stage4_points)} نقطه):
+فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — {len(image_stage4_points)} نقطه):
 ==================================================
 {stage4_json_str}
 """
