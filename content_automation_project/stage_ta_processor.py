@@ -72,7 +72,7 @@ class StageTAProcessor(BaseStageProcessor):
     def _points_grouped_by_topic_in_order(
         points: List[Dict[str, Any]],
     ) -> List[Tuple[str, List[Dict[str, Any]]]]:
-        """Stable first-seen topic grouping for fallback sharding."""
+        """Stable first-seen topic grouping for fallback topic-by-topic calls."""
         order: List[str] = []
         buckets: Dict[str, List[Dict[str, Any]]] = {}
         for p in points:
@@ -250,7 +250,7 @@ class StageTAProcessor(BaseStageProcessor):
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         topic_groups = self._points_grouped_by_topic_in_order(filtered_stage_e_points)
         _progress(
-            f"Context limit on full subchapter — processing {len(topic_groups)} topic group(s) "
+            f"Context limit on full subchapter — processing {len(topic_groups)} topic(s) "
             "(without bisect)..."
         )
 
@@ -569,7 +569,7 @@ class StageTAProcessor(BaseStageProcessor):
                 )
                 subchapter_tablepic_records = fb_rows
                 if not subchapter_tablepic_records:
-                    detail = "; ".join(fb_errs) if fb_errs else "no topic shard returned usable JSON/rows"
+                    detail = "; ".join(fb_errs) if fb_errs else "no topic call returned usable JSON/rows"
                     subchapter_errors.append(
                         f"{persian_subchapter_name}: context limit — topic fallback produced "
                         f"no rows ({detail})"

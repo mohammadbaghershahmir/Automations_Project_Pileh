@@ -322,15 +322,15 @@ class StageEProcessor(BaseStageProcessor):
         After a context-window rejection on the full subchapter prompt: process Stage 4 in
         topic order (no bisect). If a topic itself still exceeds context, it is reported as error.
 
-        Returns (merged_image_note_rows, shard_error_messages).
+        Returns (merged_image_note_rows, topic_error_messages).
         """
         topic_groups = self._stage4_points_grouped_by_topic_in_order(image_stage4_points)
         _progress(
-            f"Context limit on full subchapter — processing {len(topic_groups)} topic group(s) "
+            f"Context limit on full subchapter — processing {len(topic_groups)} topic(s) "
             "(without bisect)..."
         )
         self.logger.info(
-            "Stage E context fallback: %s topic group(s) for subchapter %r",
+            "Stage E context fallback: %s topic(s) for subchapter %r",
             len(topic_groups),
             persian_subchapter_name,
         )
@@ -380,12 +380,12 @@ class StageEProcessor(BaseStageProcessor):
                     }
                     self._append_stage_e_raw_response_entry(output_path, entry)
                     self.logger.info(
-                        "  ✓ Raw response (context fallback shard) for subchapter %r topic %r",
+                        "  ✓ Raw response (context fallback topic call) for subchapter %r topic %r",
                         persian_subchapter_name,
                         topic_name,
                     )
                     _progress(
-                        f"  ✓ Fallback shard: {len(rows)} image row(s) for topic «{topic_name}» "
+                        f"  ✓ Topic fallback call: {len(rows)} image row(s) for topic «{topic_name}» "
                         f"({len(pts)} Stage 4 point(s))"
                     )
                 except Exception as e:
@@ -692,7 +692,7 @@ class StageEProcessor(BaseStageProcessor):
                 )
                 subchapter_filepic_records = fb_rows
                 if not subchapter_filepic_records:
-                    detail = "; ".join(fb_errs) if fb_errs else "no shard returned usable JSON/rows"
+                    detail = "; ".join(fb_errs) if fb_errs else "no topic call returned usable JSON/rows"
                     subchapter_errors.append(
                         f"{persian_subchapter_name}: context limit — topic fallback produced "
                         f"no rows ({detail})"
