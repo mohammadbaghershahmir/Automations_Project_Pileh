@@ -9,7 +9,9 @@ import logging
 import math
 import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable, Tuple
 from base_stage_processor import BaseStageProcessor
@@ -17,18 +19,39 @@ from api_layer import APIConfig
 
 
 class StageEProcessor(BaseStageProcessor):
-    """Process Stage E: Generate image notes and merge with Stage 4 data"""
+    """Process Stage E: Generate image notes (topic-parallel LLM calls) and merge with Stage 4."""
 
-    # One API call per OCR subchapter (all Stage 4 points for that subchapter in one prompt).
     SUBCHAPTER_MODEL_MAX_ATTEMPTS = 6
     SUBCHAPTER_MODEL_TIMEOUT_S = 900.0
     SUBCHAPTER_RETRY_BACKOFF_CAP_S = 120.0
     # Subchapter JSON arrays are large; low completion caps truncate mid-object → unparseable JSON.
     SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS = 32768
+    # Default path: one LLM call per Stage-4 topic group, batched like Stage V Step 2.
+    STAGE_E_TOPIC_BATCH_SIZE = 10
+    STAGE_E_HIERARCHY_REPAIR_MAX_ATTEMPTS = 2
+    STAGE_E_HIERARCHY_REPAIR_MAX_TOKENS = 16384
+
+    _HIERARCHY_REPAIR_INSTRUCTION = """تو یک اصلاحگر JSON هستی.
+
+ورودی: (۱) بخش کوچک OCR همان مبحث، (۲) نقاط Stage 4 همان مبحث، (۳) لیست ردیف‌های خروجی تصویر که فقط فیلدهای subtopic یا subsubtopic خالی دارند.
+
+وظیفه: فقط برای همان ردیف‌ها مقدار subtopic و subsubtopic را از سلسله‌مراتب Stage 4 (همان مبحث) پر کن. از Stage 4 کپی کن؛ حدس نزن مگر مجبور شوی.
+
+قوانین سخت:
+- خروجی فقط یک JSON معتبر باشد؛ بدون markdown و بدون متن بیرون JSON.
+- همان تعداد ردیف ورودی ناقص؛ هیچ ردیف جدید/حذف/تکرار نکن.
+- point_text و caption را عیناً برنگردان مگر در خروجی برای تطبیق لازم باشد؛ در payload فقط subtopic و subsubtopic و point_text برای کلید باشد.
+- ساختار خروجی دقیق:
+{"payload":[{"point_text":"...","subtopic":"...","subsubtopic":"..."}]}
+- اگر برای یک point_text جای دقیق در Stage 4 نبود، نزدیک‌ترین subtopic/subsubtopic همان topic را بگذار (یک مقدار ثابت برای همان topic).
+
+همهٔ تصاویر/ردیف‌های ناقص را در یک payload برگردان."""
 
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
+        self._stage_e_raw_lock = threading.Lock()
+        self._stage_e_api_lock = threading.Lock()
 
     def _coerce_filepic_rows(self, filepic_data: Any, persian_subchapter_name: str) -> List[Dict[str, Any]]:
         """Normalize model output (list or dict with data/rows/payload) to row dicts."""
@@ -192,14 +215,15 @@ class StageEProcessor(BaseStageProcessor):
     def _append_stage_e_raw_response_entry(
         self, output_path: str, entry: Dict[str, Any]
     ) -> None:
-        """Append one raw model response to the Stage E incremental JSON file."""
-        with open(output_path, "r", encoding="utf-8") as f:
-            current_data = json.load(f)
-        current_data["raw_responses"].append(entry)
-        current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
-        current_data["metadata"]["processed_at"] = datetime.now().isoformat()
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(current_data, f, ensure_ascii=False, indent=2)
+        """Append one raw model response to the Stage E incremental JSON file (thread-safe)."""
+        with self._stage_e_raw_lock:
+            with open(output_path, "r", encoding="utf-8") as f:
+                current_data = json.load(f)
+            current_data["raw_responses"].append(entry)
+            current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
+            current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(current_data, f, ensure_ascii=False, indent=2)
 
     def _call_image_notes_llm_with_retries(
         self,
@@ -234,14 +258,15 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Retrying model call (attempt {attempt}/{max_attempts}) [{attempt_label}]...")
 
             try:
-                response_text = self.api_client.process_text(
-                    text=full_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=max_tokens,
-                    timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
-                )
+                with self._stage_e_api_lock:
+                    response_text = self.api_client.process_text(
+                        text=full_prompt,
+                        system_prompt=None,
+                        model_name=model_name,
+                        temperature=APIConfig.DEFAULT_TEMPERATURE,
+                        max_tokens=max_tokens,
+                        timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
+                    )
             except Exception as e:
                 if self._is_openrouter_context_limit_error(e):
                     self.logger.warning(
@@ -306,120 +331,370 @@ class StageEProcessor(BaseStageProcessor):
 
         return response_text, filepic_data, False
 
-    def _stage_e_topic_fallback(
+    @staticmethod
+    def _normalize_point_text_key(s: str) -> str:
+        t = (s or "").strip()
+        return re.sub(r"\s+", " ", t)
+
+    @classmethod
+    def _image_note_row_needs_hierarchy(cls, row: Dict[str, Any]) -> bool:
+        st = (row.get("subtopic") or "").strip()
+        sst = (row.get("subsubtopic") or "").strip()
+        return (not st) or (not sst)
+
+    def _topic_ocr_json_for_stage_e(
         self,
-        *,
-        prompt_with_subchapter: str,
         ocr_extraction_data: Dict[str, Any],
         persian_subchapter_name: str,
-        image_stage4_points: List[Dict[str, Any]],
+        stage4_topic_bucket: str,
+    ) -> str:
+        # Stage 4 uses "(بدون مبحث)" for missing topic; OCR JSON often uses "" on topic objects.
+        ocr_topic_filter = "" if stage4_topic_bucket == "(بدون مبحث)" else stage4_topic_bucket
+        topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
+            ocr_extraction_data,
+            persian_subchapter_name,
+            ocr_topic_filter,
+        )
+        topic_ocr_slice = self._slim_ocr_for_stage_e_image_notes(topic_ocr_slice)
+        return json.dumps(topic_ocr_slice, ensure_ascii=False, separators=(",", ":"))
+
+    def _run_stage_e_single_topic(
+        self,
+        topic_index: int,
+        topic_name: str,
+        pts: List[Dict[str, Any]],
+        *,
+        prompt_with_subchapter: str,
+        persian_subchapter_name: str,
+        ocr_extraction_data: Dict[str, Any],
+        model_name: str,
+        output_path: str,
+        part_num: int,
+        _progress: Callable[[str], None],
+        raw_response_kind: str = "topic_parallel",
+    ) -> Tuple[int, str, List[Dict[str, Any]], Optional[str]]:
+        """
+        One LLM call for a single Stage-4 topic bucket (topic-scoped OCR + topic points).
+
+        Returns (topic_index, topic_name, image_rows, error_message_or_None).
+        """
+        if not pts:
+            return topic_index, topic_name, [], None
+
+        topic_ocr_extraction_json_str = self._topic_ocr_json_for_stage_e(
+            ocr_extraction_data, persian_subchapter_name, topic_name
+        )
+        scope = (
+            f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
+            f"تعداد نقاط Stage 4 در این درخواست: {len(pts)}. "
+            "خروجی JSON را فقط برای تصاویر/مواردی که در این فهرست نقاط هستند تولید کن.]"
+        )
+        full_prompt = self._build_image_notes_stage_e_prompt(
+            prompt_with_subchapter,
+            topic_ocr_extraction_json_str,
+            persian_subchapter_name,
+            pts,
+            scope_note=scope,
+        )
+        label = f"topic «{topic_name}» ({len(pts)} Stage 4 row(s))"
+        response_text, filepic_data, ctx_hit = self._call_image_notes_llm_with_retries(
+            full_prompt,
+            model_name,
+            self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
+            self.SUBCHAPTER_MODEL_MAX_ATTEMPTS,
+            label,
+            _progress,
+        )
+
+        if filepic_data:
+            rows = self._filepic_rows_images_only(
+                self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
+                persian_subchapter_name,
+            )
+            try:
+                entry: Dict[str, Any] = {
+                    "subchapter_index": part_num,
+                    "subchapter": persian_subchapter_name,
+                    "stage4_point_count": len(pts),
+                    "topic": topic_name,
+                    "topic_index": topic_index,
+                    "call_kind": raw_response_kind,
+                    "response_text": response_text,
+                    "response_size_bytes": len((response_text or "").encode("utf-8")),
+                    "processed_at": datetime.now().isoformat(),
+                }
+                self._append_stage_e_raw_response_entry(output_path, entry)
+                self.logger.info(
+                    "  ✓ Raw response (%s) for subchapter %r topic %r",
+                    raw_response_kind,
+                    persian_subchapter_name,
+                    topic_name,
+                )
+                _progress(
+                    f"  ✓ Topic call ({raw_response_kind}): {len(rows)} image row(s) for "
+                    f"«{topic_name}» ({len(pts)} Stage 4 point(s))"
+                )
+            except Exception as e:
+                self.logger.error(
+                    "Failed to write raw response for %r / %r: %s",
+                    persian_subchapter_name,
+                    topic_name,
+                    e,
+                    exc_info=True,
+                )
+            return topic_index, topic_name, rows, None
+
+        if ctx_hit:
+            msg = (
+                f"topic «{topic_name}»: context window exceeded "
+                f"({len(pts)} Stage 4 row(s)); no bisect configured"
+            )
+            self.logger.error("Stage E topic call: %s", msg)
+            return topic_index, topic_name, [], msg
+
+        msg = f"topic «{topic_name}» ({len(pts)} rows): no model response / JSON after retries"
+        self.logger.error("Stage E topic call: %s", msg)
+        return topic_index, topic_name, [], msg
+
+    def _process_subchapter_image_topics_parallel(
+        self,
+        topic_groups: List[Tuple[str, List[Dict[str, Any]]]],
+        *,
+        prompt_with_subchapter: str,
+        persian_subchapter_name: str,
+        ocr_extraction_data: Dict[str, Any],
         model_name: str,
         output_path: str,
         part_num: int,
         _progress: Callable[[str], None],
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
-        """
-        After a context-window rejection on the full subchapter prompt: process Stage 4 in
-        topic order (no bisect). If a topic itself still exceeds context, it is reported as error.
+        """Run topic calls in bounded parallel batches; preserve topic order in merged rows."""
+        n_topics = len(topic_groups)
+        if n_topics == 0:
+            return [], []
 
-        Returns (merged_image_note_rows, topic_error_messages).
-        """
-        topic_groups = self._stage4_points_grouped_by_topic_in_order(image_stage4_points)
-        _progress(
-            f"Context limit on full subchapter — processing {len(topic_groups)} topic(s) "
-            "(without bisect)..."
+        results_by_idx: Dict[int, Tuple[str, List[Dict[str, Any]], Optional[str]]] = {}
+        topic_errors: List[str] = []
+
+        batch_size = self.STAGE_E_TOPIC_BATCH_SIZE
+        total_batches = (n_topics + batch_size - 1) // batch_size
+        for batch_num, start in enumerate(range(0, n_topics, batch_size), 1):
+            batch = topic_groups[start : start + batch_size]
+            bw = len(batch)
+            _progress(
+                f"Stage E topic batch {batch_num}/{total_batches}: {bw} topic(s) "
+                f"(concurrency={bw}) for '{persian_subchapter_name}'..."
+            )
+            with ThreadPoolExecutor(max_workers=bw) as executor:
+                future_to_idx: Dict[Any, int] = {}
+                for rel_i, (topic_name, pts) in enumerate(batch):
+                    tidx = start + rel_i
+                    fut = executor.submit(
+                        self._run_stage_e_single_topic,
+                        tidx,
+                        topic_name,
+                        pts,
+                        prompt_with_subchapter=prompt_with_subchapter,
+                        persian_subchapter_name=persian_subchapter_name,
+                        ocr_extraction_data=ocr_extraction_data,
+                        model_name=model_name,
+                        output_path=output_path,
+                        part_num=part_num,
+                        _progress=_progress,
+                        raw_response_kind="topic_parallel",
+                    )
+                    future_to_idx[fut] = tidx
+
+                for fut in as_completed(future_to_idx):
+                    tidx = future_to_idx[fut]
+                    try:
+                        ti, tn, rows, err = fut.result()
+                    except Exception as e:
+                        self.logger.error(
+                            "Stage E topic worker crashed (idx=%s): %s", tidx, e, exc_info=True
+                        )
+                        topic_name_guess = topic_groups[tidx][0] if 0 <= tidx < n_topics else "?"
+                        results_by_idx[tidx] = (topic_name_guess, [], str(e))
+                        topic_errors.append(f"topic idx {tidx}: worker error: {e}")
+                        continue
+                    results_by_idx[ti] = (tn, rows, err)
+                    if err:
+                        topic_errors.append(err)
+
+        merged: List[Dict[str, Any]] = []
+        for i in range(n_topics):
+            _tn, rows, _e = results_by_idx[i]
+            merged.extend(rows)
+        return merged, topic_errors
+
+    def _fill_row_hierarchy_from_stage4_point_text(
+        self, row: Dict[str, Any], topic_pts: List[Dict[str, Any]]
+    ) -> bool:
+        """If Stage 4 has a row whose primary text matches this image point_text, copy hierarchy."""
+        pk = self._normalize_point_text_key(
+            str(row.get("point_text") or row.get("Points") or "")
         )
-        self.logger.info(
-            "Stage E context fallback: %s topic(s) for subchapter %r",
-            len(topic_groups),
-            persian_subchapter_name,
-        )
+        if not pk:
+            return False
+        for p in topic_pts:
+            s4 = self._normalize_point_text_key(self._stage4_row_primary_text(p))
+            if not s4 or s4 != pk:
+                continue
+            if not (row.get("subtopic") or "").strip() and (p.get("subtopic") or "").strip():
+                row["subtopic"] = str(p.get("subtopic")).strip()
+            if not (row.get("subsubtopic") or "").strip() and (p.get("subsubtopic") or "").strip():
+                row["subsubtopic"] = str(p.get("subsubtopic")).strip()
+            return True
+        return False
 
-        merged_rows: List[Dict[str, Any]] = []
-        shard_errors: List[str] = []
+    def _fill_row_hierarchy_from_first_stage4_row(
+        self, row: Dict[str, Any], topic_pts: List[Dict[str, Any]]
+    ) -> None:
+        if not topic_pts:
+            return
+        first = topic_pts[0]
+        st = (first.get("subtopic") or "").strip()
+        sst = (first.get("subsubtopic") or "").strip()
+        if not (row.get("subtopic") or "").strip() and st:
+            row["subtopic"] = st
+        if not (row.get("subsubtopic") or "").strip() and sst:
+            row["subsubtopic"] = sst
 
-        for topic_name, pts in topic_groups:
-            topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
-                ocr_extraction_data,
-                persian_subchapter_name,
-                topic_name,
+    def _coerce_hierarchy_repair_patches(self, data: Any) -> Dict[str, Dict[str, str]]:
+        """Map normalized point_text -> {subtopic, subsubtopic}."""
+        out: Dict[str, Dict[str, str]] = {}
+        rows: List[Dict[str, Any]] = []
+        if isinstance(data, dict):
+            rows = self._coerce_filepic_rows(data, "")
+        elif isinstance(data, list):
+            rows = [x for x in data if isinstance(x, dict)]
+        for r in rows:
+            pt = self._normalize_point_text_key(
+                str(r.get("point_text") or r.get("Points") or "")
             )
-            topic_ocr_slice = self._slim_ocr_for_stage_e_image_notes(topic_ocr_slice)
-            topic_ocr_extraction_json_str = json.dumps(
-                topic_ocr_slice, ensure_ascii=False, separators=(",", ":")
+            if not pt:
+                continue
+            st = (r.get("subtopic") or "").strip()
+            sst = (r.get("subsubtopic") or "").strip()
+            if st or sst:
+                out[pt] = {"subtopic": st, "subsubtopic": sst}
+        return out
+
+    def _repair_image_hierarchy_per_topic(
+        self,
+        subchapter_rows: List[Dict[str, Any]],
+        *,
+        filtered_stage4_points: List[Dict[str, Any]],
+        persian_subchapter_name: str,
+        ocr_extraction_data: Dict[str, Any],
+        model_name: str,
+        output_path: str,
+        part_num: int,
+        _progress: Callable[[str], None],
+    ) -> None:
+        """Fill missing subtopic/subsubtopic: Stage4 match, then first-row fallback, then LLM per topic."""
+        by_topic: Dict[str, List[Dict[str, Any]]] = {}
+        for row in subchapter_rows:
+            if not isinstance(row, dict):
+                continue
+            if not self._image_note_row_needs_hierarchy(row):
+                continue
+            tk = (row.get("topic") or "").strip() or "(بدون مبحث)"
+            by_topic.setdefault(tk, []).append(row)
+
+        for topic_key, bad_rows in by_topic.items():
+            topic_pts = [
+                p
+                for p in filtered_stage4_points
+                if (p.get("subchapter") or "").strip() == persian_subchapter_name
+                and ((p.get("topic") or "").strip() or "(بدون مبحث)") == topic_key
+            ]
+            for r in bad_rows:
+                self._fill_row_hierarchy_from_stage4_point_text(r, topic_pts)
+            for r in bad_rows:
+                if self._image_note_row_needs_hierarchy(r):
+                    self._fill_row_hierarchy_from_first_stage4_row(r, topic_pts)
+
+            still_bad = [r for r in bad_rows if self._image_note_row_needs_hierarchy(r)]
+            if not still_bad:
+                continue
+
+            minimal = []
+            for r in still_bad:
+                minimal.append(
+                    {
+                        "point_text": r.get("point_text") or r.get("Points") or "",
+                        "chapter": r.get("chapter", ""),
+                        "subchapter": r.get("subchapter", ""),
+                        "topic": r.get("topic", ""),
+                        "subtopic": r.get("subtopic", ""),
+                        "subsubtopic": r.get("subsubtopic", ""),
+                    }
+                )
+            topic_ocr_json = self._topic_ocr_json_for_stage_e(
+                ocr_extraction_data, persian_subchapter_name, topic_key
             )
-            scope = (
-                f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
-                f"تعداد نقاط Stage 4 در این درخواست: {len(pts)}. "
-                "خروجی JSON را فقط برای تصاویر/مواردی که در این فهرست نقاط هستند تولید کن.]"
-            )
-            full_prompt = self._build_image_notes_stage_e_prompt(
-                prompt_with_subchapter,
-                topic_ocr_extraction_json_str,
-                persian_subchapter_name,
-                pts,
-                scope_note=scope,
-            )
-            label = f"topic «{topic_name}» ({len(pts)} Stage 4 row(s))"
-            response_text, filepic_data, ctx_hit = self._call_image_notes_llm_with_retries(
-                full_prompt,
+            stage4_json = json.dumps(topic_pts, ensure_ascii=False, separators=(",", ":"))
+            incomplete_json = json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))
+            repair_prompt = f"""{self._HIERARCHY_REPAIR_INSTRUCTION}
+
+زیرفصل: {persian_subchapter_name}
+مبحث: {topic_key}
+
+=== OCR (همان مبحث، فقط شکل‌ها) ===
+{topic_ocr_json}
+
+=== Stage 4 (همان مبحث) ===
+{stage4_json}
+
+=== ردیف‌های ناقص (subtopic یا subsubtopic خالی) ===
+{incomplete_json}
+"""
+            label = f"hierarchy repair «{topic_key}» ({len(still_bad)} row(s))"
+            resp, parsed, _ctx = self._call_image_notes_llm_with_retries(
+                repair_prompt,
                 model_name,
-                self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
-                self.SUBCHAPTER_MODEL_MAX_ATTEMPTS,
+                self.STAGE_E_HIERARCHY_REPAIR_MAX_TOKENS,
+                self.STAGE_E_HIERARCHY_REPAIR_MAX_ATTEMPTS,
                 label,
                 _progress,
             )
-
-            if filepic_data:
-                rows = self._filepic_rows_images_only(
-                    self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
-                    persian_subchapter_name,
-                )
-                merged_rows.extend(rows)
+            if parsed:
                 try:
-                    entry: Dict[str, Any] = {
-                        "subchapter_index": part_num,
-                        "subchapter": persian_subchapter_name,
-                        "stage4_point_count": len(pts),
-                        "context_fallback": "topic_only",
-                        "topic": topic_name,
-                        "response_text": response_text,
-                        "response_size_bytes": len((response_text or "").encode("utf-8")),
-                        "processed_at": datetime.now().isoformat(),
-                    }
-                    self._append_stage_e_raw_response_entry(output_path, entry)
-                    self.logger.info(
-                        "  ✓ Raw response (context fallback topic call) for subchapter %r topic %r",
-                        persian_subchapter_name,
-                        topic_name,
-                    )
-                    _progress(
-                        f"  ✓ Topic fallback call: {len(rows)} image row(s) for topic «{topic_name}» "
-                        f"({len(pts)} Stage 4 point(s))"
+                    self._append_stage_e_raw_response_entry(
+                        output_path,
+                        {
+                            "subchapter_index": part_num,
+                            "subchapter": persian_subchapter_name,
+                            "topic": topic_key,
+                            "call_kind": "hierarchy_repair",
+                            "response_text": resp,
+                            "response_size_bytes": len((resp or "").encode("utf-8")),
+                            "processed_at": datetime.now().isoformat(),
+                        },
                     )
                 except Exception as e:
-                    self.logger.error(
-                        "Failed to write raw response (fallback) for %r: %s",
-                        persian_subchapter_name,
-                        e,
-                        exc_info=True,
-                    )
-                continue
+                    self.logger.warning("Could not append hierarchy repair raw: %s", e)
 
-            if ctx_hit:
-                msg = (
-                    f"topic «{topic_name}»: context window exceeded "
-                    f"({len(pts)} Stage 4 row(s)); no bisect configured"
+            patches = self._coerce_hierarchy_repair_patches(parsed) if parsed else {}
+            if not patches:
+                self.logger.warning(
+                    "Hierarchy repair produced no patches for subchapter=%r topic=%r",
+                    persian_subchapter_name,
+                    topic_key,
                 )
-                self.logger.error("Stage E fallback: %s", msg)
-                shard_errors.append(msg)
                 continue
-
-            msg = f"topic «{topic_name}» ({len(pts)} rows): no model response / JSON after retries"
-            self.logger.error("Stage E fallback: %s", msg)
-            shard_errors.append(msg)
-
-        return merged_rows, shard_errors
+            for r in still_bad:
+                pk = self._normalize_point_text_key(
+                    str(r.get("point_text") or r.get("Points") or "")
+                )
+                patch = patches.get(pk)
+                if not patch:
+                    continue
+                if not (r.get("subtopic") or "").strip() and patch.get("subtopic"):
+                    r["subtopic"] = patch["subtopic"]
+                if not (r.get("subsubtopic") or "").strip() and patch.get("subsubtopic"):
+                    r["subsubtopic"] = patch["subsubtopic"]
 
     def process_stage_e(
         self,
@@ -543,6 +818,7 @@ class StageEProcessor(BaseStageProcessor):
                 "source_ocr_extraction": os.path.basename(ocr_extraction_json_path),
                 "model_used": model_name,
                 "division_method": "ocr_extraction_by_subchapter",
+                "stage_e_call_mode": "topic_parallel",
                 "ocr_subchapters": ocr_subchapters,
                 "stage": "E",
             },
@@ -620,133 +896,59 @@ class StageEProcessor(BaseStageProcessor):
                     f"(excluded {len(filtered_stage4_points) - len(image_stage4_points)} other rows including جدول)."
                 )
 
-            ocr_slice = self._filter_ocr_extraction_for_subchapter(
-                ocr_extraction_data, persian_subchapter_name
-            )
-            pre_ocr_chars = len(
-                json.dumps(ocr_slice, ensure_ascii=False, separators=(",", ":"))
-            )
-            # Strip bulk paragraph text — Stage E only needs figure captions vs Stage 4 refs.
-            ocr_slice = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
-            # Compact JSON (no indent) — OCR slices can still be huge in token count.
-            ocr_extraction_json_str = json.dumps(
-                ocr_slice, ensure_ascii=False, separators=(",", ":")
-            )
-            post_ocr_chars = len(ocr_extraction_json_str)
-            if post_ocr_chars < pre_ocr_chars:
-                _progress(
-                    f"OCR JSON trimmed for image notes (figures only): "
-                    f"{pre_ocr_chars:,} → {post_ocr_chars:,} characters."
-                )
-
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
             _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
 
-            full_prompt = self._build_image_notes_stage_e_prompt(
-                prompt_with_subchapter,
-                ocr_extraction_json_str,
-                persian_subchapter_name,
-                image_stage4_points,
-            )
+            topic_groups = self._stage4_points_grouped_by_topic_in_order(image_stage4_points)
+            if not topic_groups:
+                self.logger.warning("No topic buckets for subchapter %r", persian_subchapter_name)
+                _progress(f"Warning: No topic buckets for '{persian_subchapter_name}'. Skipping...")
+                continue
 
             _progress(
-                f"Calling model {model_name} for subchapter '{persian_subchapter_name}'..."
+                f"Stage E topic-parallel: {len(topic_groups)} topic(s) for subchapter "
+                f"'{persian_subchapter_name}' (batch size {self.STAGE_E_TOPIC_BATCH_SIZE})..."
             )
-            response_text, filepic_data, context_hit = self._call_image_notes_llm_with_retries(
-                full_prompt,
-                model_name,
-                self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
-                self.SUBCHAPTER_MODEL_MAX_ATTEMPTS,
-                f"full subchapter ({len(image_stage4_points)} Stage 4 row(s))",
-                _progress,
+            subchapter_filepic_records, topic_errs = self._process_subchapter_image_topics_parallel(
+                topic_groups,
+                prompt_with_subchapter=prompt_with_subchapter,
+                persian_subchapter_name=persian_subchapter_name,
+                ocr_extraction_data=ocr_extraction_data,
+                model_name=model_name,
+                output_path=output_path,
+                part_num=part_num,
+                _progress=_progress,
             )
 
-            subchapter_filepic_records: List[Dict[str, Any]] = []
-
-            if filepic_data:
-                try:
-                    raw_response_entry = {
-                        "subchapter_index": part_num,
-                        "subchapter": persian_subchapter_name,
-                        "stage4_point_count": len(image_stage4_points),
-                        "response_text": response_text,
-                        "response_size_bytes": len((response_text or "").encode("utf-8")),
-                        "processed_at": datetime.now().isoformat(),
-                    }
-                    self._append_stage_e_raw_response_entry(output_path, raw_response_entry)
-                    self.logger.info(
-                        f"  ✓ Added raw response for subchapter '{persian_subchapter_name}' "
-                        "to JSON file immediately"
-                    )
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to write raw response for subchapter '{persian_subchapter_name}': {e}",
-                        exc_info=True,
-                    )
-
-                subchapter_filepic_records = self._filepic_rows_images_only(
-                    self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
-                    persian_subchapter_name,
+            if not subchapter_filepic_records:
+                detail = "; ".join(topic_errs) if topic_errs else "no topic returned usable rows"
+                subchapter_errors.append(
+                    f"{persian_subchapter_name}: topic-parallel produced no rows ({detail})"
                 )
-            elif context_hit:
-                fb_rows, fb_errs = self._stage_e_topic_fallback(
-                    prompt_with_subchapter=prompt_with_subchapter,
-                    ocr_extraction_data=ocr_extraction_data,
-                    persian_subchapter_name=persian_subchapter_name,
-                    image_stage4_points=image_stage4_points,
-                    model_name=model_name,
-                    output_path=output_path,
-                    part_num=part_num,
-                    _progress=_progress,
+                self.logger.error("No image rows for subchapter %r", persian_subchapter_name)
+                _progress(
+                    f"Error: No usable image rows for subchapter '{persian_subchapter_name}'."
                 )
-                subchapter_filepic_records = fb_rows
-                if not subchapter_filepic_records:
-                    detail = "; ".join(fb_errs) if fb_errs else "no topic call returned usable JSON/rows"
-                    subchapter_errors.append(
-                        f"{persian_subchapter_name}: context limit — topic fallback produced "
-                        f"no rows ({detail})"
-                    )
-                    self.logger.error(
-                        "No image rows after context fallback for subchapter %r",
+                continue
+
+            self._repair_image_hierarchy_per_topic(
+                subchapter_filepic_records,
+                filtered_stage4_points=filtered_stage4_points,
+                persian_subchapter_name=persian_subchapter_name,
+                ocr_extraction_data=ocr_extraction_data,
+                model_name=model_name,
+                output_path=output_path,
+                part_num=part_num,
+                _progress=_progress,
+            )
+
+            if topic_errs:
+                for fe in topic_errs:
+                    self.logger.warning(
+                        "Partial topic issue for subchapter %r: %s",
                         persian_subchapter_name,
+                        fe,
                     )
-                    _progress(
-                        f"Error: Context fallback found no usable image rows for "
-                        f"'{persian_subchapter_name}'."
-                    )
-                    continue
-                if fb_errs:
-                    for fe in fb_errs:
-                        self.logger.warning(
-                            "Partial fallback issue for subchapter %r: %s",
-                            persian_subchapter_name,
-                            fe,
-                        )
-            elif not response_text:
-                self.logger.error(
-                    f"No response from model after retries for subchapter '{persian_subchapter_name}'"
-                )
-                _progress(
-                    f"Error: Failed to get response from model for subchapter "
-                    f"'{persian_subchapter_name}'."
-                )
-                subchapter_errors.append(
-                    f"{persian_subchapter_name}: no model response after retries"
-                )
-                continue
-            else:
-                self.logger.error(
-                    f"Failed to extract JSON from model response for subchapter "
-                    f"'{persian_subchapter_name}'"
-                )
-                _progress(
-                    f"Error: Failed to extract JSON from model response for subchapter "
-                    f"'{persian_subchapter_name}'."
-                )
-                subchapter_errors.append(
-                    f"{persian_subchapter_name}: JSON parse failed after retries"
-                )
-                continue
 
             if subchapter_filepic_records:
                 all_filepic_records.extend(subchapter_filepic_records)
@@ -844,6 +1046,7 @@ class StageEProcessor(BaseStageProcessor):
                 "total_records": len(all_filepic_records),
                 "records_with_caption": caption_count,
                 "division_method": "ocr_extraction_by_subchapter",
+                "stage_e_call_mode": "topic_parallel",
                 "ocr_subchapters": ocr_subchapters
             }
             # Save original all_filepic_records with caption (before processing)
@@ -895,7 +1098,8 @@ class StageEProcessor(BaseStageProcessor):
             for k, v in stage4_metadata.items():
                 if k not in ["stage", "processed_at", "total_records"]:
                     current_data["metadata"][k] = v
-            
+            current_data["metadata"]["stage_e_call_mode"] = "topic_parallel"
+
             # Remove raw_responses from final output
             if "raw_responses" in current_data:
                 del current_data["raw_responses"]
