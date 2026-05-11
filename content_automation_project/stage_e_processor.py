@@ -310,7 +310,7 @@ class StageEProcessor(BaseStageProcessor):
         self,
         *,
         prompt_with_subchapter: str,
-        ocr_extraction_json_str: str,
+        ocr_extraction_data: Dict[str, Any],
         persian_subchapter_name: str,
         image_stage4_points: List[Dict[str, Any]],
         model_name: str,
@@ -339,6 +339,15 @@ class StageEProcessor(BaseStageProcessor):
         shard_errors: List[str] = []
 
         for topic_name, pts in topic_groups:
+            topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
+                ocr_extraction_data,
+                persian_subchapter_name,
+                topic_name,
+            )
+            topic_ocr_slice = self._slim_ocr_for_stage_e_image_notes(topic_ocr_slice)
+            topic_ocr_extraction_json_str = json.dumps(
+                topic_ocr_slice, ensure_ascii=False, separators=(",", ":")
+            )
             scope = (
                 f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
                 f"تعداد نقاط Stage 4 در این درخواست: {len(pts)}. "
@@ -346,7 +355,7 @@ class StageEProcessor(BaseStageProcessor):
             )
             full_prompt = self._build_image_notes_stage_e_prompt(
                 prompt_with_subchapter,
-                ocr_extraction_json_str,
+                topic_ocr_extraction_json_str,
                 persian_subchapter_name,
                 pts,
                 scope_note=scope,
@@ -682,7 +691,7 @@ class StageEProcessor(BaseStageProcessor):
             elif context_hit:
                 fb_rows, fb_errs = self._stage_e_topic_fallback(
                     prompt_with_subchapter=prompt_with_subchapter,
-                    ocr_extraction_json_str=ocr_extraction_json_str,
+                    ocr_extraction_data=ocr_extraction_data,
                     persian_subchapter_name=persian_subchapter_name,
                     image_stage4_points=image_stage4_points,
                     model_name=model_name,

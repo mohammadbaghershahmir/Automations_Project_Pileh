@@ -455,6 +455,63 @@ class BaseStageProcessor:
             )
         return result
 
+    def _filter_ocr_extraction_for_subchapter_topic(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+        topic_name: str,
+    ) -> Dict[str, Any]:
+        """
+        Build a minimal OCR Extraction JSON containing only one topic inside one subchapter.
+        Used by context-window fallback paths to minimize input tokens.
+        """
+        sub_target = (subchapter_name or "").strip()
+        topic_target = (topic_name or "").strip()
+        if not sub_target or not topic_target:
+            return {"chapters": []}
+
+        out_chapters: List[Dict[str, Any]] = []
+        for chapter_obj in ocr_extraction_data.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+
+            matched_subs: List[Dict[str, Any]] = []
+            for sub in chapter_obj.get("subchapters", []) or []:
+                if not isinstance(sub, dict):
+                    continue
+                if (sub.get("subchapter", "") or "").strip() != sub_target:
+                    continue
+
+                topic_matches = [
+                    t
+                    for t in sub.get("topics", []) or []
+                    if isinstance(t, dict) and (t.get("topic", "") or "").strip() == topic_target
+                ]
+                if not topic_matches:
+                    continue
+
+                new_sub = dict(sub)
+                new_sub["topics"] = topic_matches
+                matched_subs.append(new_sub)
+
+            if matched_subs:
+                out_chapters.append(
+                    {"chapter": chapter_obj.get("chapter", ""), "subchapters": matched_subs}
+                )
+
+        result: Dict[str, Any] = {"chapters": out_chapters}
+        for key in ("metadata", "book", "title", "source_file"):
+            if key in ocr_extraction_data:
+                result[key] = ocr_extraction_data[key]
+
+        if not out_chapters:
+            self.logger.warning(
+                "OCR topic slice has no matches for subchapter=%r topic=%r",
+                subchapter_name,
+                topic_name,
+            )
+        return result
+
     def _slim_ocr_for_stage_e_image_notes(self, ocr_slice: Dict[str, Any]) -> Dict[str, Any]:
         """
         Image-note (Stage E) prompts only need figure / e-figure captions from OCR.

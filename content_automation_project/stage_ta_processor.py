@@ -239,7 +239,7 @@ class StageTAProcessor(BaseStageProcessor):
         self,
         *,
         prompt_with_subchapter: str,
-        ocr_extraction_json_str: str,
+        ocr_extraction_data: Dict[str, Any],
         persian_subchapter_name: str,
         filtered_stage_e_points: List[Dict[str, Any]],
         subchapter_tables: List[Dict[str, Any]],
@@ -264,6 +264,14 @@ class StageTAProcessor(BaseStageProcessor):
                 )
                 continue
 
+            topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
+                ocr_extraction_data,
+                persian_subchapter_name,
+                topic_name,
+            )
+            topic_ocr_extraction_json_str = json.dumps(
+                topic_ocr_slice, ensure_ascii=False, separators=(",", ":")
+            )
             scope = (
                 f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
                 f"تعداد نقاط Stage E در این درخواست: {len(topic_points)}. "
@@ -271,7 +279,7 @@ class StageTAProcessor(BaseStageProcessor):
             )
             full_prompt = self._build_stage_ta_prompt(
                 prompt_with_subchapter=prompt_with_subchapter,
-                ocr_extraction_json_str=ocr_extraction_json_str,
+                ocr_extraction_json_str=topic_ocr_extraction_json_str,
                 persian_subchapter_name=persian_subchapter_name,
                 stage_e_points=topic_points,
                 subchapter_tables=topic_tables,
@@ -558,7 +566,7 @@ class StageTAProcessor(BaseStageProcessor):
             elif context_hit:
                 fb_rows, fb_errs = self._stage_ta_topic_fallback(
                     prompt_with_subchapter=prompt_with_subchapter,
-                    ocr_extraction_json_str=ocr_extraction_json_str,
+                    ocr_extraction_data=ocr_extraction_data,
                     persian_subchapter_name=persian_subchapter_name,
                     filtered_stage_e_points=filtered_stage_e_points,
                     subchapter_tables=subchapter_tables,
