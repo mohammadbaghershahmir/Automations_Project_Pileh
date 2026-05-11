@@ -457,23 +457,33 @@ class BaseStageProcessor:
 
     def _slim_ocr_for_stage_e_image_notes(self, ocr_slice: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Image-note prompts only need figure/table captions from OCR. Bulk `text` extractions
-        often dominate token count and can push requests over the provider context limit,
-        while adding little for caption writing for تصویر/جدول lines.
+        Image-note (Stage E) prompts only need figure / e-figure captions from OCR.
+        Tables belong to Table Notes (Stage TA). Bulk `text` extractions are dropped to save tokens.
         """
         slim = copy.deepcopy(ocr_slice)
+
+        def _ocr_type_is_image_only(type_str: str) -> bool:
+            x = (type_str or "").strip().lower().replace(" ", "")
+            if not x or x == "text":
+                return False
+            if x in ("table", "etable", "e-table", "e_table"):
+                return False
+            if x in ("figure", "e-figure", "efigure", "fig", "image", "e-image", "eimage"):
+                return True
+            if x.startswith("e-") and "fig" in x:
+                return True
+            return False
 
         def _slim_extractions(extractions: Any) -> Any:
             if isinstance(extractions, list):
                 return [
                     item
                     for item in extractions
-                    if isinstance(item, dict)
-                    and (item.get("type") or "").strip().lower() != "text"
+                    if isinstance(item, dict) and _ocr_type_is_image_only(str(item.get("type", "")))
                 ]
             if isinstance(extractions, dict):
                 out: Dict[str, Any] = {}
-                for key in ("tables", "figs", "figures", "images"):
+                for key in ("figs", "figures", "images"):
                     if key in extractions:
                         out[key] = extractions[key]
                 return out

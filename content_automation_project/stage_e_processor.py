@@ -53,7 +53,45 @@ class StageEProcessor(BaseStageProcessor):
             return []
         self.logger.warning(f"Unexpected JSON structure from model: {type(filepic_data)}")
         return []
-    
+
+    @staticmethod
+    def _stage4_point_is_image_anchor(point: Dict[str, Any]) -> bool:
+        """True if this lesson row is an image slot (تصویر / Fig…), not a table (جدول / Table…)."""
+        ref = (point.get("point_text") or point.get("Points") or "").strip()
+        if not ref:
+            return False
+        if ref.startswith("جدول"):
+            return False
+        low = ref.lower()
+        if low.startswith("table"):
+            return False
+        if ref.startswith("تصویر"):
+            return True
+        if low.startswith("fig.") or low.startswith("figure"):
+            return True
+        return False
+
+    def _filepic_rows_images_only(
+        self, rows: List[Dict[str, Any]], persian_subchapter_name: str
+    ) -> List[Dict[str, Any]]:
+        """Drop table rows the model may still emit; image notes must not create table points."""
+        kept: List[Dict[str, Any]] = []
+        dropped = 0
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            pt = (r.get("point_text") or "").strip()
+            if pt.startswith("جدول") or pt.lower().startswith("table"):
+                dropped += 1
+                continue
+            kept.append(r)
+        if dropped:
+            self.logger.info(
+                f"Removed {dropped} table-like row(s) from model output for subchapter "
+                f"'{persian_subchapter_name}' (image notes are figures only)."
+            )
+        return kept
+
     def process_stage_e(
         self,
         stage4_path: str,
@@ -214,6 +252,25 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Warning: No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping...")
                 continue
 
+            image_stage4_points = [
+                p for p in filtered_stage4_points if self._stage4_point_is_image_anchor(p)
+            ]
+            if not image_stage4_points:
+                self.logger.warning(
+                    f"No image-anchor Stage 4 rows (تصویر/…) for subchapter '{persian_subchapter_name}'; "
+                    f"skipping (tables belong to Table Notes)."
+                )
+                _progress(
+                    f"Warning: No image rows in Stage 4 for '{persian_subchapter_name}' "
+                    f"({len(filtered_stage4_points)} non-image or unlabeled points). Skipping..."
+                )
+                continue
+            if len(image_stage4_points) < len(filtered_stage4_points):
+                _progress(
+                    f"Using {len(image_stage4_points)} image-anchor Stage 4 row(s) for this call "
+                    f"(excluded {len(filtered_stage4_points) - len(image_stage4_points)} non-image rows including جدول)."
+                )
+
             ocr_slice = self._filter_ocr_extraction_for_subchapter(
                 ocr_extraction_data, persian_subchapter_name
             )
@@ -237,7 +294,7 @@ class StageEProcessor(BaseStageProcessor):
             _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
 
             stage4_json_str = json.dumps(
-                filtered_stage4_points, ensure_ascii=False, separators=(",", ":")
+                image_stage4_points, ensure_ascii=False, separators=(",", ":")
             )
 
             full_prompt = f"""{prompt_with_subchapter}
@@ -248,7 +305,7 @@ class StageEProcessor(BaseStageProcessor):
 {ocr_extraction_json_str}
 
 ==================================================
-فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — {len(filtered_stage4_points)} نقطه):
+فایل JSON ساختار سلسله‌مراتبی درسنامه نهایی (Stage 4 JSON — زیرفصل '{persian_subchapter_name}' — فقط ردیف‌های تصویر — {len(image_stage4_points)} نقطه):
 ==================================================
 {stage4_json_str}
 """
@@ -365,7 +422,7 @@ class StageEProcessor(BaseStageProcessor):
                 raw_response_entry = {
                     "subchapter_index": part_num,
                     "subchapter": persian_subchapter_name,
-                    "stage4_point_count": len(filtered_stage4_points),
+                    "stage4_point_count": len(image_stage4_points),
                     "response_text": response_text,
                     "response_size_bytes": len(response_text.encode("utf-8")),
                     "processed_at": datetime.now().isoformat(),
@@ -388,8 +445,9 @@ class StageEProcessor(BaseStageProcessor):
                     exc_info=True,
                 )
 
-            subchapter_filepic_records = self._coerce_filepic_rows(
-                filepic_data, persian_subchapter_name
+            subchapter_filepic_records = self._filepic_rows_images_only(
+                self._coerce_filepic_rows(filepic_data, persian_subchapter_name),
+                persian_subchapter_name,
             )
 
             if subchapter_filepic_records:
