@@ -9,11 +9,13 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
 from unified_api_client import UnifiedAPIClient
+from webapp.database import SessionLocal
 from webapp.job_files import job_root, register_input_artifact
 
 logger = logging.getLogger(__name__)
@@ -43,12 +45,15 @@ class PromptCapturingUnifiedClient:
         self._job_type = job_type or "unknown"
         self._pipeline_step = pipeline_step
         self._seq = 0
+        self._seq_lock = threading.Lock()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
 
     def process_text(self, *args: Any, **kwargs: Any) -> Optional[str]:
-        self._seq += 1
+        with self._seq_lock:
+            self._seq += 1
+            seq = self._seq
         text = kwargs.get("text")
         if text is None and args:
             text = args[0]
@@ -65,7 +70,7 @@ class PromptCapturingUnifiedClient:
             f"pair_index: {self._pair_index}\n"
             f"job_type: {self._job_type}\n"
             f"pipeline_step: {self._pipeline_step}\n"
-            f"call_sequence: {self._seq:04d}\n"
+            f"call_sequence: {seq:04d}\n"
             f"model_name (argument): {model_name!r}\n"
             f"temperature: {temperature!r}\n"
             f"max_tokens: {max_tokens!r}\n"
@@ -84,13 +89,19 @@ class PromptCapturingUnifiedClient:
             os.makedirs(prompts_dir, exist_ok=True)
             jt = _safe_filename_part(self._job_type)
             ps = _safe_filename_part(self._pipeline_step)
-            fn = f"{self._seq:04d}_{ps}_{jt}.txt"
+            fn = f"{seq:04d}_{ps}_{jt}.txt"
             abs_path = os.path.join(prompts_dir, fn)
             with open(abs_path, "w", encoding="utf-8") as f:
                 f.write(full_dump)
             rel_path = os.path.relpath(abs_path, base).replace("\\", "/")
             role = f"llm_prompt_{self._pipeline_step}"
-            register_input_artifact(self._db, self._job_id, self._pair_index, base, rel_path, role)
+            cap_db = SessionLocal()
+            try:
+                register_input_artifact(
+                    cap_db, self._job_id, self._pair_index, base, rel_path, role
+                )
+            finally:
+                cap_db.close()
         except Exception as e:
             logger.warning("Failed to save LLM prompt capture: %s", e)
 

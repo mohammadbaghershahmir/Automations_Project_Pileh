@@ -430,10 +430,6 @@ class StageEProcessor(BaseStageProcessor):
                     persian_subchapter_name,
                     topic_name,
                 )
-                _progress(
-                    f"  ✓ Topic call ({raw_response_kind}): {len(rows)} image row(s) for "
-                    f"«{topic_name}» ({len(pts)} Stage 4 point(s))"
-                )
             except Exception as e:
                 self.logger.error(
                     "Failed to write raw response for %r / %r: %s",
@@ -476,6 +472,10 @@ class StageEProcessor(BaseStageProcessor):
         results_by_idx: Dict[int, Tuple[str, List[Dict[str, Any]], Optional[str]]] = {}
         topic_errors: List[str] = []
 
+        def _progress_log_only(msg: str) -> None:
+            """Workers must not touch the task's SQLAlchemy Session (see append_log / pair ORM)."""
+            self.logger.info("%s", msg)
+
         batch_size = self.STAGE_E_TOPIC_BATCH_SIZE
         total_batches = (n_topics + batch_size - 1) // batch_size
         for batch_num, start in enumerate(range(0, n_topics, batch_size), 1):
@@ -500,7 +500,7 @@ class StageEProcessor(BaseStageProcessor):
                         model_name=model_name,
                         output_path=output_path,
                         part_num=part_num,
-                        _progress=_progress,
+                        _progress=_progress_log_only,
                         raw_response_kind="topic_parallel",
                     )
                     future_to_idx[fut] = tidx
@@ -516,10 +516,21 @@ class StageEProcessor(BaseStageProcessor):
                         topic_name_guess = topic_groups[tidx][0] if 0 <= tidx < n_topics else "?"
                         results_by_idx[tidx] = (topic_name_guess, [], str(e))
                         topic_errors.append(f"topic idx {tidx}: worker error: {e}")
+                        _progress(
+                            f"  ✗ Topic (topic_parallel) idx {tidx} «{topic_name_guess}»: "
+                            f"worker crashed: {e}"
+                        )
                         continue
                     results_by_idx[ti] = (tn, rows, err)
+                    pts = topic_groups[ti][1]
                     if err:
                         topic_errors.append(err)
+                        _progress(f"  ✗ Topic (topic_parallel): «{tn}» — {err}")
+                    else:
+                        _progress(
+                            f"  ✓ Topic call (topic_parallel): {len(rows)} image row(s) for "
+                            f"«{tn}» ({len(pts)} Stage 4 point(s))"
+                        )
 
         merged: List[Dict[str, Any]] = []
         for i in range(n_topics):
