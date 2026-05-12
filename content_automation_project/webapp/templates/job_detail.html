@@ -35,7 +35,7 @@
   <form method="post" action="/jobs/{{ job.id }}/pairing" enctype="multipart/form-data">
     <table>
       <thead>
-        <tr><th>#</th><th>Stage J</th><th>Word file</th></tr>
+        <tr><th>#</th><th>{% if job.type in ('test_bank', 'test_bank_1') %}Table notes (Stage J){% else %}Stage J{% endif %}</th><th>Word file</th></tr>
       </thead>
       <tbody>
         {% for p in pairs %}
@@ -65,7 +65,7 @@
   <p class="muted" style="margin-top:0;">Current pairing (read-only).</p>
   <table>
     <thead>
-      <tr><th>#</th><th>Stage J</th><th>Word file</th></tr>
+      <tr><th>#</th><th>{% if job.type in ('test_bank', 'test_bank_1') %}Table notes (Stage J){% else %}Stage J{% endif %}</th><th>Word file</th></tr>
     </thead>
     <tbody>
       {% for p in pairs %}
@@ -104,7 +104,7 @@
         {% elif job.type == 'image_file_catalog' %}
         <th>Image notes (Stage E)</th><th>Filepic JSON</th>
         {% elif job.type == 'test_bank_2' %}
-        <th>Stage J</th><th>Word</th><th>Test Bank 1 combined</th>
+        <th>Table notes (Stage J)</th><th>Word</th><th>Test Bank 1 combined</th>
         {% else %}
         <th>OCR extraction JSON</th>
         {% endif %}
@@ -202,13 +202,13 @@
   <p class="muted" style="margin-top:0;">Image notes (Stage E) → catalog JSON (<code>f_*.json</code>) per pair. Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'test_bank_1' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Test Bank 1</h2>
-  <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined JSON. Runs in the <strong>background worker</strong>. Download <code>step1_combined_*.json</code> below for <strong>Test Bank 2</strong> or Importance&nbsp;&amp;&nbsp;Type.</p>
+  <p class="muted" style="margin-top:0;">Table notes output (Stage J JSON) + Word → Step&nbsp;1 combined JSON. Runs in the <strong>background worker</strong>. Download <code>step1_combined_*.json</code> below for <strong>Test Bank 2</strong> or Importance&nbsp;&amp;&nbsp;Type.</p>
   {% elif job.type == 'test_bank_2' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Test Bank 2</h2>
-  <p class="muted" style="margin-top:0;">Uses your uploaded Test Bank&nbsp;1 combined JSON plus Stage J and Word → refined tests. Runs in the <strong>background worker</strong>.</p>
+  <p class="muted" style="margin-top:0;">Uses your uploaded Test Bank&nbsp;1 combined JSON plus the same Table notes (Stage J) JSON and Word files → refined tests. Runs in the <strong>background worker</strong>.</p>
   {% else %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Initial outputs</h2>
-  <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
+  <p class="muted" style="margin-top:0;">Table notes output (Stage J JSON) + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
   {% endif %}
   {% set p0 = pairs[0] if pairs else none %}
   {% if is_job_owner %}

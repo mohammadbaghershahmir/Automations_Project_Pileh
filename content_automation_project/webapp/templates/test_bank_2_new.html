@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
 {% endif %}
-<p class="muted">Stage V Step 2 only. Upload the <strong>same</strong> Stage J JSON and Word files you used for Test Bank 1, plus the <code>step1_combined_*.json</code> files exported from your Test Bank 1 job. Files are matched to pairs by book/chapter when possible. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
+<p class="muted">Stage V Step 2 only. Upload the <strong>same</strong> Table notes output JSON and Word files you used for Test Bank 1, plus the <code>step1_combined_*.json</code> files from that job. Files are matched to pairs by book/chapter when possible. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
 
 <form method="post" action="/jobs/test-bank-2" enctype="multipart/form-data">
   <div class="card">
@@ -22,8 +22,8 @@
     <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Biology ch. 3 — Step 2" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Stage J JSON files</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">Same lesson JSON as for Test Bank 1.</p>
+    <h2 style="margin-top:0;font-size:1rem;">Table notes output (Stage J JSON)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Same files as for Test Bank 1 — output of your <strong>Table notes</strong> job.</p>
     <input type="file" name="stage_j_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">

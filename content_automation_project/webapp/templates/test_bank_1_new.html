@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
 {% endif %}
-<p class="muted">Stage V Step 1 only: upload Stage J JSON and Word files (same pairing as desktop). Output is <code>step1_combined_*.json</code> — use that file in <strong>Test Bank 2</strong> together with the same Stage J and Word files. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
+<p class="muted">Stage V Step 1 only: upload the <strong>Table notes</strong> lesson JSON (Stage J / merged table-notes output) plus Word files (same pairing as desktop). Output is <code>step1_combined_*.json</code> — use that file in <strong>Test Bank 2</strong> together with the same JSON and Word files. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
 
 <form method="post" action="/jobs/test-bank-1" enctype="multipart/form-data">
   <div class="card">
@@ -22,7 +22,8 @@
     <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Biology ch. 3 — winter term" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Stage J JSON files</h2>
+    <h2 style="margin-top:0;font-size:1rem;">Table notes output (Stage J JSON)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">JSON produced by a <strong>Table notes</strong> web job (Stage TA merged lesson file — same role as Stage J in the desktop pipeline).</p>
     <input type="file" name="stage_j_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
