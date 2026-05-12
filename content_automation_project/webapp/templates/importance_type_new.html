@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}New Importance & Type{% endblock %}
+{% block head %}
+<style>
+  .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
+  .tb-row input[type="text"] { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Importance &amp; Type Tagging</h1>
+{% if multipart_ok is defined and not multipart_ok %}
+<p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
+{% endif %}
+<p class="muted"><strong>Stage J (web)</strong>: upload four JSON groups with <strong>matching counts</strong>. After sorting by filename within each group, row <strong>i</strong> across groups is one pair: TA merged lesson JSON (table notes output), tablepic JSON, filepic JSON, and Test Bank Step&nbsp;1 combined JSON.</p>
+
+<form method="post" action="/jobs/importance-type" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
+    <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Ch.3 Imp/Type" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">TA merged JSON (table notes / lesson)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Large merged output from <strong>Table notes</strong> (Stage TA), e.g. <code>ta*.json</code>.</p>
+    <input type="file" name="ta_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Tablepic JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Table captions keyed by topic (<code>*_tablepic.json</code>).</p>
+    <input type="file" name="tablepic_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Filepic JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Image captions keyed by topic (<code>*_filepic.json</code>).</p>
+    <input type="file" name="filepic_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Step 1 combined JSON (Test Bank)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;"><code>step1_combined_*.json</code> from Test Bank Step&nbsp;1.</p>
+    <input type="file" name="step1_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Prompt &amp; model</h2>
+    <label>Prompt</label>
+    <textarea name="prompt" dir="auto">{{ default_prompt }}</textarea>
+    <div class="tb-row">
+      <label>Provider <input type="text" name="provider" value="openrouter" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model" value="z-ai/glm-5" autocomplete="off"/></label>
+    </div>
+    <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
+    <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+  </div>
+</form>
+{% endblock %}

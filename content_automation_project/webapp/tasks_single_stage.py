@@ -753,6 +753,161 @@ def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
         db.close()
 
 
+def run_importance_type_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Web Stage J: TA merged JSON + tablepic + filepic + Step 1 combined → a*.json (parallel chunk LLM calls)."""
+    from stage_j_processor import StageJProcessor
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        prompt = (cfg.get("prompt") or "").strip()
+        if not prompt:
+            from webapp.default_prompts import get_default_importance_type_prompt
+
+            prompt = get_default_importance_type_prompt()
+        model_name = (cfg.get("model") or "z-ai/glm-5").strip()
+        delay_seconds = float(cfg.get("delay_seconds", 5))
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(
+            db,
+            job_id,
+            "Importance & Type runner started (TA merged + tablepic + filepic + Step 1 combined per pair).",
+            None,
+        )
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        client, _ssm = build_unified_api_client()
+        jt = (job.type or "importance_type").strip()
+        base = job_root(job_id)
+        cancel_check = _cancel_check_session(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            pm = (cfg.get("pair_media") or {}).get(str(pair.pair_index), {})
+            rel_tp = (pm.get("tablepic_relpath") or "").strip()
+            rel_fp = (pm.get("filepic_relpath") or "").strip()
+
+            if not pair.stage_j_relpath or not pair.word_relpath or not rel_tp or not rel_fp:
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing TA merged JSON, Step 1 combined, tablepic, or filepic path"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (incomplete pair)", pair.pair_index)
+                continue
+
+            abs_ta = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            abs_s1 = os.path.join(base, pair.word_relpath.replace("/", os.sep))
+            abs_tp = os.path.join(base, rel_tp.replace("/", os.sep))
+            abs_fp = os.path.join(base, rel_fp.replace("/", os.sep))
+            if not os.path.isfile(abs_ta) or not os.path.isfile(abs_s1) or not os.path.isfile(abs_tp) or not os.path.isfile(abs_fp):
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing input JSON on disk"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: input file missing on disk", pair.pair_index)
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            processor = StageJProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
+
+            def progress(msg: str) -> None:
+                append_log(db, job_id, msg, pair.pair_index)
+                if _scalar_cancel_requested(db, job_id):
+                    raise JobCancelled()
+
+            try:
+                append_log(
+                    db,
+                    job_id,
+                    f"--- Importance & Type (Stage J web) start pair {pair.pair_index} ---",
+                    pair.pair_index,
+                )
+                try:
+                    result = processor.process_stage_j_web_four_json(
+                        ta_json_path=abs_ta,
+                        tablepic_json_path=abs_tp,
+                        filepic_json_path=abs_fp,
+                        step1_combined_path=abs_s1,
+                        prompt=prompt,
+                        model_name=model_name,
+                        output_dir=os.path.dirname(abs_ta),
+                        progress_callback=progress,
+                        cancel_check=cancel_check,
+                    )
+                except JobCancelled:
+                    _finalize_step1_cancelled(db, job_id, pairs)
+                    return
+                if result and os.path.isfile(result):
+                    pair.step1_status = "succeeded"
+                    rel_inputs = f"pair_{pair.pair_index}/inputs"
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_inputs)
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Importance & Type returned no output"
+                    append_log(db, job_id, f"pair {pair.pair_index}: Importance & Type failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("Importance & Type error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if i < len(pairs) - 1 and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- Importance & Type job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_importance_type_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "Importance & Type", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+
 def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
     """Stage F: image notes (Stage E) JSON → catalog JSON f_*.json under pair output (optional filepic JSON beside Stage E in inputs)."""
     from stage_f_processor import StageFProcessor

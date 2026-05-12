@@ -34,6 +34,7 @@ from webapp.bootstrap import (
 from webapp.default_prompts import (
     get_default_document_processing_prompt,
     get_default_image_notes_prompt,
+    get_default_importance_type_prompt,
     get_default_ocr_extraction_prompt,
     get_default_pre_ocr_prompt,
     get_default_step1_prompt,
@@ -194,6 +195,7 @@ JOB_STAGE_LABELS = {
     "stage_f": "Image File Catalog",
     # Importance & Type Tagging — Stage J
     "importance_type_tagging": "Importance & Type Tagging",
+    "importance_type": "Importance & Type Tagging",
     "stage_j": "Importance & Type Tagging",
     # Flashcard Generation — Stage H
     "flashcard": "Flashcard Generation",
@@ -516,6 +518,18 @@ def create_app() -> FastAPI:
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": get_default_table_notes_prompt(),
+            },
+        )
+
+    @app.get("/importance-type/new", response_class=HTMLResponse)
+    def importance_type_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "importance_type_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_importance_type_prompt(),
             },
         )
 
@@ -1178,6 +1192,149 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/importance-type")
+        async def create_importance_type_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            ta_json_files: List[UploadFile] = File(...),
+            tablepic_json_files: List[UploadFile] = File(...),
+            filepic_json_files: List[UploadFile] = File(...),
+            step1_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("openrouter"),
+            model: str = Form("z-ai/glm-5"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="imptype_upload_")
+            try:
+
+                async def _collect_uploads(files: List[UploadFile], subdir: str) -> List[str]:
+                    paths: List[str] = []
+                    for uf in files:
+                        if not uf.filename:
+                            continue
+                        dest = os.path.join(tmp, subdir, os.path.basename(uf.filename))
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        content = await uf.read()
+                        with open(dest, "wb") as f:
+                            f.write(content)
+                        paths.append(dest)
+                    return paths
+
+                ta_paths = await _collect_uploads(ta_json_files, "ta")
+                tp_paths = await _collect_uploads(tablepic_json_files, "tp")
+                fp_paths = await _collect_uploads(filepic_json_files, "fp")
+                s1_paths = await _collect_uploads(step1_json_files, "s1")
+
+                ta_sorted = _sorted_nonempty_paths(ta_paths)
+                tp_sorted = _sorted_nonempty_paths(tp_paths)
+                fp_sorted = _sorted_nonempty_paths(fp_paths)
+                s1_sorted = _sorted_nonempty_paths(s1_paths)
+                n_ta, n_tp, n_fp, n_s1 = len(ta_sorted), len(tp_sorted), len(fp_sorted), len(s1_sorted)
+                if not ta_sorted or not tp_sorted or not fp_sorted or not s1_sorted:
+                    raise HTTPException(
+                        400,
+                        "Upload at least one file in each group: TA merged JSON, tablepic, filepic, Step 1 combined.",
+                    )
+                if n_ta != n_tp or n_ta != n_fp or n_ta != n_s1:
+                    raise HTTPException(
+                        400,
+                        f"File counts must match: TA ({n_ta}), tablepic ({n_tp}), filepic ({n_fp}), Step 1 ({n_s1}). "
+                        "Sort order is by filename within each group.",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_importance_type_prompt()
+                pair_media: dict = {}
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                for pair_index, (ta_p, tp_p, fp_p, s1_p) in enumerate(
+                    zip(ta_sorted, tp_sorted, fp_sorted, s1_sorted)
+                ):
+                    ensure_dirs(job_id, pair_index)
+                    tan = os.path.basename(ta_p)
+                    tpn = os.path.basename(tp_p)
+                    fpn = os.path.basename(fp_p)
+                    s1n = os.path.basename(s1_p)
+                    rel_ta = f"pair_{pair_index}/inputs/{tan}"
+                    rel_tp = f"pair_{pair_index}/inputs/{tpn}"
+                    rel_fp = f"pair_{pair_index}/inputs/{fpn}"
+                    rel_s1 = f"pair_{pair_index}/inputs/{s1n}"
+                    shutil.copy2(ta_p, os.path.join(root, rel_ta.replace("/", os.sep)))
+                    shutil.copy2(tp_p, os.path.join(root, rel_tp.replace("/", os.sep)))
+                    shutil.copy2(fp_p, os.path.join(root, rel_fp.replace("/", os.sep)))
+                    shutil.copy2(s1_p, os.path.join(root, rel_s1.replace("/", os.sep)))
+                    pair_media[str(pair_index)] = {
+                        "tablepic_relpath": rel_tp,
+                        "filepic_relpath": rel_fp,
+                        "tablepic_basename": tpn,
+                        "filepic_basename": fpn,
+                    }
+
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                    "pair_media": pair_media,
+                }
+                job = Job(
+                    id=job_id,
+                    type="importance_type",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, (ta_p, tp_p, fp_p, s1_p) in enumerate(
+                    zip(ta_sorted, tp_sorted, fp_sorted, s1_sorted)
+                ):
+                    tan = os.path.basename(ta_p)
+                    tpn = os.path.basename(tp_p)
+                    fpn = os.path.basename(fp_p)
+                    s1n = os.path.basename(s1_p)
+                    rel_ta = f"pair_{pair_index}/inputs/{tan}"
+                    rel_tp = f"pair_{pair_index}/inputs/{tpn}"
+                    rel_fp = f"pair_{pair_index}/inputs/{fpn}"
+                    rel_s1 = f"pair_{pair_index}/inputs/{s1n}"
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=tan,
+                            word_filename=s1n,
+                            stage_j_relpath=rel_ta,
+                            word_relpath=rel_s1,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_ta, "upload_ta_merged_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_tp, "upload_tablepic_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_fp, "upload_filepic_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_s1, "upload_step1_combined_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
         @app.post("/jobs/image-file-catalog")
         async def create_image_file_catalog_job(
             user: CurrentUser,
@@ -1314,6 +1471,10 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/table-notes")
         def create_table_notes_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/importance-type")
+        def create_importance_type_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
         @app.post("/jobs/image-file-catalog")
