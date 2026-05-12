@@ -8,7 +8,9 @@ import json
 import logging
 import math
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable, Tuple
 from base_stage_processor import BaseStageProcessor
@@ -18,16 +20,19 @@ from api_layer import APIConfig
 class StageTAProcessor(BaseStageProcessor):
     """Process Stage TA: Generate table notes and merge with Stage E data"""
 
-    # One API call per OCR subchapter (all Stage E points for that subchapter + tables in one prompt).
     SUBCHAPTER_MODEL_MAX_ATTEMPTS = 6
     SUBCHAPTER_MODEL_TIMEOUT_S = 900.0
     SUBCHAPTER_RETRY_BACKOFF_CAP_S = 120.0
     # Table-note JSON arrays are large; low completion caps truncate mid-object → unparseable JSON.
     SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS = 32768
+    # Default: one LLM call per Stage-E topic bucket (with tables), batched like Stage E image notes.
+    STAGE_TA_TOPIC_BATCH_SIZE = 10
 
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
+        self._stage_ta_raw_lock = threading.Lock()
+        self._stage_ta_api_lock = threading.Lock()
 
     def _tablepic_rows_from_parsed(self, tablepic_data: Any, persian_subchapter_name: str) -> List[Dict[str, Any]]:
         """Normalize model output (list or dict with data/rows/payload) to a list of row dicts."""
@@ -131,13 +136,15 @@ class StageTAProcessor(BaseStageProcessor):
     def _append_stage_ta_raw_response_entry(
         self, output_path: str, entry: Dict[str, Any]
     ) -> None:
-        with open(output_path, "r", encoding="utf-8") as f:
-            current_data = json.load(f)
-        current_data["raw_responses"].append(entry)
-        current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
-        current_data["metadata"]["processed_at"] = datetime.now().isoformat()
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(current_data, f, ensure_ascii=False, indent=2)
+        """Append one raw model response to the Stage TA incremental JSON file (thread-safe)."""
+        with self._stage_ta_raw_lock:
+            with open(output_path, "r", encoding="utf-8") as f:
+                current_data = json.load(f)
+            current_data["raw_responses"].append(entry)
+            current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
+            current_data["metadata"]["processed_at"] = datetime.now().isoformat()
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(current_data, f, ensure_ascii=False, indent=2)
 
     def _call_table_notes_llm_with_retries(
         self,
@@ -167,14 +174,15 @@ class StageTAProcessor(BaseStageProcessor):
                 )
 
             try:
-                response_text = self.api_client.process_text(
-                    text=full_prompt,
-                    system_prompt=None,
-                    model_name=model_name,
-                    temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
-                    timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
-                )
+                with self._stage_ta_api_lock:
+                    response_text = self.api_client.process_text(
+                        text=full_prompt,
+                        system_prompt=None,
+                        model_name=model_name,
+                        temperature=APIConfig.DEFAULT_TEMPERATURE,
+                        max_tokens=self.SUBCHAPTER_MODEL_MAX_COMPLETION_TOKENS,
+                        timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
+                    )
             except Exception as e:
                 if self._is_openrouter_context_limit_error(e):
                     self.logger.warning(
@@ -235,102 +243,211 @@ class StageTAProcessor(BaseStageProcessor):
 
         return response_text, tablepic_data, False
 
-    def _stage_ta_topic_fallback(
+    def _run_stage_ta_single_topic(
         self,
+        topic_index: int,
+        topic_name: str,
+        pts: List[Dict[str, Any]],
         *,
         prompt_with_subchapter: str,
-        ocr_extraction_data: Dict[str, Any],
         persian_subchapter_name: str,
-        filtered_stage_e_points: List[Dict[str, Any]],
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_tables: List[Dict[str, Any]],
+        model_name: str,
+        output_path: str,
+        part_num: int,
+        _progress: Callable[[str], None],
+        raw_response_kind: str = "topic_parallel",
+    ) -> Tuple[int, str, List[Dict[str, Any]], Optional[str]]:
+        """
+        One LLM call for a single Stage-E topic bucket (topic-scoped OCR + topic points + topic tables).
+
+        Returns (topic_index, topic_name, tablepic_rows, error_message_or_None).
+        """
+        if not pts:
+            return topic_index, topic_name, [], None
+
+        topic_tables = self._tables_for_topic(subchapter_tables, topic_name)
+        if not topic_tables:
+            self.logger.info(
+                "Skipping topic %r for TA: no OCR tables tagged with this topic.",
+                topic_name,
+            )
+            return topic_index, topic_name, [], None
+
+        topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
+            ocr_extraction_data,
+            persian_subchapter_name,
+            topic_name,
+        )
+        topic_ocr_extraction_json_str = json.dumps(
+            topic_ocr_slice, ensure_ascii=False, separators=(",", ":")
+        )
+        scope = (
+            f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
+            f"تعداد نقاط Stage E در این درخواست: {len(pts)}. "
+            f"تعداد جدول‌های OCR در این درخواست: {len(topic_tables)}.]"
+        )
+        full_prompt = self._build_stage_ta_prompt(
+            prompt_with_subchapter=prompt_with_subchapter,
+            ocr_extraction_json_str=topic_ocr_extraction_json_str,
+            persian_subchapter_name=persian_subchapter_name,
+            stage_e_points=pts,
+            subchapter_tables=topic_tables,
+            scope_note=scope,
+        )
+        label = (
+            f"topic «{topic_name}» ({len(pts)} Stage E row(s), {len(topic_tables)} OCR table(s))"
+        )
+        response_text, tablepic_data, ctx_hit = self._call_table_notes_llm_with_retries(
+            full_prompt=full_prompt,
+            model_name=model_name,
+            attempt_label=label,
+            _progress=_progress,
+        )
+
+        if tablepic_data:
+            rows = self._tablepic_rows_from_parsed(tablepic_data, persian_subchapter_name)
+            try:
+                entry: Dict[str, Any] = {
+                    "subchapter_index": part_num,
+                    "subchapter": persian_subchapter_name,
+                    "topic": topic_name,
+                    "topic_index": topic_index,
+                    "stage_e_point_count": len(pts),
+                    "table_count": len(topic_tables),
+                    "call_kind": raw_response_kind,
+                    "response_text": response_text,
+                    "response_size_bytes": len((response_text or "").encode("utf-8")),
+                    "processed_at": datetime.now().isoformat(),
+                }
+                self._append_stage_ta_raw_response_entry(output_path, entry)
+                self.logger.info(
+                    "  ✓ Raw response (%s) for subchapter %r topic %r",
+                    raw_response_kind,
+                    persian_subchapter_name,
+                    topic_name,
+                )
+            except Exception as e:
+                self.logger.error(
+                    "Failed to write raw response for %r / %r: %s",
+                    persian_subchapter_name,
+                    topic_name,
+                    e,
+                    exc_info=True,
+                )
+            return topic_index, topic_name, rows, None
+
+        if ctx_hit:
+            msg = (
+                f"topic «{topic_name}»: context window exceeded "
+                f"({len(pts)} Stage E row(s)); no bisect configured"
+            )
+            self.logger.error("Stage TA topic call: %s", msg)
+            return topic_index, topic_name, [], msg
+
+        msg = (
+            f"topic «{topic_name}» ({len(pts)} rows): no model response / JSON after retries"
+        )
+        self.logger.error("Stage TA topic call: %s", msg)
+        return topic_index, topic_name, [], msg
+
+    def _process_subchapter_table_topics_parallel(
+        self,
+        topic_groups: List[Tuple[str, List[Dict[str, Any]]]],
+        *,
+        prompt_with_subchapter: str,
+        persian_subchapter_name: str,
+        ocr_extraction_data: Dict[str, Any],
         subchapter_tables: List[Dict[str, Any]],
         model_name: str,
         output_path: str,
         part_num: int,
         _progress: Callable[[str], None],
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
-        topic_groups = self._points_grouped_by_topic_in_order(filtered_stage_e_points)
-        _progress(
-            f"Context limit on full subchapter — processing {len(topic_groups)} topic(s) "
-            "(without bisect)..."
-        )
+        """Run table-note topic calls in bounded parallel batches; preserve topic order in merged rows."""
+        n_topics = len(topic_groups)
+        if n_topics == 0:
+            return [], []
 
-        merged_rows: List[Dict[str, Any]] = []
-        shard_errors: List[str] = []
-        for topic_name, topic_points in topic_groups:
-            topic_tables = self._tables_for_topic(subchapter_tables, topic_name)
-            if not topic_tables:
-                _progress(
-                    f"Skipping topic «{topic_name}» in fallback: no OCR tables in this topic."
-                )
-                continue
+        results_by_idx: Dict[int, Tuple[str, List[Dict[str, Any]], Optional[str]]] = {}
+        topic_errors: List[str] = []
 
-            topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
-                ocr_extraction_data,
-                persian_subchapter_name,
-                topic_name,
-            )
-            topic_ocr_extraction_json_str = json.dumps(
-                topic_ocr_slice, ensure_ascii=False, separators=(",", ":")
-            )
-            scope = (
-                f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
-                f"تعداد نقاط Stage E در این درخواست: {len(topic_points)}. "
-                f"تعداد جدول‌های OCR در این درخواست: {len(topic_tables)}.]"
-            )
-            full_prompt = self._build_stage_ta_prompt(
-                prompt_with_subchapter=prompt_with_subchapter,
-                ocr_extraction_json_str=topic_ocr_extraction_json_str,
-                persian_subchapter_name=persian_subchapter_name,
-                stage_e_points=topic_points,
-                subchapter_tables=topic_tables,
-                scope_note=scope,
-            )
-            label = f"topic «{topic_name}» ({len(topic_points)} Stage E row(s))"
-            response_text, tablepic_data, ctx_hit = self._call_table_notes_llm_with_retries(
-                full_prompt=full_prompt,
-                model_name=model_name,
-                attempt_label=label,
-                _progress=_progress,
-            )
+        def _progress_log_only(msg: str) -> None:
+            """Workers must not touch the Celery task SQLAlchemy Session (append_log)."""
+            self.logger.info("%s", msg)
 
-            if tablepic_data:
-                rows = self._tablepic_rows_from_parsed(tablepic_data, persian_subchapter_name)
-                merged_rows.extend(rows)
-                try:
-                    entry = {
-                        "subchapter_index": part_num,
-                        "subchapter": persian_subchapter_name,
-                        "topic": topic_name,
-                        "stage_e_point_count": len(topic_points),
-                        "table_count": len(topic_tables),
-                        "context_fallback": "topic_only",
-                        "response_text": response_text,
-                        "response_size_bytes": len((response_text or "").encode("utf-8")),
-                        "processed_at": datetime.now().isoformat(),
-                    }
-                    self._append_stage_ta_raw_response_entry(output_path, entry)
-                except Exception as e:
-                    self.logger.error(
-                        "Failed to write raw response (fallback) for %r/%r: %s",
-                        persian_subchapter_name,
+        batch_size = self.STAGE_TA_TOPIC_BATCH_SIZE
+        total_batches = (n_topics + batch_size - 1) // batch_size
+        for batch_num, start in enumerate(range(0, n_topics, batch_size), 1):
+            batch = topic_groups[start : start + batch_size]
+            bw = len(batch)
+            _progress(
+                f"Stage TA topic batch {batch_num}/{total_batches}: {bw} topic(s) "
+                f"(concurrency={bw}) for '{persian_subchapter_name}'..."
+            )
+            with ThreadPoolExecutor(max_workers=bw) as executor:
+                future_to_idx: Dict[Any, int] = {}
+                for rel_i, (topic_name, pts) in enumerate(batch):
+                    tidx = start + rel_i
+                    fut = executor.submit(
+                        self._run_stage_ta_single_topic,
+                        tidx,
                         topic_name,
-                        e,
-                        exc_info=True,
+                        pts,
+                        prompt_with_subchapter=prompt_with_subchapter,
+                        persian_subchapter_name=persian_subchapter_name,
+                        ocr_extraction_data=ocr_extraction_data,
+                        subchapter_tables=subchapter_tables,
+                        model_name=model_name,
+                        output_path=output_path,
+                        part_num=part_num,
+                        _progress=_progress_log_only,
+                        raw_response_kind="topic_parallel",
                     )
-                continue
+                    future_to_idx[fut] = tidx
 
-            if ctx_hit:
-                shard_errors.append(
-                    f"topic «{topic_name}»: context window exceeded "
-                    f"({len(topic_points)} Stage E row(s)); no bisect configured"
-                )
-            else:
-                shard_errors.append(
-                    f"topic «{topic_name}» ({len(topic_points)} rows): no model response / JSON after retries"
-                )
+                for fut in as_completed(future_to_idx):
+                    tidx = future_to_idx[fut]
+                    try:
+                        ti, tn, rows, err = fut.result()
+                    except Exception as e:
+                        self.logger.error(
+                            "Stage TA topic worker crashed (idx=%s): %s",
+                            tidx,
+                            e,
+                            exc_info=True,
+                        )
+                        topic_name_guess = topic_groups[tidx][0] if 0 <= tidx < n_topics else "?"
+                        results_by_idx[tidx] = (topic_name_guess, [], str(e))
+                        topic_errors.append(f"topic idx {tidx}: worker error: {e}")
+                        _progress(
+                            f"  ✗ Topic (topic_parallel) idx {tidx} «{topic_name_guess}»: "
+                            f"worker crashed: {e}"
+                        )
+                        continue
+                    results_by_idx[ti] = (tn, rows, err)
+                    pts = topic_groups[ti][1]
+                    tt_count = len(self._tables_for_topic(subchapter_tables, tn))
+                    if err:
+                        topic_errors.append(err)
+                        _progress(f"  ✗ Topic (topic_parallel): «{tn}» — {err}")
+                    elif tt_count == 0:
+                        _progress(
+                            f"  ○ Topic skipped (topic_parallel): «{tn}» — no OCR tables for this topic"
+                        )
+                    else:
+                        _progress(
+                            f"  ✓ Topic call (topic_parallel): {len(rows)} table row(s) for "
+                            f"«{tn}» ({len(pts)} Stage E point(s), {tt_count} OCR table(s))"
+                        )
 
-        return merged_rows, shard_errors
-    
+        merged: List[Dict[str, Any]] = []
+        for i in range(n_topics):
+            _tn, rows, _e = results_by_idx[i]
+            merged.extend(rows)
+        return merged, topic_errors
+
     def process_stage_ta(
         self,
         stage_e_path: str,
@@ -458,6 +575,7 @@ class StageTAProcessor(BaseStageProcessor):
                 "division_method": "ocr_extraction_by_subchapter",
                 "ocr_subchapters": ocr_subchapters,
                 "stage": "TA",
+                "stage_ta_call_mode": "topic_parallel",
             },
             "data": [],  # Will contain merged points at the end
             "raw_responses": []  # All raw model responses
@@ -511,126 +629,55 @@ class StageTAProcessor(BaseStageProcessor):
                 _progress(f"Warning: No tables found for subchapter '{persian_subchapter_name}'. Skipping...")
                 continue
 
-            ocr_slice = self._filter_ocr_extraction_for_subchapter(
-                ocr_extraction_data, persian_subchapter_name
-            )
-            ocr_extraction_json_str = json.dumps(
-                ocr_slice, ensure_ascii=False, separators=(",", ":")
-            )
-
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
             _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
 
-            full_prompt = self._build_stage_ta_prompt(
-                prompt_with_subchapter=prompt_with_subchapter,
-                ocr_extraction_json_str=ocr_extraction_json_str,
-                persian_subchapter_name=persian_subchapter_name,
-                stage_e_points=filtered_stage_e_points,
-                subchapter_tables=subchapter_tables,
-            )
+            topic_groups = self._points_grouped_by_topic_in_order(filtered_stage_e_points)
+            if not topic_groups:
+                self.logger.warning("No topic buckets for subchapter %r", persian_subchapter_name)
+                _progress(f"Warning: No topic buckets for '{persian_subchapter_name}'. Skipping...")
+                continue
 
             _progress(
-                f"Calling model {model_name} for subchapter '{persian_subchapter_name}'..."
+                f"Stage TA topic-parallel: {len(topic_groups)} topic(s) for subchapter "
+                f"'{persian_subchapter_name}' (batch size {self.STAGE_TA_TOPIC_BATCH_SIZE})..."
             )
-            response_text, tablepic_data, context_hit = self._call_table_notes_llm_with_retries(
-                full_prompt=full_prompt,
+            subchapter_tablepic_records, topic_errs = self._process_subchapter_table_topics_parallel(
+                topic_groups,
+                prompt_with_subchapter=prompt_with_subchapter,
+                persian_subchapter_name=persian_subchapter_name,
+                ocr_extraction_data=ocr_extraction_data,
+                subchapter_tables=subchapter_tables,
                 model_name=model_name,
-                attempt_label=f"full subchapter ({len(filtered_stage_e_points)} Stage E row(s))",
+                output_path=output_path,
+                part_num=part_num,
                 _progress=_progress,
             )
-            subchapter_tablepic_records: List[Dict[str, Any]] = []
 
-            if tablepic_data:
-                try:
-                    raw_response_entry = {
-                        "subchapter_index": part_num,
-                        "subchapter": persian_subchapter_name,
-                        "stage_e_point_count": len(filtered_stage_e_points),
-                        "response_text": response_text,
-                        "response_size_bytes": len((response_text or "").encode("utf-8")),
-                        "processed_at": datetime.now().isoformat(),
-                    }
-                    self._append_stage_ta_raw_response_entry(output_path, raw_response_entry)
-                    self.logger.info(
-                        f"  ✓ Added raw response for subchapter '{persian_subchapter_name}' to JSON file immediately"
-                    )
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to write raw response for subchapter '{persian_subchapter_name}': {e}",
-                        exc_info=True,
-                    )
-
-                subchapter_tablepic_records = self._tablepic_rows_from_parsed(
-                    tablepic_data, persian_subchapter_name
-                )
-            elif context_hit:
-                fb_rows, fb_errs = self._stage_ta_topic_fallback(
-                    prompt_with_subchapter=prompt_with_subchapter,
-                    ocr_extraction_data=ocr_extraction_data,
-                    persian_subchapter_name=persian_subchapter_name,
-                    filtered_stage_e_points=filtered_stage_e_points,
-                    subchapter_tables=subchapter_tables,
-                    model_name=model_name,
-                    output_path=output_path,
-                    part_num=part_num,
-                    _progress=_progress,
-                )
-                subchapter_tablepic_records = fb_rows
-                if not subchapter_tablepic_records:
-                    detail = "; ".join(fb_errs) if fb_errs else "no topic call returned usable JSON/rows"
-                    subchapter_errors.append(
-                        f"{persian_subchapter_name}: context limit — topic fallback produced "
-                        f"no rows ({detail})"
-                    )
-                    _progress(
-                        f"Error: Context fallback found no usable table rows for "
-                        f"'{persian_subchapter_name}'."
-                    )
-                    continue
-                if fb_errs:
-                    for fe in fb_errs:
-                        self.logger.warning(
-                            "Partial fallback issue for subchapter %r: %s",
-                            persian_subchapter_name,
-                            fe,
-                        )
-            elif not response_text:
-                self.logger.error(
-                    f"No response from model after retries for subchapter '{persian_subchapter_name}'"
-                )
-                _progress(
-                    f"Error: Failed to get response from model for subchapter "
-                    f"'{persian_subchapter_name}'."
-                )
+            if not subchapter_tablepic_records:
+                detail = "; ".join(topic_errs) if topic_errs else "no topic returned usable rows"
                 subchapter_errors.append(
-                    f"{persian_subchapter_name}: no model response after retries"
+                    f"{persian_subchapter_name}: topic-parallel produced no rows ({detail})"
+                )
+                self.logger.error("No table rows for subchapter %r", persian_subchapter_name)
+                _progress(
+                    f"Error: No usable table rows for subchapter '{persian_subchapter_name}'."
                 )
                 continue
 
-            if not tablepic_data:
-                self.logger.error(
-                    f"Failed to extract JSON from model response for subchapter "
-                    f"'{persian_subchapter_name}'"
-                )
-                _progress(
-                    f"Error: Failed to extract JSON from model response for subchapter "
-                    f"'{persian_subchapter_name}'."
-                )
-                subchapter_errors.append(
-                    f"{persian_subchapter_name}: JSON parse failed after retries"
-                )
-                continue
+            if topic_errs:
+                for fe in topic_errs:
+                    self.logger.warning(
+                        "Partial topic issue for subchapter %r: %s",
+                        persian_subchapter_name,
+                        fe,
+                    )
 
-            if subchapter_tablepic_records:
-                all_tablepic_records.extend(subchapter_tablepic_records)
-                _progress(
-                    f"Extracted {len(subchapter_tablepic_records)} table note records from "
-                    f"subchapter '{persian_subchapter_name}'"
-                )
-            else:
-                self.logger.warning(
-                    f"No records found in tablepic data for subchapter '{persian_subchapter_name}'"
-                )
+            all_tablepic_records.extend(subchapter_tablepic_records)
+            _progress(
+                f"Extracted {len(subchapter_tablepic_records)} table note records from "
+                f"subchapter '{persian_subchapter_name}'"
+            )
             
             # Add delay between parts to avoid rate limiting (429 errors)
             if part_num < num_parts:  # Don't delay after the last part
