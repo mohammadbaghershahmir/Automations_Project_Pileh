@@ -63,9 +63,14 @@ from webapp.job_files import (
     register_input_artifact,
 )
 from webapp.job_runner_common import SINGLE_STAGE_JOB_TYPES
+from webapp.job_prompts import (
+    apply_submitted_prompts_to_cfg,
+    build_prompt_editor_rows,
+    job_type_has_editable_prompts,
+)
 from webapp.models import Artifact, InboxNotification, Job, JobLogLine, JobPair, User
 from webapp.tasks_stage_v import run_full_pipeline_job, run_step1_job, run_step2_job
-from stage_v_pairing import auto_pair_stage_v_files
+from stage_v_pairing import attach_step1_combined_uploads_to_pairs, auto_pair_stage_v_files
 
 try:
     import multipart  # noqa: F401 — python-multipart (required for large file uploads)
@@ -203,6 +208,8 @@ JOB_STAGE_LABELS = {
     "stage_h": "Flashcard Generation",
     # Test Bank Generation — Stage V (web jobs default)
     "test_bank": "Test Bank Generation",
+    "test_bank_1": "Test Bank 1",
+    "test_bank_2": "Test Bank 2",
     "stage_v": "Test Bank Generation",
     # Topic List Extraction — Stage M
     "topic_list": "Topic List Extraction",
@@ -283,6 +290,9 @@ def split_artifacts_for_steps(
             s2.append(a)
         else:
             other.append(a)
+    if jt == "test_bank_2":
+        s1.extend(s2)
+        s2.clear()
     return s1, s2, other
 
 
@@ -449,14 +459,29 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/test-bank/new", response_class=HTMLResponse)
-    def test_bank_new(request: Request, user: CurrentUser) -> Any:
+    def test_bank_legacy_redirect() -> RedirectResponse:
+        return RedirectResponse("/test-bank-1/new", status_code=302)
+
+    @app.get("/test-bank-1/new", response_class=HTMLResponse)
+    def test_bank_1_new(request: Request, user: CurrentUser) -> Any:
         return templates.TemplateResponse(
             request,
-            "test_bank_new.html",
+            "test_bank_1_new.html",
             {
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt_1": get_default_step1_prompt(),
+            },
+        )
+
+    @app.get("/test-bank-2/new", response_class=HTMLResponse)
+    def test_bank_2_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "test_bank_2_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
                 "default_prompt_2": get_default_step2_prompt(),
             },
         )
@@ -546,18 +571,15 @@ def create_app() -> FastAPI:
 
     if HAS_MULTIPART:
 
-        @app.post("/jobs/test-bank")
-        async def create_test_bank_job(
+        @app.post("/jobs/test-bank-1")
+        async def create_test_bank_1_job(
             user: CurrentUser,
             db: Session = Depends(get_db),
             stage_j_files: List[UploadFile] = File(...),
             word_files: List[UploadFile] = File(...),
             prompt_1: str = Form(""),
-            prompt_2: str = Form(""),
             provider_1: str = Form(DEFAULT_TEST_BANK_PROVIDER),
             model_1: str = Form(DEFAULT_TEST_BANK_MODEL),
-            provider_2: str = Form(DEFAULT_TEST_BANK_PROVIDER),
-            model_2: str = Form(DEFAULT_TEST_BANK_MODEL),
             delay_seconds: str = Form("5"),
             job_name: str = Form(""),
         ) -> RedirectResponse:
@@ -569,7 +591,7 @@ def create_app() -> FastAPI:
             if len(name_stripped) > 200:
                 raise HTTPException(400, "Job name must be at most 200 characters.")
 
-            tmp = tempfile.mkdtemp(prefix="tb_upload_")
+            tmp = tempfile.mkdtemp(prefix="tb1_upload_")
             try:
                 j_paths: List[str] = []
                 for uf in stage_j_files:
@@ -604,25 +626,19 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                j_named = sorted([p for p in j_paths if p], key=lambda x: os.path.basename(x).lower())
                 display_name = name_stripped
-
                 prompt_1_eff = prompt_1.strip() or get_default_step1_prompt()
-                prompt_2_eff = prompt_2.strip() or get_default_step2_prompt()
                 cfg = {
                     "display_name": display_name,
                     "prompt_1": prompt_1_eff,
-                    "prompt_2": prompt_2_eff,
                     "provider_1": provider_1,
                     "model_1": model_1,
-                    "provider_2": provider_2,
-                    "model_2": model_2,
                     "delay_seconds": delay_val,
                 }
 
                 job = Job(
                     id=job_id,
-                    type="test_bank",
+                    type="test_bank_1",
                     status="draft",
                     created_by_id=user.id,
                     config_json=json.dumps(cfg, ensure_ascii=False),
@@ -663,6 +679,158 @@ def create_app() -> FastAPI:
                 shutil.rmtree(tmp, ignore_errors=True)
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/test-bank-2")
+        async def create_test_bank_2_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            stage_j_files: List[UploadFile] = File(...),
+            word_files: List[UploadFile] = File(...),
+            step1_combined_files: List[UploadFile] = File(...),
+            prompt_2: str = Form(""),
+            provider_2: str = Form(DEFAULT_TEST_BANK_PROVIDER),
+            model_2: str = Form(DEFAULT_TEST_BANK_MODEL),
+            model_1: str = Form(DEFAULT_TEST_BANK_MODEL),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            if not stage_j_files or not word_files or not step1_combined_files:
+                raise HTTPException(
+                    400,
+                    "Stage J JSON, Word files, and Test Bank 1 combined JSON (step1_combined_*.json) are required",
+                )
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="tb2_upload_")
+            try:
+                j_paths: List[str] = []
+                for uf in stage_j_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    j_paths.append(dest)
+
+                w_paths: List[str] = []
+                for uf in word_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    w_paths.append(dest)
+
+                s1_paths: List[str] = []
+                for uf in step1_combined_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    s1_paths.append(dest)
+
+                if not s1_paths:
+                    raise HTTPException(400, "Upload at least one Test Bank 1 combined JSON file.")
+
+                pairs_spec = auto_pair_stage_v_files(j_paths, w_paths)
+                if not pairs_spec:
+                    raise HTTPException(400, "No pairable Stage J files (check PointId / filenames)")
+                attach_step1_combined_uploads_to_pairs(pairs_spec, s1_paths)
+                for i, p in enumerate(pairs_spec):
+                    if not p.get("step1_combined_upload"):
+                        raise HTTPException(
+                            400,
+                            f"Could not match a Step 1 combined JSON to pair {i} (book/chapter). "
+                            "Upload one combined file per Stage J file or fix filenames.",
+                        )
+
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                step1_rel_by_pair: dict[str, str] = {}
+                prompt_2_eff = prompt_2.strip() or get_default_step2_prompt()
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt_2": prompt_2_eff,
+                    "provider_2": provider_2,
+                    "model_2": model_2,
+                    "model_1": model_1,
+                    "delay_seconds": delay_val,
+                    "step1_combined_relpaths": step1_rel_by_pair,
+                }
+
+                job = Job(
+                    id=job_id,
+                    type="test_bank_2",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, p in enumerate(pairs_spec):
+                    sj = p["stage_j_path"]
+                    wj = p.get("word_path")
+                    s1_src = p.get("step1_combined_upload")
+                    ensure_dirs(job_id, pair_index)
+                    sj_name = os.path.basename(sj)
+                    rel_j = f"pair_{pair_index}/inputs/{sj_name}"
+                    shutil.copy2(sj, os.path.join(root, rel_j.replace("/", os.sep)))
+                    rel_w = None
+                    if wj:
+                        w_name = os.path.basename(wj)
+                        rel_w = f"pair_{pair_index}/inputs/{w_name}"
+                        shutil.copy2(wj, os.path.join(root, rel_w.replace("/", os.sep)))
+                    s1_name = os.path.basename(s1_src) if s1_src else "step1_combined.json"
+                    rel_s1 = f"pair_{pair_index}/inputs/{s1_name}"
+                    if s1_src:
+                        shutil.copy2(s1_src, os.path.join(root, rel_s1.replace("/", os.sep)))
+                    step1_rel_by_pair[str(pair_index)] = rel_s1
+
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=sj_name,
+                            word_filename=os.path.basename(wj) if wj else "",
+                            stage_j_relpath=rel_j,
+                            word_relpath=rel_w,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_j, "upload_stage_j")
+                    if rel_w:
+                        register_input_artifact(db, job_id, pair_index, root, rel_w, "upload_word")
+                    register_input_artifact(db, job_id, pair_index, root, rel_s1, "upload_step1_combined_json")
+
+                job.config_json = json.dumps(cfg, ensure_ascii=False)
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/test-bank")
+        def create_test_bank_legacy_redirect(user: CurrentUser) -> None:
+            raise HTTPException(
+                410,
+                "Test Bank is split into Test Bank 1 and Test Bank 2. Use /test-bank-1/new or /test-bank-2/new.",
+            )
 
         @app.post("/jobs/pre-ocr")
         async def create_pre_ocr_job(
@@ -1447,10 +1615,24 @@ def create_app() -> FastAPI:
     else:
 
         @app.post("/jobs/test-bank")
-        def create_test_bank_job_stub(user: CurrentUser) -> None:
+        def create_test_bank_legacy_stub(user: CurrentUser) -> None:
+            raise HTTPException(
+                410,
+                "Test Bank is split into Test Bank 1 and Test Bank 2. Use /test-bank-1/new or /test-bank-2/new.",
+            )
+
+        @app.post("/jobs/test-bank-1")
+        def create_test_bank_1_job_stub(user: CurrentUser) -> None:
             raise HTTPException(
                 503,
-                "Install python-multipart (pip install python-multipart) to enable Test Bank file uploads.",
+                "Install python-multipart (pip install python-multipart) to enable Test Bank 1 file uploads.",
+            )
+
+        @app.post("/jobs/test-bank-2")
+        def create_test_bank_2_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(
+                503,
+                "Install python-multipart (pip install python-multipart) to enable Test Bank 2 file uploads.",
             )
 
         @app.post("/jobs/pre-ocr")
@@ -1511,15 +1693,30 @@ def create_app() -> FastAPI:
         step1_artifacts, step2_artifacts, other_artifacts = split_artifacts_for_steps(artifacts, job.type)
         if single_stage:
             step2_enabled = False
+        elif jt == "test_bank_1":
+            step2_enabled = False
         else:
             step2_enabled = job.type != "test_bank" or all_pairs_step1_succeeded(pairs)
+        show_step2_section = (not single_stage) and (jt != "test_bank_1")
         creator = job.created_by_user
         creator_label = creator.email if creator else "Unknown"
         is_job_owner = job.created_by_id == user.id
         if single_stage:
-            step1_poll_roles_json = json.dumps(
-                ["step1_combined", "txt_dump", "output", "llm_prompt_step1"]
-            )
+            if jt == "test_bank_2":
+                step1_poll_roles_json = json.dumps(
+                    [
+                        "final_b_json",
+                        "step2_topic",
+                        "step2_failed_topics",
+                        "step2_prompt_input",
+                        "output",
+                        "llm_prompt_step2",
+                    ]
+                )
+            else:
+                step1_poll_roles_json = json.dumps(
+                    ["step1_combined", "txt_dump", "output", "llm_prompt_step1"]
+                )
             step2_poll_roles_json = "[]"
         else:
             step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump", "llm_prompt_step1"])
@@ -1534,6 +1731,8 @@ def create_app() -> FastAPI:
                 ]
             )
         stage_label = job_stage_label(job)
+        cfg_dict = json.loads(job.config_json or "{}")
+        prompt_editor_rows = build_prompt_editor_rows(jt, cfg_dict)
         return templates.TemplateResponse(
             request,
             "job_detail.html",
@@ -1546,14 +1745,17 @@ def create_app() -> FastAPI:
                 "step2_artifacts": step2_artifacts,
                 "other_artifacts": other_artifacts,
                 "step2_enabled": step2_enabled,
-                "cfg": json.loads(job.config_json or "{}"),
+                "cfg": cfg_dict,
                 "word_choices": word_choices,
                 "is_job_owner": is_job_owner,
                 "creator_label": creator_label,
                 "single_stage_job": single_stage,
+                "show_step2_section": show_step2_section,
                 "step1_poll_roles_json": step1_poll_roles_json,
                 "step2_poll_roles_json": step2_poll_roles_json,
                 "stage_label": stage_label,
+                "prompt_editor_rows": prompt_editor_rows,
+                "job_type_has_editable_prompts": job_type_has_editable_prompts(jt),
             },
         )
 
@@ -1659,6 +1861,28 @@ def create_app() -> FastAPI:
         append_log(db, job_id, "Pairing updated from job page", None)
         return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+    @app.post("/jobs/{job_id}/prompts")
+    async def post_job_prompts(
+        job_id: str,
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> RedirectResponse:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        jt = (job.type or "").strip()
+        if not job_type_has_editable_prompts(jt):
+            raise HTTPException(400, "This job type has no editable LLM prompts in config.")
+        form = await request.form()
+        cfg = json.loads(job.config_json or "{}")
+        apply_submitted_prompts_to_cfg(jt, cfg, form)
+        job.config_json = json.dumps(cfg, ensure_ascii=False)
+        db.commit()
+        append_log(db, job_id, "Job prompts updated and saved to database (config_json).", None)
+        return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
     @app.post("/jobs/{job_id}/enqueue-step1")
     def enqueue_step1(
         job_id: str,
@@ -1710,6 +1934,12 @@ def create_app() -> FastAPI:
         )
         if not scope:
             raise HTTPException(400, "No pairs match pair_indices filter.")
+        if job.type == "test_bank_1":
+            raise HTTPException(
+                400,
+                "Test Bank 1 has no Step 2 here. Create a Test Bank 2 job and upload your "
+                "Test Bank 1 combined JSON (step1_combined_*.json) plus the same Stage J and Word pairing.",
+            )
         if job.type == "test_bank":
             not_ready = [p.pair_index for p in scope if p.step1_status != "succeeded"]
             if not_ready:

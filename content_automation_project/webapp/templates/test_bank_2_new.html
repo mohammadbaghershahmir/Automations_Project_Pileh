@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}New Test Bank{% endblock %}
+{% block title %}New Test Bank 2{% endblock %}
 {% block head %}
 <style>
   .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
@@ -8,41 +8,36 @@
 </style>
 {% endblock %}
 {% block content %}
-<h1>Test Bank Generation</h1>
+<h1>Test Bank 2</h1>
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
 {% endif %}
-<p class="muted">Upload Stage J JSON files and Word files. Pairs are matched by book/chapter (same as desktop Auto-Pair). Default API: <strong>OpenRouter</strong> with <strong>z-ai/glm-5</strong> (same as desktop / <code>api_layer</code>).</p>
+<p class="muted">Stage V Step 2 only. Upload the <strong>same</strong> Stage J JSON and Word files you used for Test Bank 1, plus the <code>step1_combined_*.json</code> files exported from your Test Bank 1 job. Files are matched to pairs by book/chapter when possible. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
 
-<form method="post" action="/jobs/test-bank" enctype="multipart/form-data">
+<form method="post" action="/jobs/test-bank-2" enctype="multipart/form-data">
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">A short label so you and others can find this job in the list (shown instead of an auto-generated filename).</p>
+    <p class="muted" style="margin-top:0;font-size:13px;">A short label so you and others can find this job in the list.</p>
     <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
-    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Biology ch. 3 — winter term" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Biology ch. 3 — Step 2" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Stage J JSON files</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Same lesson JSON as for Test Bank 1.</p>
     <input type="file" name="stage_j_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Word files (.docx / .doc)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Same Word files as for Test Bank 1 (paired by book/chapter).</p>
     <input type="file" name="word_files" multiple accept=".docx,.doc" required/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Step 1</h2>
-    <label>Prompt Step 1</label>
-    <textarea name="prompt_1" dir="auto" placeholder="پیش‌فرض از تنظیمات سیستم؛ می‌توانید خالی بگذارید یا ویرایش کنید.">{{ default_prompt_1 }}</textarea>
-    <div class="tb-row">
-      <label>Provider <input type="text" name="provider_1" value="openrouter" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model_1" value="z-ai/glm-5" autocomplete="off"/></label>
-    </div>
-    <p class="muted" style="font-size:12px;margin:14px 0 8px;">Choose Stage J + Word files above first. You can submit here after Step 1 settings; sections below are optional before any submit.</p>
-    <button type="submit" class="btn-cta">Create job (Step 1)</button>
+    <h2 style="margin-top:0;font-size:1rem;">Test Bank 1 combined JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;"><code>step1_combined_*.json</code> from a finished Test Bank 1 job (one file per pair when possible).</p>
+    <input type="file" name="step1_combined_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Step 2 &amp; delay</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">One submit creates the job with Step 2 settings and the delay below (same form as Step 1 submit — pick whichever place is convenient).</p>
+    <h2 style="margin-top:0;font-size:1rem;">Step 2 (Test Bank 2)</h2>
     <label>Prompt Step 2</label>
     <textarea name="prompt_2" dir="auto" placeholder="پیش‌فرض از prompts.json؛ می‌توانید خالی بگذارید یا ویرایش کنید.">{{ default_prompt_2 }}</textarea>
     <div class="tb-row">
@@ -50,9 +45,9 @@
       <label>Model <input type="text" name="model_2" value="z-ai/glm-5" autocomplete="off"/></label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
-    <label class="muted" style="font-size:13px;">Seconds between processing each pair (worker sleep)</label>
+    <label class="muted" style="font-size:13px;">Seconds between processing each pair</label>
     <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
-    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+    <button type="submit" class="btn-cta" style="margin-top:16px;">Create Test Bank 2 job</button>
   </div>
 </form>
 {% endblock %}

@@ -100,9 +100,11 @@
         {% elif job.type == 'table_notes' %}
         <th>Image notes (Stage E)</th><th>OCR extraction JSON</th>
         {% elif job.type == 'importance_type' %}
-        <th>TA merged JSON</th><th>Tablepic</th><th>Filepic</th><th>Step 1 combined</th>
+        <th>TA merged JSON</th><th>Tablepic</th><th>Filepic</th><th>Test Bank 1 combined</th>
         {% elif job.type == 'image_file_catalog' %}
         <th>Image notes (Stage E)</th><th>Filepic JSON</th>
+        {% elif job.type == 'test_bank_2' %}
+        <th>Stage J</th><th>Word</th><th>Test Bank 1 combined</th>
         {% else %}
         <th>OCR extraction JSON</th>
         {% endif %}
@@ -131,6 +133,11 @@
         <td style="font-size:13px;">{{ pm_row.get('tablepic_basename', '—') }}</td>
         <td style="font-size:13px;">{{ pm_row.get('filepic_basename', '—') }}</td>
         <td style="font-size:13px;">{{ p.word_filename }}</td>
+        {% elif job.type == 'test_bank_2' %}
+        {% set s1rel = (cfg.get('step1_combined_relpaths') or {}).get(p.pair_index | string, '') %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
+        <td style="font-size:13px;word-break:break-all;">{{ s1rel.split('/')[-1] if s1rel else "—" }}</td>
         {% elif job.type == 'image_file_catalog' %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
@@ -145,6 +152,28 @@
   </table>
   {% if cfg.get('pointid_mapping_relpath') %}
   <p class="muted" style="margin-top:12px;font-size:13px;">PointId mapping: <code style="font-size:11px;word-break:break-all;">{{ cfg.get('pointid_mapping_relpath') }}</code></p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if job_type_has_editable_prompts %}
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">LLM prompts</h2>
+  <p class="muted" style="margin-top:0;font-size:13px;">Stored in the job record (<code style="font-size:11px;">config_json</code> in the database). The worker reloads this on each run. Clear a field and save to fall back to the app default from <code style="font-size:11px;">prompts.json</code>.</p>
+  {% if is_job_owner %}
+  <form method="post" action="/jobs/{{ job.id }}/prompts">
+    {% for row in prompt_editor_rows %}
+    <label class="muted" style="display:block;margin-top:12px;font-size:12px;">{{ row.label }}</label>
+    <textarea name="{{ row.key }}" rows="14" style="width:100%;max-width:100%;box-sizing:border-box;margin-top:6px;padding:10px 12px;border-radius:8px;background:var(--input-bg);color:var(--fg);border:1px solid var(--input-border);font-family:ui-monospace,monospace;font-size:12px;line-height:1.45;">{{ row.value }}</textarea>
+    {% endfor %}
+    <button type="submit" class="btn-cta secondary" style="margin-top:14px;">Submit</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:0;font-size:13px;">Current prompts (read-only):</p>
+  {% for row in prompt_editor_rows %}
+  <p class="muted" style="margin:12px 0 4px;font-size:12px;">{{ row.label }}</p>
+  <pre style="margin:0;max-height:240px;overflow:auto;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);font-size:11px;line-height:1.45;white-space:pre-wrap;word-break:break-word;">{{ row.value }}</pre>
+  {% endfor %}
   {% endif %}
 </div>
 {% endif %}
@@ -167,17 +196,23 @@
   <p class="muted" style="margin-top:0;">Image notes (Stage E) + OCR extraction JSON → Table notes (Stage TA) per pair. Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'importance_type' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Importance &amp; Type</h2>
-  <p class="muted" style="margin-top:0;">TA merged + tablepic + filepic + Step 1 combined → <code>a*.json</code> per pair (parallel ~100-row LLM chunks). Runs in the <strong>background worker</strong>.</p>
+  <p class="muted" style="margin-top:0;">TA merged + tablepic + filepic + Test Bank&nbsp;1 combined → <code>a*.json</code> per pair (parallel ~100-row LLM chunks). Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'image_file_catalog' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
   <p class="muted" style="margin-top:0;">Image notes (Stage E) → catalog JSON (<code>f_*.json</code>) per pair. Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'test_bank_1' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Test Bank 1</h2>
+  <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined JSON. Runs in the <strong>background worker</strong>. Download <code>step1_combined_*.json</code> below for <strong>Test Bank 2</strong> or Importance&nbsp;&amp;&nbsp;Type.</p>
+  {% elif job.type == 'test_bank_2' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Test Bank 2</h2>
+  <p class="muted" style="margin-top:0;">Uses your uploaded Test Bank&nbsp;1 combined JSON plus Stage J and Word → refined tests. Runs in the <strong>background worker</strong>.</p>
   {% else %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Initial outputs</h2>
   <p class="muted" style="margin-top:0;">Stage J + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
   {% endif %}
   {% set p0 = pairs[0] if pairs else none %}
   {% if is_job_owner %}
-  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'image_file_catalog' %}Run image file catalog{% else %}Run processing{% endif %}{% else %}Run Step 1{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'image_file_catalog' %}Run image file catalog{% else %}Run processing{% endif %}{% else %}Run Step 1{% endif %}</span></button>
+  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}</span></button>
 
   <div id="stop-under-s1" class="stop-under-step" style="display:{% if show_stop_s1 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 1</button>
@@ -185,8 +220,8 @@
   </div>
   {% endif %}
 
-  <h3 style="margin:20px 0 8px;font-size:0.95rem;">{% if single_stage_job %}Outputs{% else %}Step 1 outputs{% endif %}</h3>
-  <p class="muted" style="margin-top:0;font-size:13px;">{% if single_stage_job %}Preview or download result files.{% else %}Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.{% endif %} Full text sent to the LLM on each OpenRouter call is saved under <code style="font-size:11px;">pair_*/prompts/</code> with role <strong>llm_prompt_step1</strong> (download / preview).</p>
+  <h3 style="margin:20px 0 8px;font-size:0.95rem;">{% if single_stage_job %}{% if job.type == 'test_bank_2' %}Test Bank 2 outputs{% else %}Outputs{% endif %}{% elif job.type == 'test_bank_1' %}Test Bank 1 outputs{% else %}Step 1 outputs{% endif %}</h3>
+  <p class="muted" style="margin-top:0;font-size:13px;">{% if job.type == 'test_bank_2' %}Preview or download refined JSON and related files. Step&nbsp;2 LLM dumps use role <strong>llm_prompt_step2</strong> under <code style="font-size:11px;">pair_*/prompts/</code>.{% elif single_stage_job %}Preview or download result files.{% else %}Preview or download combined Step&nbsp;1 JSON and related files before starting Step&nbsp;2.{% endif %}{% if job.type != 'test_bank_2' %} Full text sent to the LLM on each OpenRouter call is saved under <code style="font-size:11px;">pair_*/prompts/</code> with role <strong>llm_prompt_step1</strong> (download / preview).{% endif %}</p>
   <table>
     <thead>
       <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
@@ -207,7 +242,7 @@
   </table>
 </div>
 
-{% if not single_stage_job %}
+{% if show_step2_section %}
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Step 2 — Refined outputs</h2>
   <p class="muted" style="margin-top:0;">Uses Step&nbsp;1 results. Run only after Step&nbsp;1 has succeeded and you have checked Step&nbsp;1 outputs above.</p>
@@ -250,7 +285,7 @@
 </div>
 {% endif %}
 
-{% if job.type != 'test_bank' and is_job_owner and not single_stage_job %}
+{% if job.type != 'test_bank' and job.type != 'test_bank_1' and is_job_owner and not single_stage_job %}
 <div class="card" style="text-align:center;">
   <button type="button" id="btn-full" class="secondary" style="font-size:0.9rem;">Run full pipeline (Step 1 + 2)</button>
   <p class="muted" style="margin:10px 0 0;font-size:12px;">Runs Step&nbsp;1 then Step&nbsp;2 in one queued job (non–Test Bank types).</p>

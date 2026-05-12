@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted"><strong>Stage J (web)</strong>: upload four JSON groups with <strong>matching counts</strong>. After sorting by filename within each group, row <strong>i</strong> across groups is one pair: TA merged lesson JSON (table notes output), tablepic JSON, filepic JSON, and Test Bank Step&nbsp;1 combined JSON.</p>
+<p class="muted"><strong>Stage J (web)</strong>: upload four JSON groups with <strong>matching counts</strong>. After sorting by filename within each group, row <strong>i</strong> across groups is one pair: TA merged lesson JSON (table notes output), tablepic JSON, filepic JSON, and Test Bank&nbsp;1 combined JSON.</p>
 
 <form method="post" action="/jobs/importance-type" enctype="multipart/form-data">
   <div class="card">
@@ -36,8 +36,8 @@
     <input type="file" name="filepic_json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Step 1 combined JSON (Test Bank)</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;"><code>step1_combined_*.json</code> from Test Bank Step&nbsp;1.</p>
+    <h2 style="margin-top:0;font-size:1rem;">Step 1 combined JSON (Test Bank 1)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;"><code>step1_combined_*.json</code> from a finished <strong>Test Bank 1</strong> job.</p>
     <input type="file" name="step1_json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">

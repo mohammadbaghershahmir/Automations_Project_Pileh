@@ -114,6 +114,11 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             run_image_file_catalog_step1_job(job_id, pair_indices)
             return
 
+        if jt == "test_bank_2":
+            db.close()
+            run_test_bank_step2_only_job(job_id, pair_indices)
+            return
+
         cfg = json.loads(job.config_json or "{}")
         prompt_1 = (cfg.get("prompt_1") or "").strip() or get_default_step1_prompt()
         model_1 = cfg.get("model_1", DEFAULT_TEST_BANK_MODEL)
@@ -255,7 +260,10 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             logger.error("Job not found: %s", job_id)
             return
 
-        if (job.type or "test_bank").strip() in SINGLE_STAGE_JOB_TYPES:
+        jt_gate = (job.type or "test_bank").strip()
+        if jt_gate in SINGLE_STAGE_JOB_TYPES:
+            return
+        if jt_gate == "test_bank_1":
             return
 
         cfg = json.loads(job.config_json or "{}")
@@ -451,6 +459,216 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
         db.close()
 
 
+def run_test_bank_step2_only_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Test Bank 2 web jobs: Stage V Step 2 only using uploaded Step 1 combined JSON per pair."""
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+        if (job.type or "").strip() != "test_bank_2":
+            logger.error("run_test_bank_step2_only_job called for wrong job type: %s", job.type)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        prompt_2 = (cfg.get("prompt_2") or "").strip() or get_default_step2_prompt()
+        model_2 = cfg.get("model_2", DEFAULT_TEST_BANK_MODEL)
+        provider_2 = cfg.get("provider_2", DEFAULT_TEST_BANK_PROVIDER)
+        model_1 = cfg.get("model_1", DEFAULT_TEST_BANK_MODEL)
+        delay_seconds = float(cfg.get("delay_seconds", 5))
+        step1_rel_by_pair = cfg.get("step1_combined_relpaths") or {}
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(
+            db,
+            job_id,
+            "Test Bank 2 runner started (Stage J + Word + uploaded Step 1 combined → Step 2).",
+            None,
+        )
+
+        pairs = (
+            db.query(JobPair)
+            .filter(JobPair.job_id == job_id)
+            .order_by(JobPair.pair_index)
+            .all()
+        )
+        if pair_indices is not None:
+            wanted = set(pair_indices)
+            pairs = [p for p in pairs if p.pair_index in wanted]
+
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        client, ssm, processor = build_stage_v_processor()
+        jt = "test_bank_2"
+        base = job_root(job_id)
+        cancel_check = _cancel_check_session(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            rel_s1 = step1_rel_by_pair.get(str(pair.pair_index))
+            if not rel_s1:
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing Step 1 combined upload path in job config"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: no step1_combined_relpaths entry", pair.pair_index)
+                continue
+
+            abs_step1 = os.path.join(base, rel_s1.replace("/", os.sep))
+            if not os.path.isfile(abs_step1):
+                pair.step1_status = "failed"
+                pair.step1_error = "Step 1 combined file missing on disk"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: missing {rel_s1}", pair.pair_index)
+                continue
+
+            if not pair.word_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "No Word file paired"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (no Word file)", pair.pair_index)
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            abs_j = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            abs_w = os.path.join(base, pair.word_relpath.replace("/", os.sep))
+            out_dir = pair_output(job_id, pair.pair_index)
+            pair_index = pair.pair_index
+            progress_queue: "queue.Queue[str]" = queue.Queue()
+            stop_flush = threading.Event()
+            flush_errors: List[Exception] = []
+
+            def _flush_worker() -> None:
+                s = SessionLocal()
+                buf: List[str] = []
+                try:
+                    while True:
+                        try:
+                            msg = progress_queue.get(timeout=0.2)
+                            buf.append(msg)
+                        except queue.Empty:
+                            pass
+                        if len(buf) >= 25:
+                            append_logs_bulk(s, job_id, buf, pair_index=pair_index)
+                            buf.clear()
+                        if stop_flush.is_set() and progress_queue.empty():
+                            if buf:
+                                append_logs_bulk(s, job_id, buf, pair_index=pair_index)
+                                buf.clear()
+                            break
+                except Exception as e:
+                    try:
+                        s.rollback()
+                    except Exception:
+                        pass
+                    logger.exception("Test Bank 2 log flush worker failed")
+                    flush_errors.append(e)
+                finally:
+                    s.close()
+
+            flush_thread = threading.Thread(target=_flush_worker, daemon=True)
+            flush_thread.start()
+
+            def progress(msg: str) -> None:
+                progress_queue.put(msg)
+                if cancel_check and cancel_check():
+                    raise JobCancelled()
+
+            try:
+                append_log(db, job_id, f"--- Test Bank 2 start pair {pair_index} ---", pair_index)
+                processor.api_client = wrap_prompt_capture(
+                    client, db, job_id, pair.pair_index, jt, "step2"
+                )
+                try:
+                    result = processor.process_stage_v_step2(
+                        stage_j_path=abs_j,
+                        word_file_path=abs_w,
+                        prompt_2=prompt_2,
+                        model_name_2=model_2,
+                        provider_2=provider_2,
+                        step1_combined_path=abs_step1,
+                        model_name_1=model_1,
+                        stage_settings_manager=ssm,
+                        output_dir=out_dir,
+                        progress_callback=progress,
+                        delete_step1_combined_after_success=False,
+                        cancel_check=cancel_check,
+                    )
+                except (JobCancelled, OpenRouterRequestAborted):
+                    stop_flush.set()
+                    flush_thread.join(timeout=10)
+                    if flush_errors:
+                        raise flush_errors[0]
+                    _finalize_step1_cancelled(db, job_id, pairs)
+                    return
+                stop_flush.set()
+                flush_thread.join(timeout=10)
+                if flush_errors:
+                    raise flush_errors[0]
+                if result:
+                    pair.step1_status = "succeeded"
+                    register_artifacts_under(db, job_id, pair.pair_index, base, os.path.relpath(out_dir, base))
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Test Bank 2 returned no output"
+                    append_log(db, job_id, f"pair {pair.pair_index}: Test Bank 2 failed (no output)", pair.pair_index)
+            except Exception as e:
+                stop_flush.set()
+                flush_thread.join(timeout=10)
+                logger.exception("Test Bank 2 error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if i < len(pairs) - 1 and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed Test Bank 2"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- Test Bank 2 job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_test_bank_step2_only_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "Test Bank 2", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+
 def run_full_pipeline_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
     """Run Step 1 then Step 2 in-process (same as desktop Process All).
 
@@ -463,6 +681,9 @@ def run_full_pipeline_job(job_id: str, pair_indices: Optional[List[int]] = None)
         jt = (j.type or "test_bank").strip() if j else ""
     finally:
         db.close()
+    if jt == "test_bank_1":
+        run_step1_job(job_id, pair_indices)
+        return
     if jt in SINGLE_STAGE_JOB_TYPES:
         run_step1_job(job_id, pair_indices)
         return

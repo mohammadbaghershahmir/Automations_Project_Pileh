@@ -161,3 +161,62 @@ def auto_pair_stage_v_files(
             paired_word_files.add(w)
 
     return pairs
+
+
+def extract_book_chapter_from_step1_combined_filename(path: str) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Parse book/chapter from a Test Bank Step 1 combined JSON basename.
+
+    Expected shape under the processor is ``step1_combined_{book}{chapter:03d}.json``
+    (e.g. book 105, chapter 3 → ``...105003...``). Also tolerates extra suffixes like `` (1)``.
+    """
+    basename = os.path.basename(path)
+    name_without_ext = os.path.splitext(basename)[0]
+    name_without_ext = re.sub(r"\s*\(\d+\)\s*$", "", name_without_ext)
+
+    m = re.search(r"step1_combined_(\d+)$", name_without_ext, re.IGNORECASE)
+    digits = m.group(1) if m else None
+    if not digits and re.fullmatch(r"\d{4,}", name_without_ext):
+        digits = name_without_ext
+    if not digits or len(digits) < 4:
+        return None, None
+    try:
+        chapter_id = int(digits[-3:])
+        book_id = int(digits[:-3])
+        return book_id, chapter_id
+    except ValueError:
+        return None, None
+
+
+def attach_step1_combined_uploads_to_pairs(
+    pairs_spec: List[Dict[str, Any]],
+    step1_paths: List[str],
+) -> None:
+    """
+    Mutates each dict in ``pairs_spec`` to set ``step1_combined_upload`` (absolute path while
+    staging) to the best matching Step 1 combined JSON for that pair's Stage J book/chapter.
+    """
+    used: set = set()
+    for p in pairs_spec:
+        sj = p.get("stage_j_path")
+        if not sj:
+            p["step1_combined_upload"] = None
+            continue
+        book_id, chapter_id = extract_book_chapter_from_stage_j_for_v(sj)
+        matched: Optional[str] = None
+        if book_id is not None and chapter_id is not None:
+            for s1_path in step1_paths:
+                if s1_path in used:
+                    continue
+                b2, c2 = extract_book_chapter_from_step1_combined_filename(s1_path)
+                if b2 == book_id and c2 == chapter_id:
+                    matched = s1_path
+                    used.add(s1_path)
+                    break
+        if matched is None:
+            for s1_path in step1_paths:
+                if s1_path not in used:
+                    matched = s1_path
+                    used.add(s1_path)
+                    break
+        p["step1_combined_upload"] = matched

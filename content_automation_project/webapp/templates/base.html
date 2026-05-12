@@ -328,13 +328,14 @@
     <nav>
       <span class="nav-label">Workspace</span>
       <a href="/jobs" class="{% if request.url.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
-      <a href="/test-bank/new" class="{% if request.url.path.startswith('/test-bank') %}active{% endif %}">Test Bank</a>
       <a href="/pre-ocr/new" class="{% if request.url.path.startswith('/pre-ocr') %}active{% endif %}">Pre-OCR</a>
       <a href="/ocr-extraction/new" class="{% if request.url.path.startswith('/ocr-extraction') %}active{% endif %}">OCR Extraction</a>
       <a href="/document-processing/new" class="{% if request.url.path.startswith('/document-processing') %}active{% endif %}">Document Processing</a>
       <a href="/image-notes/new" class="{% if request.url.path.startswith('/image-notes') %}active{% endif %}">Image Notes</a>
       <a href="/table-notes/new" class="{% if request.url.path.startswith('/table-notes') %}active{% endif %}">Table Notes</a>
+      <a href="/test-bank-1/new" class="{% if request.url.path.startswith('/test-bank-1') %}active{% endif %}">Test Bank 1</a>
       <a href="/importance-type/new" class="{% if request.url.path.startswith('/importance-type') %}active{% endif %}">Importance &amp; Type</a>
+      <a href="/test-bank-2/new" class="{% if request.url.path.startswith('/test-bank-2') %}active{% endif %}">Test Bank 2</a>
       <a href="/image-file-catalog/new" class="{% if request.url.path.startswith('/image-file-catalog') %}active{% endif %}">Image File Catalog</a>
       {% block sidebar_extra %}{% endblock %}
     </nav>
