@@ -9,9 +9,22 @@
 <h1 style="margin-top:0;">{{ cfg.get("display_name") or stage_label }}</h1>
 <p class="muted"><code style="font-size:11px;">{{ job.id }}</code> · Created {{ job.created_at|shamsi }} (Tehran) · Creator: <strong>{{ creator_label }}</strong></p>
 {% if job.type == 'test_bank_1' %}
-<p class="muted" style="margin:0 0 10px;font-size:13px;">Step 1 LLM — provider <strong>{{ cfg.get('provider_1') or 'openrouter' }}</strong>, model <code style="font-size:12px;">{{ cfg.get('model_1') or '—' }}</code></p>
+<div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
+  <h2 style="margin:0 0 10px;font-size:1rem;">OpenRouter — Step 1 (before you run)</h2>
+  <p style="margin:0;font-size:14px;line-height:1.5;">Provider <strong>{{ cfg.get('provider_1') or 'openrouter' }}</strong></p>
+  <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ cfg.get('model_1') or '—' }}</code></p>
+  <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.45;">This job will call OpenRouter with the model above; usage is billed to your API key. Create a new job if you need a different model.</p>
+</div>
 {% elif job.type == 'test_bank_2' %}
-<p class="muted" style="margin:0 0 10px;font-size:13px;">Step 2 LLM — provider <strong>{{ cfg.get('provider_2') or 'openrouter' }}</strong>, model <code style="font-size:12px;">{{ cfg.get('model_2') or '—' }}</code>{% if cfg.get('model_1') %} · Step 1 reference model <code style="font-size:12px;">{{ cfg.get('model_1') }}</code>{% endif %}</p>
+<div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
+  <h2 style="margin:0 0 10px;font-size:1rem;">OpenRouter — Step 2 (before you run)</h2>
+  <p style="margin:0;font-size:14px;line-height:1.5;">Provider <strong>{{ cfg.get('provider_2') or 'openrouter' }}</strong></p>
+  <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Step 2 model <code style="font-size:13px;word-break:break-all;">{{ cfg.get('model_2') or '—' }}</code></p>
+  {% if cfg.get('model_1') %}
+  <p style="margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--muted);">Step 1 reference (metadata) <code style="font-size:12px;word-break:break-all;">{{ cfg.get('model_1') }}</code></p>
+  {% endif %}
+  <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.45;">Step 2 calls use the Step 2 model; usage is billed to your API key.</p>
+</div>
 {% endif %}
 {% if not is_job_owner %}
 <p class="muted" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);font-size:13px;">View only — you can browse outputs, downloads, and the log. Only the creator can change Word pairing, run steps, or stop a run.</p>
@@ -216,6 +229,17 @@
   <p class="muted" style="margin-top:0;">Table notes output (Stage J JSON) + Word → Step&nbsp;1 combined output. Runs in the <strong>background worker</strong>. Review <strong>Step&nbsp;1 outputs</strong> below when finished, then continue to Step&nbsp;2.</p>
   {% endif %}
   {% set p0 = pairs[0] if pairs else none %}
+  {% if job.type == 'test_bank_1' %}
+  <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
+    <strong style="font-size:13px;display:block;margin-bottom:6px;">Token spend — OpenRouter model for this run</strong>
+    <span style="font-size:13px;word-break:break-all;"><code>{{ cfg.get('model_1') or '—' }}</code> via {{ cfg.get('provider_1') or 'openrouter' }}</span>
+  </div>
+  {% elif job.type == 'test_bank_2' %}
+  <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
+    <strong style="font-size:13px;display:block;margin-bottom:6px;">Token spend — OpenRouter Step 2 model for this run</strong>
+    <span style="font-size:13px;word-break:break-all;"><code>{{ cfg.get('model_2') or '—' }}</code> via {{ cfg.get('provider_2') or 'openrouter' }}</span>
+  </div>
+  {% endif %}
   {% if is_job_owner %}
   <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}</span></button>
 
