@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
 {% endif %}
-<p class="muted">Stage V Step 1 only: upload the <strong>Table notes</strong> lesson JSON (Stage J / merged table-notes output) plus Word files (same pairing as desktop). Output is <code>step1_combined_*.json</code> — use that file in <strong>Test Bank 2</strong> together with the same JSON and Word files. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
+<p class="muted">Stage V Step 1 only: upload the <strong>Table notes</strong> lesson JSON (Stage J / merged table-notes output) plus Word files (same pairing as desktop). Output is <code>step1_combined_*.json</code> — use that file in <strong>Test Bank 2</strong> together with the same JSON and Word files. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>. You can pick <strong>qwen/qwen3.6-plus</strong> from the model suggestions for very large inputs (~1M context on OpenRouter), or type any OpenRouter model id.</p>
 
 <form method="post" action="/jobs/test-bank-1" enctype="multipart/form-data">
   <div class="card">
@@ -34,9 +34,12 @@
     <h2 style="margin-top:0;font-size:1rem;">Step 1 (Test Bank 1)</h2>
     <label>Prompt</label>
     <textarea name="prompt_1" dir="auto" placeholder="پیش‌فرض از تنظیمات سیستم؛ می‌توانید خالی بگذارید یا ویرایش کنید.">{{ default_prompt_1 }}</textarea>
+    <datalist id="tb-openrouter-models">
+      {% for m in test_bank_model_choices %}<option value="{{ m }}"></option>{% endfor %}
+    </datalist>
     <div class="tb-row">
       <label>Provider <input type="text" name="provider_1" value="openrouter" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model_1" value="z-ai/glm-5" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model_1" list="tb-openrouter-models" value="{{ default_test_bank_model }}" autocomplete="off" placeholder="OpenRouter model id"/></label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <label class="muted" style="font-size:13px;">Seconds between processing each pair (worker sleep)</label>

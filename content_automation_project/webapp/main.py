@@ -47,6 +47,7 @@ from webapp.config import (
     JOBS_ROOT,
     PROJECT_ROOT,
     RUN_TASKS_INLINE,
+    TEST_BANK_OPENROUTER_MODEL_CHOICES,
 )
 from webapp.database import Base, SessionLocal, engine, get_db
 from webapp.schema_migrate import apply_schema_migrations
@@ -471,6 +472,8 @@ def create_app() -> FastAPI:
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt_1": get_default_step1_prompt(),
+                "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
+                "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
             },
         )
 
@@ -483,6 +486,8 @@ def create_app() -> FastAPI:
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt_2": get_default_step2_prompt(),
+                "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
+                "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
             },
         )
 

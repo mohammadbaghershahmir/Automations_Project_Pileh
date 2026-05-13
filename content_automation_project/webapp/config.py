@@ -20,4 +20,10 @@ RUN_TASKS_INLINE = _run_inline in ("1", "true", "yes", "on")
 DEFAULT_TEST_BANK_PROVIDER = "openrouter"
 DEFAULT_TEST_BANK_MODEL = "z-ai/glm-5"
 
+# Web admin Test Bank forms only (datalist suggestions). Does not change desktop api_layer model lists.
+TEST_BANK_OPENROUTER_MODEL_CHOICES = (
+    "z-ai/glm-5",
+    "qwen/qwen3.6-plus",
+)
+
 # Admin bootstrap: ADMIN_EMAIL_1, ADMIN_PASSWORD_1, ... up to 3, or JSON in ADMIN_BOOTSTRAP

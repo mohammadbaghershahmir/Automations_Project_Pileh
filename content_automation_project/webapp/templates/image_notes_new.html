@@ -36,7 +36,7 @@
     <textarea name="prompt" dir="auto">{{ default_prompt }}</textarea>
     <div class="tb-row">
       <label>Provider <input type="text" name="provider" value="openrouter" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model" value="z-ai/glm-5" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model" value="{{ default_test_bank_model }}" autocomplete="off"/></label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>

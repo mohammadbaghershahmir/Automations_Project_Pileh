@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
 {% endif %}
-<p class="muted">Stage V Step 2 only. Upload the <strong>same</strong> Table notes output JSON and Word files you used for Test Bank 1, plus the <code>step1_combined_*.json</code> files from that job. Files are matched to pairs by book/chapter when possible. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>.</p>
+<p class="muted">Stage V Step 2 only. Upload the <strong>same</strong> Table notes output JSON and Word files you used for Test Bank 1, plus the <code>step1_combined_*.json</code> files from that job. Files are matched to pairs by book/chapter when possible. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>. Optional: <strong>qwen/qwen3.6-plus</strong> from suggestions for large-context runs; you may type any OpenRouter model id.</p>
 
 <form method="post" action="/jobs/test-bank-2" enctype="multipart/form-data">
   <div class="card">
@@ -40,9 +40,12 @@
     <h2 style="margin-top:0;font-size:1rem;">Step 2 (Test Bank 2)</h2>
     <label>Prompt Step 2</label>
     <textarea name="prompt_2" dir="auto" placeholder="پیش‌فرض از prompts.json؛ می‌توانید خالی بگذارید یا ویرایش کنید.">{{ default_prompt_2 }}</textarea>
+    <datalist id="tb-openrouter-models">
+      {% for m in test_bank_model_choices %}<option value="{{ m }}"></option>{% endfor %}
+    </datalist>
     <div class="tb-row">
       <label>Provider <input type="text" name="provider_2" value="openrouter" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model_2" value="z-ai/glm-5" autocomplete="off"/></label>
+      <label>Model <input type="text" name="model_2" list="tb-openrouter-models" value="{{ default_test_bank_model }}" autocomplete="off" placeholder="OpenRouter model id"/></label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <label class="muted" style="font-size:13px;">Seconds between processing each pair</label>

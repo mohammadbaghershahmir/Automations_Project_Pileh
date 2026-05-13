@@ -63,56 +63,28 @@ def _parse_openrouter_error_body(resp: requests.Response) -> str:
     return (data.get("message") or text)[:4000]
 
 
-def _likely_context_or_token_limit(api_message: str, http_status: int) -> bool:
-    m = (api_message or "").lower()
-    keys = (
-        "context",
-        "token",
-        "length",
-        "too long",
-        "exceed",
-        "maximum",
-        "limit",
-        "payload",
-        "too large",
-        "132000",
-        "131072",
-        "200000",
-        "202",
-        "2048",
-    )
-    if any(k in m for k in keys):
-        return True
-    if http_status in (400, 413, 422) and m:
-        return True
-    return False
+def _build_openrouter_error_message(*, resp: requests.Response) -> tuple[str, str]:
+    """Return (exception_message, parsed_provider_message). Provider text only in the user-facing line."""
+    api_msg = _parse_openrouter_error_body(resp)
+    full = f"OpenRouter HTTP {resp.status_code}: {api_msg}"
+    return full, api_msg
 
 
-def _build_openrouter_error_message(
+def _log_openrouter_request_context(
+    logger: logging.Logger,
     *,
-    resp: requests.Response,
     model_name: str,
     prompt_char_len: int,
     max_tokens: int,
-) -> tuple[str, str]:
-    """
-    Build a full user-facing message and return (full_message, api_message_only).
-    """
-    api_msg = _parse_openrouter_error_body(resp)
-    est_in = _rough_token_estimate_from_chars(prompt_char_len)
-    lines = [
-        f"OpenRouter HTTP {resp.status_code}: {api_msg}",
-        f"(request: model={model_name}; prompt≈{prompt_char_len} chars / ~{est_in} tokens rough estimate; max_tokens={max_tokens})",
-    ]
-    if _likely_context_or_token_limit(api_msg, resp.status_code):
-        lines.append(
-            "This usually means input + max_tokens (reserved output) exceeds the model context window — "
-            "e.g. GLM-5 on OpenRouter is often ~202k tokens combined. "
-            "Admin action required: reduce uploaded input size (Stage J/Word) or pick a model with larger context. "
-            "The system does NOT auto-shrink admin files or auto-reduce LLM output budget."
-        )
-    full = "\n".join(lines)
-    return full, api_msg
+) -> None:
+    """Diagnostics for operators only — not appended to OpenRouterAPIError."""
+    logger.info(
+        "OpenRouter request context: model=%s max_tokens=%s prompt_chars=%s (~%s tokens rough)",
+        model_name,
+        max_tokens,
+        prompt_char_len,
+        _rough_token_estimate_from_chars(prompt_char_len),
+    )
 
 
 class OpenRouterAPIClient:
@@ -218,12 +190,13 @@ class OpenRouterAPIClient:
                 self.base_url, headers=headers, json=payload, stream=True, timeout=timeout_s
             )
             if resp.status_code >= 400:
-                full, api_msg = _build_openrouter_error_message(
-                    resp=resp,
+                _log_openrouter_request_context(
+                    self.logger,
                     model_name=model_name,
                     prompt_char_len=prompt_char_len,
                     max_tokens=max_tokens,
                 )
+                full, api_msg = _build_openrouter_error_message(resp=resp)
                 self.logger.error(full)
                 raise OpenRouterAPIError(
                     full,
@@ -255,16 +228,13 @@ class OpenRouterAPIClient:
                 err = obj.get("error")
                 if err:
                     msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-                    full = (
-                        f"OpenRouter stream error: {msg}\n"
-                        f"(model={model_name}; prompt≈{prompt_char_len} chars / "
-                        f"~{_rough_token_estimate_from_chars(prompt_char_len)} tokens rough; max_tokens={max_tokens})"
+                    _log_openrouter_request_context(
+                        self.logger,
+                        model_name=model_name,
+                        prompt_char_len=prompt_char_len,
+                        max_tokens=max_tokens,
                     )
-                    if _likely_context_or_token_limit(msg, 400):
-                        full += (
-                            "\nOften a context/token limit. Shorten Stage J / Word input or lower max_tokens; "
-                            "total prompt + max_tokens must fit the model window (e.g. GLM-5 ~202k tokens on OpenRouter)."
-                        )
+                    full = f"OpenRouter stream error: {msg}"
                     self.logger.error(full)
                     raise OpenRouterAPIError(full, api_message=msg, model_name=model_name)
                 for choice in obj.get("choices") or []:
@@ -339,12 +309,13 @@ class OpenRouterAPIClient:
         try:
             resp = self.session.post(self.base_url, headers=headers, json=payload, timeout=timeout_s)
             if resp.status_code >= 400:
-                full, api_msg = _build_openrouter_error_message(
-                    resp=resp,
+                _log_openrouter_request_context(
+                    self.logger,
                     model_name=model_name,
                     prompt_char_len=prompt_char_len,
                     max_tokens=max_tokens,
                 )
+                full, api_msg = _build_openrouter_error_message(resp=resp)
                 self.logger.error(full)
                 raise OpenRouterAPIError(
                     full,
@@ -357,16 +328,13 @@ class OpenRouterAPIClient:
             err = data.get("error")
             if err:
                 api_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-                full = (
-                    f"OpenRouter response JSON error: {api_msg}\n"
-                    f"(request: model={model_name}; prompt≈{prompt_char_len} chars / "
-                    f"~{_rough_token_estimate_from_chars(prompt_char_len)} tokens rough; max_tokens={max_tokens})"
+                _log_openrouter_request_context(
+                    self.logger,
+                    model_name=model_name,
+                    prompt_char_len=prompt_char_len,
+                    max_tokens=max_tokens,
                 )
-                if _likely_context_or_token_limit(api_msg, 400):
-                    full += (
-                        "\nThis often indicates a context/token limit. Shorten input or lower max_tokens; "
-                        "GLM-style models on OpenRouter may cap total context around ~202k tokens."
-                    )
+                full = f"OpenRouter response JSON error: {api_msg}"
                 self.logger.error(full)
                 raise OpenRouterAPIError(
                     full,
