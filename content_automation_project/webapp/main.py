@@ -48,6 +48,8 @@ from webapp.config import (
     PROJECT_ROOT,
     RUN_TASKS_INLINE,
     TEST_BANK_OPENROUTER_MODEL_CHOICES,
+    normalize_test_bank_model,
+    normalize_test_bank_provider,
 )
 from webapp.database import Base, SessionLocal, engine, get_db
 from webapp.schema_migrate import apply_schema_migrations
@@ -633,11 +635,15 @@ def create_app() -> FastAPI:
 
                 display_name = name_stripped
                 prompt_1_eff = prompt_1.strip() or get_default_step1_prompt()
+                model_1_eff = normalize_test_bank_model(model_1)
+                if model_1_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
+                    raise HTTPException(400, "Invalid OpenRouter model for Step 1.")
+                provider_1_eff = normalize_test_bank_provider(provider_1)
                 cfg = {
                     "display_name": display_name,
                     "prompt_1": prompt_1_eff,
-                    "provider_1": provider_1,
-                    "model_1": model_1,
+                    "provider_1": provider_1_eff,
+                    "model_1": model_1_eff,
                     "delay_seconds": delay_val,
                 }
 
@@ -768,12 +774,19 @@ def create_app() -> FastAPI:
 
                 step1_rel_by_pair: dict[str, str] = {}
                 prompt_2_eff = prompt_2.strip() or get_default_step2_prompt()
+                model_2_eff = normalize_test_bank_model(model_2)
+                model_1_eff_tb2 = normalize_test_bank_model(model_1)
+                if model_2_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
+                    raise HTTPException(400, "Invalid OpenRouter model for Step 2.")
+                if model_1_eff_tb2 not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
+                    raise HTTPException(400, "Invalid OpenRouter model for Step 1 reference.")
+                provider_2_eff = normalize_test_bank_provider(provider_2)
                 cfg = {
                     "display_name": name_stripped,
                     "prompt_2": prompt_2_eff,
-                    "provider_2": provider_2,
-                    "model_2": model_2,
-                    "model_1": model_1,
+                    "provider_2": provider_2_eff,
+                    "model_2": model_2_eff,
+                    "model_1": model_1_eff_tb2,
                     "delay_seconds": delay_val,
                     "step1_combined_relpaths": step1_rel_by_pair,
                 }

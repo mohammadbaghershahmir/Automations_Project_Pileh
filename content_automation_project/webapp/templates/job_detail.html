@@ -8,6 +8,11 @@
 <p class="muted" style="margin:0 0 8px;"><a href="/jobs">← All jobs</a></p>
 <h1 style="margin-top:0;">{{ cfg.get("display_name") or stage_label }}</h1>
 <p class="muted"><code style="font-size:11px;">{{ job.id }}</code> · Created {{ job.created_at|shamsi }} (Tehran) · Creator: <strong>{{ creator_label }}</strong></p>
+{% if job.type == 'test_bank_1' %}
+<p class="muted" style="margin:0 0 10px;font-size:13px;">Step 1 LLM — provider <strong>{{ cfg.get('provider_1') or 'openrouter' }}</strong>, model <code style="font-size:12px;">{{ cfg.get('model_1') or '—' }}</code></p>
+{% elif job.type == 'test_bank_2' %}
+<p class="muted" style="margin:0 0 10px;font-size:13px;">Step 2 LLM — provider <strong>{{ cfg.get('provider_2') or 'openrouter' }}</strong>, model <code style="font-size:12px;">{{ cfg.get('model_2') or '—' }}</code>{% if cfg.get('model_1') %} · Step 1 reference model <code style="font-size:12px;">{{ cfg.get('model_1') }}</code>{% endif %}</p>
+{% endif %}
 {% if not is_job_owner %}
 <p class="muted" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);font-size:13px;">View only — you can browse outputs, downloads, and the log. Only the creator can change Word pairing, run steps, or stop a run.</p>
 {% endif %}

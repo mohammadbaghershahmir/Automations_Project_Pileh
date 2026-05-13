@@ -27,7 +27,12 @@ load_dotenv(_ROOT / ".env")
 
 from sqlalchemy.orm import Session
 
-from webapp.config import DEFAULT_TEST_BANK_MODEL, DEFAULT_TEST_BANK_PROVIDER
+from webapp.config import (
+    DEFAULT_TEST_BANK_MODEL,
+    DEFAULT_TEST_BANK_PROVIDER,
+    normalize_test_bank_model,
+    normalize_test_bank_provider,
+)
 from webapp.database import SessionLocal
 from webapp.job_files import (
     append_log,
@@ -121,8 +126,8 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
         cfg = json.loads(job.config_json or "{}")
         prompt_1 = (cfg.get("prompt_1") or "").strip() or get_default_step1_prompt()
-        model_1 = cfg.get("model_1", DEFAULT_TEST_BANK_MODEL)
-        provider_1 = cfg.get("provider_1", DEFAULT_TEST_BANK_PROVIDER)
+        model_1 = normalize_test_bank_model(cfg.get("model_1"), DEFAULT_TEST_BANK_MODEL)
+        provider_1 = normalize_test_bank_provider(cfg.get("provider_1"))
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
         job.status = "running"
@@ -133,6 +138,12 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             db,
             job_id,
             "Step 1 runner started (log lines below confirm the worker/thread is running; OpenRouter is called after Word + Stage J load).",
+            None,
+        )
+        append_log(
+            db,
+            job_id,
+            f"Step 1 OpenRouter: provider={provider_1} model={model_1}",
             None,
         )
 
@@ -268,9 +279,9 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
         cfg = json.loads(job.config_json or "{}")
         prompt_2 = (cfg.get("prompt_2") or "").strip() or get_default_step2_prompt()
-        model_2 = cfg.get("model_2", DEFAULT_TEST_BANK_MODEL)
-        provider_2 = cfg.get("provider_2", DEFAULT_TEST_BANK_PROVIDER)
-        model_1 = cfg.get("model_1", DEFAULT_TEST_BANK_MODEL)
+        model_2 = normalize_test_bank_model(cfg.get("model_2"))
+        provider_2 = normalize_test_bank_provider(cfg.get("provider_2"))
+        model_1 = normalize_test_bank_model(cfg.get("model_1"))
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
         if job.status == "cancelled":
@@ -280,6 +291,12 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
         if not job.started_at:
             job.started_at = datetime.utcnow()
         db.commit()
+        append_log(
+            db,
+            job_id,
+            f"Step 2 OpenRouter: provider={provider_2} model_step2={model_2} model_step1_ref={model_1}",
+            None,
+        )
 
         pairs = (
             db.query(JobPair)
@@ -473,9 +490,9 @@ def run_test_bank_step2_only_job(job_id: str, pair_indices: Optional[List[int]] 
 
         cfg = json.loads(job.config_json or "{}")
         prompt_2 = (cfg.get("prompt_2") or "").strip() or get_default_step2_prompt()
-        model_2 = cfg.get("model_2", DEFAULT_TEST_BANK_MODEL)
-        provider_2 = cfg.get("provider_2", DEFAULT_TEST_BANK_PROVIDER)
-        model_1 = cfg.get("model_1", DEFAULT_TEST_BANK_MODEL)
+        model_2 = normalize_test_bank_model(cfg.get("model_2"))
+        provider_2 = normalize_test_bank_provider(cfg.get("provider_2"))
+        model_1 = normalize_test_bank_model(cfg.get("model_1"))
         delay_seconds = float(cfg.get("delay_seconds", 5))
         step1_rel_by_pair = cfg.get("step1_combined_relpaths") or {}
 
@@ -487,6 +504,12 @@ def run_test_bank_step2_only_job(job_id: str, pair_indices: Optional[List[int]] 
             db,
             job_id,
             "Test Bank 2 runner started (Stage J + Word + uploaded Step 1 combined → Step 2).",
+            None,
+        )
+        append_log(
+            db,
+            job_id,
+            f"Test Bank 2 OpenRouter: provider={provider_2} model_step2={model_2} model_step1_ref={model_1}",
             None,
         )
 

@@ -62,11 +62,13 @@ class UnifiedAPIClient:
         return self.openrouter_client
     
     def _resolve_model(self, model_name: Optional[str], stage_name: str) -> str:
+        """Prefer the explicit model passed by the caller (including default GLM-5). Fallback to stage file only when absent."""
+        explicit = (model_name or "").strip()
+        if explicit:
+            return explicit
         stage_model = self.stage_settings.get_stage_model(stage_name)
-        if stage_model and (not model_name or model_name == APIConfig.DEFAULT_TEXT_MODEL):
+        if stage_model:
             return stage_model
-        if model_name and model_name != APIConfig.DEFAULT_TEXT_MODEL:
-            return model_name
         return (os.getenv("OPENROUTER_MODEL") or APIConfig.DEFAULT_OPENROUTER_MODEL).strip()
 
     def initialize_text_client(self, model_name: str = APIConfig.DEFAULT_TEXT_MODEL,

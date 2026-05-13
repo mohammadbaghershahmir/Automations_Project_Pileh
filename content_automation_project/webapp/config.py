@@ -26,4 +26,21 @@ TEST_BANK_OPENROUTER_MODEL_CHOICES = (
     "qwen/qwen3.6-plus",
 )
 
+
+def normalize_nonempty(value: object, default: str) -> str:
+    """Strip and fall back to default (handles empty JSON strings)."""
+    if value is None:
+        return default
+    s = str(value).strip()
+    return s if s else default
+
+
+def normalize_test_bank_model(value: object, default: str = DEFAULT_TEST_BANK_MODEL) -> str:
+    return normalize_nonempty(value, default)
+
+
+def normalize_test_bank_provider(value: object, default: str = DEFAULT_TEST_BANK_PROVIDER) -> str:
+    return normalize_nonempty(value, default)
+
+
 # Admin bootstrap: ADMIN_EMAIL_1, ADMIN_PASSWORD_1, ... up to 3, or JSON in ADMIN_BOOTSTRAP
