@@ -16,7 +16,9 @@ class JobCancelled(Exception):
     """Raised when the user requested stop (`Job.cancel_requested`)."""
 
 
-# Jobs that only use Step 1 in the web UI (no Test Bank Step 2).
+# Jobs whose pipeline ends after one worker phase in this app, or use a single Run button:
+# no legacy combined Step1+Step2 on one job (except test_bank uses full_pipeline separately).
+# test_bank_1: Step 1 only — job must show/list as succeeded when all pairs finish Step 1 (step2 stays pending).
 SINGLE_STAGE_JOB_TYPES = frozenset(
     {
         "pre_ocr_topic",
@@ -26,6 +28,7 @@ SINGLE_STAGE_JOB_TYPES = frozenset(
         "table_notes",
         "image_file_catalog",
         "importance_type",
+        "test_bank_1",
         "test_bank_2",
     }
 )
