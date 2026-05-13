@@ -20,10 +20,12 @@ RUN_TASKS_INLINE = _run_inline in ("1", "true", "yes", "on")
 DEFAULT_TEST_BANK_PROVIDER = "openrouter"
 DEFAULT_TEST_BANK_MODEL = "z-ai/glm-5"
 
-# Web admin Test Bank forms only (datalist suggestions). Does not change desktop api_layer model lists.
+# Web admin Test Bank model dropdown only. Does not change desktop api_layer model lists.
 TEST_BANK_OPENROUTER_MODEL_CHOICES = (
     "z-ai/glm-5",
     "qwen/qwen3.6-plus",
+    "qwen/qwen3.5-plus-20260420",
+    "google/gemini-2.5-pro",
 )
 
 
