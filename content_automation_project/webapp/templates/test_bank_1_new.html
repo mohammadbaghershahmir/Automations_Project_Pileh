@@ -4,7 +4,7 @@
 <style>
   .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
   .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
-  .tb-row input[type="text"] { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); }
+  .tb-row input[type="text"], .tb-row select { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 14px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server (<code>pip install python-multipart</code>), then restart the API.</p>
 {% endif %}
-<p class="muted">Stage V Step 1 only: upload the <strong>Table notes</strong> lesson JSON (Stage J / merged table-notes output) plus Word files (same pairing as desktop). Output is <code>step1_combined_*.json</code> — use that file in <strong>Test Bank 2</strong> together with the same JSON and Word files. Default API: <strong>OpenRouter</strong> + <strong>z-ai/glm-5</strong>. You can pick <strong>qwen/qwen3.6-plus</strong> from the model suggestions for very large inputs (~1M context on OpenRouter), or type any OpenRouter model id.</p>
+<p class="muted">Stage V Step 1 only: upload the <strong>Table notes</strong> lesson JSON (Stage J / merged table-notes output) plus Word files (same pairing as desktop). Output is <code>step1_combined_*.json</code> — use that file in <strong>Test Bank 2</strong> together with the same JSON and Word files. Choose the LLM from the <strong>Model</strong> dropdown (default <strong>z-ai/glm-5</strong>; <strong>qwen/qwen3.6-plus</strong> for very large inputs, ~1M context on OpenRouter).</p>
 
 <form method="post" action="/jobs/test-bank-1" enctype="multipart/form-data">
   <div class="card">
@@ -34,12 +34,19 @@
     <h2 style="margin-top:0;font-size:1rem;">Step 1 (Test Bank 1)</h2>
     <label>Prompt</label>
     <textarea name="prompt_1" dir="auto" placeholder="پیش‌فرض از تنظیمات سیستم؛ می‌توانید خالی بگذارید یا ویرایش کنید.">{{ default_prompt_1 }}</textarea>
-    <datalist id="tb-openrouter-models">
-      {% for m in test_bank_model_choices %}<option value="{{ m }}"></option>{% endfor %}
-    </datalist>
     <div class="tb-row">
-      <label>Provider <input type="text" name="provider_1" value="openrouter" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model_1" list="tb-openrouter-models" value="{{ default_test_bank_model }}" autocomplete="off" placeholder="OpenRouter model id"/></label>
+      <label for="provider_1">Provider
+        <select name="provider_1" id="provider_1" autocomplete="off">
+          <option value="openrouter" selected>openrouter</option>
+        </select>
+      </label>
+      <label for="model_1">Model
+        <select name="model_1" id="model_1" required autocomplete="off">
+          {% for m in test_bank_model_choices %}
+          <option value="{{ m }}"{% if m == default_test_bank_model %} selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <label class="muted" style="font-size:13px;">Seconds between processing each pair (worker sleep)</label>
