@@ -704,7 +704,8 @@ Stage E Data - Part {part_num}/{num_parts} (JSON):
             if not (resp or "").strip():
                 sj_web_log(
                     logger,
-                    f"chunk_retry reason=empty_response part={part_num}/{total_parts} attempt={attempt}",
+                    f"chunk_retry reason=empty_response part={part_num}/{total_parts} attempt={attempt} "
+                    f"model={model_name!r} — see [openrouter] empty_assistant_text / stream_empty in worker logs",
                 )
                 continue
 

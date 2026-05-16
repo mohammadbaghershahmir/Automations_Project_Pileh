@@ -16,6 +16,8 @@ import requests
 
 from api_layer import APIKeyManager, APIConfig
 
+OPENROUTER_LOG_PREFIX = "[openrouter]"
+
 
 class OpenRouterRequestAborted(Exception):
     """Raised when cancel_check() is true during a streamed request (user stop)."""
@@ -79,11 +81,119 @@ def _log_openrouter_request_context(
 ) -> None:
     """Diagnostics for operators only — not appended to OpenRouterAPIError."""
     logger.info(
-        "OpenRouter request context: model=%s max_tokens=%s prompt_chars=%s (~%s tokens rough)",
+        "%s request model=%s max_tokens=%s prompt_chars=%s (~%s tokens rough)",
+        OPENROUTER_LOG_PREFIX,
         model_name,
         max_tokens,
         prompt_char_len,
         _rough_token_estimate_from_chars(prompt_char_len),
+    )
+
+
+def _extract_assistant_text_from_message(message: Any) -> Optional[str]:
+    text, _ = _extract_assistant_text_from_message_with_source(message)
+    return text
+
+
+def _extract_assistant_text_from_message_with_source(message: Any) -> tuple[Optional[str], str]:
+    """
+    OpenRouter models may return assistant text in content, reasoning (GLM/Z), or multipart content.
+    Returns (text, source_field) where source_field is for logging.
+    """
+    if not isinstance(message, dict):
+        return None, "none"
+    for key in ("content", "reasoning", "text"):
+        val = message.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip(), key
+    content = message.get("content")
+    if isinstance(content, list):
+        parts: List[str] = []
+        for part in content:
+            if isinstance(part, str) and part.strip():
+                parts.append(part.strip())
+            elif isinstance(part, dict):
+                t = part.get("text") or part.get("content")
+                if isinstance(t, str) and t.strip():
+                    parts.append(t.strip())
+        if parts:
+            return "\n".join(parts), "content[multipart]"
+    return None, "none"
+
+
+def _extract_assistant_text_from_completion_data(
+    data: Dict[str, Any],
+) -> tuple[Optional[str], str]:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None, "none"
+    first = choices[0]
+    if not isinstance(first, dict):
+        return None, "none"
+    message = first.get("message")
+    return _extract_assistant_text_from_message_with_source(message)
+
+
+def _log_openrouter_completion_diag(
+    logger: logging.Logger,
+    *,
+    model_name: str,
+    data: Dict[str, Any],
+    extracted_text: Optional[str],
+    prompt_char_len: int,
+    max_tokens: int,
+) -> None:
+    """Grep-friendly dump when HTTP 200 but no usable assistant text (Docker: grep openrouter)."""
+    choices = data.get("choices") if isinstance(data.get("choices"), list) else []
+    choice0: Dict[str, Any] = choices[0] if choices and isinstance(choices[0], dict) else {}
+    message = choice0.get("message") if isinstance(choice0.get("message"), dict) else {}
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    msg_keys = sorted(message.keys()) if message else []
+    content_val = message.get("content")
+    reasoning_val = message.get("reasoning")
+    content_len = len(content_val) if isinstance(content_val, str) else None
+    reasoning_len = len(reasoning_val) if isinstance(reasoning_val, str) else None
+    logger.warning(
+        "%s empty_assistant_text model=%s id=%s finish_reason=%s message_keys=%s "
+        "content_len=%s reasoning_len=%s usage=%s prompt_chars=%s max_tokens=%s",
+        OPENROUTER_LOG_PREFIX,
+        model_name,
+        data.get("id"),
+        choice0.get("finish_reason"),
+        msg_keys,
+        content_len,
+        reasoning_len,
+        usage,
+        prompt_char_len,
+        max_tokens,
+    )
+    try:
+        snippet = json.dumps(message, ensure_ascii=False)[:1200]
+    except (TypeError, ValueError):
+        snippet = repr(message)[:1200]
+    logger.warning("%s empty_assistant_message_snippet: %s", OPENROUTER_LOG_PREFIX, snippet)
+
+
+def _log_openrouter_completion_ok(
+    logger: logging.Logger,
+    *,
+    model_name: str,
+    data: Dict[str, Any],
+    text: str,
+    source_field: str,
+) -> None:
+    choices = data.get("choices") if isinstance(data.get("choices"), list) else []
+    choice0: Dict[str, Any] = choices[0] if choices and isinstance(choices[0], dict) else {}
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    logger.info(
+        "%s response_ok model=%s id=%s finish_reason=%s source=%s response_chars=%s usage=%s",
+        OPENROUTER_LOG_PREFIX,
+        model_name,
+        data.get("id"),
+        choice0.get("finish_reason"),
+        source_field,
+        len(text),
+        usage,
     )
 
 
@@ -209,6 +319,8 @@ class OpenRouterAPIClient:
             # (e.g. Persian) before json.loads. Force UTF-8 for iter_lines decode.
             resp.encoding = "utf-8"
             chunks: List[str] = []
+            stream_source = "none"
+            last_stream_obj: Optional[Dict[str, Any]] = None
             for raw in resp.iter_lines(decode_unicode=True):
                 if cancel_check():
                     resp.close()
@@ -225,6 +337,8 @@ class OpenRouterAPIClient:
                     obj = json.loads(data)
                 except json.JSONDecodeError:
                     continue
+                if isinstance(obj, dict):
+                    last_stream_obj = obj
                 err = obj.get("error")
                 if err:
                     msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
@@ -238,13 +352,36 @@ class OpenRouterAPIClient:
                     self.logger.error(full)
                     raise OpenRouterAPIError(full, api_message=msg, model_name=model_name)
                 for choice in obj.get("choices") or []:
+                    if not isinstance(choice, dict):
+                        continue
                     delta = choice.get("delta") or {}
                     if not isinstance(delta, dict):
                         continue
-                    piece = delta.get("content") or delta.get("reasoning")
-                    if piece:
-                        chunks.append(piece)
-            return "".join(chunks) if chunks else None
+                    for key in ("content", "reasoning", "text"):
+                        piece = delta.get(key)
+                        if isinstance(piece, str) and piece:
+                            if stream_source == "none":
+                                stream_source = key
+                            chunks.append(piece)
+            text = "".join(chunks) if chunks else None
+            if text:
+                self.logger.info(
+                    "%s stream_ok model=%s source=%s response_chars=%s",
+                    OPENROUTER_LOG_PREFIX,
+                    model_name,
+                    stream_source,
+                    len(text),
+                )
+                return text
+            self.logger.warning(
+                "%s stream_empty model=%s prompt_chars=%s max_tokens=%s last_event=%s",
+                OPENROUTER_LOG_PREFIX,
+                model_name,
+                prompt_char_len,
+                max_tokens,
+                json.dumps(last_stream_obj, ensure_ascii=False)[:800] if last_stream_obj else None,
+            )
+            return None
         except OpenRouterRequestAborted:
             raise
         except OpenRouterAPIError:
@@ -325,6 +462,9 @@ class OpenRouterAPIClient:
                 )
             resp.raise_for_status()
             data = resp.json()
+            if not isinstance(data, dict):
+                self.logger.error("%s invalid_response_type type=%s", OPENROUTER_LOG_PREFIX, type(data).__name__)
+                return None
             err = data.get("error")
             if err:
                 api_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
@@ -342,7 +482,25 @@ class OpenRouterAPIClient:
                     api_message=api_msg,
                     model_name=model_name,
                 )
-            return (data.get("choices") or [{}])[0].get("message", {}).get("content")
+            text, source = _extract_assistant_text_from_completion_data(data)
+            if text:
+                _log_openrouter_completion_ok(
+                    self.logger,
+                    model_name=model_name,
+                    data=data,
+                    text=text,
+                    source_field=source,
+                )
+                return text
+            _log_openrouter_completion_diag(
+                self.logger,
+                model_name=model_name,
+                data=data,
+                extracted_text=text,
+                prompt_char_len=prompt_char_len,
+                max_tokens=max_tokens,
+            )
+            return None
         except OpenRouterAPIError:
             raise
         except Exception as e:
