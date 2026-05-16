@@ -11,6 +11,7 @@ import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Dict, List, Any, Callable, Tuple
+
 from base_stage_processor import BaseStageProcessor
 from word_file_processor import WordFileProcessor
 from api_layer import APIConfig
@@ -38,33 +39,130 @@ def _sj_step1_topic_key(row: Dict[str, Any]) -> Tuple[str, str, str]:
     )
 
 
+STAGE_J_WEB_LOG_PREFIX = "[stage_j_web]"
+
+
+def sj_web_is_context_limit_error(exc: BaseException) -> bool:
+    """OpenRouter / GLM rejects when prompt + reserved completion exceeds the endpoint window."""
+    msg = str(exc).lower()
+    if "maximum context length" in msg:
+        return True
+    if "maximum context" in msg and "token" in msg:
+        return True
+    if "context length" in msg and ("exceed" in msg or "reduce" in msg):
+        return True
+    if "you requested about" in msg and "tokens" in msg:
+        return True
+    return False
+
+
+def sj_web_log(logger: logging.Logger, message: str) -> None:
+    """Single prefix for grep-friendly Docker logs."""
+    logger.info("%s %s", STAGE_J_WEB_LOG_PREFIX, message)
+
+
+def sj_web_slim_lesson_row(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "PointId": str(record.get("PointId", "") or ""),
+        "chapter": record.get("chapter", ""),
+        "subchapter": record.get("subchapter", ""),
+        "topic": record.get("topic", ""),
+        "subtopic": record.get("subtopic", ""),
+        "subsubtopic": record.get("subsubtopic", ""),
+        "Points": record.get("Points", record.get("points", "")),
+    }
+
+
+def sj_web_topic_sidebar_rows(
+    chunk_ta_rows: List[Dict[str, Any]],
+    table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    image_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> List[Dict[str, Any]]:
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    for r in chunk_ta_rows:
+        if not isinstance(r, dict):
+            continue
+        key = _sj_build_topic_key(r.get("chapter", ""), r.get("subchapter", ""), r.get("topic", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        entry: Dict[str, Any] = {
+            "chapter": r.get("chapter", ""),
+            "subchapter": r.get("subchapter", ""),
+            "topic": r.get("topic", ""),
+        }
+        tabs = table_by_topic.get(key)
+        imgs = image_by_topic.get(key)
+        if tabs:
+            entry["topic_table_captions"] = tabs
+        if imgs:
+            entry["topic_image_captions"] = imgs
+        out.append(entry)
+    return out
+
+
+def sj_web_step1_rows_for_chunk_topics(
+    step1_records: List[Dict[str, Any]],
+    chunk_ta_rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    keys: set = set()
+    for r in chunk_ta_rows:
+        if isinstance(r, dict):
+            keys.add(_sj_build_topic_key(r.get("chapter", ""), r.get("subchapter", ""), r.get("topic", "")))
+    ref_candidates = [x for x in step1_records if isinstance(x, dict) and _sj_step1_topic_key(x) in keys]
+
+    def _sort_key(row: Dict[str, Any]) -> Tuple[str, int]:
+        pid = str(row.get("PointID") or row.get("PointId") or "")
+        tid = row.get("TestID")
+        try:
+            tidn = int(tid) if tid is not None else 0
+        except (TypeError, ValueError):
+            tidn = 0
+        return (pid, tidn)
+
+    return sorted(ref_candidates, key=_sort_key)
+
+
+def sj_web_build_user_prompt(
+    prompt_body: str,
+    part_num: int,
+    total_parts: int,
+    topics_context: List[Dict[str, Any]],
+    slim_rows: List[Dict[str, Any]],
+    ref_questions: List[Dict[str, Any]],
+) -> str:
+    tc = json.dumps(topics_context, ensure_ascii=False, separators=(",", ":"))
+    sj = json.dumps(slim_rows, ensure_ascii=False, separators=(",", ":"))
+    rq = json.dumps(ref_questions, ensure_ascii=False, separators=(",", ":"))
+    return f"""{prompt_body}
+
+Structured inputs for this chunk (part {part_num} of {total_parts}):
+
+topics_context — table/image captions grouped once per topic (apply to all lesson rows with the same chapter, subchapter, topic):
+{tc}
+
+Reference test questions (Step 1 rows whose Chapter/Subchapter/Topic overlap topics in this chunk):
+{rq}
+
+Lesson rows (PointId + hierarchy + Points text only):
+{sj}
+
+For this chunk only: score every PointId in lesson rows above. Reply with ONE JSON object per the Output rules in the prompt (root key "data"; keys PointId, Imp, Type; Imp as "1"|"2"|"3"; one row per PointId). No markdown, no text outside JSON."""
+
+
 class StageJProcessor(BaseStageProcessor):
     """Process Stage J: Add Imp and Type columns to Stage E data"""
 
     STAGE_J_WEB_CHUNK_SIZE = 100
     STAGE_J_WEB_PARALLEL_CHUNKS = 6
-    # Completion budget for Imp/Type JSON is small; reserving 16k output tokens steals GLM context (cf. OpenRouter 400).
     STAGE_J_WEB_MAX_OUTPUT_TOKENS = 8192
-    STAGE_J_WEB_MIN_OUTPUT_TOKENS = 512
+    STAGE_J_WEB_LLM_PARSE_RETRIES = 3
 
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
         self.word_processor = WordFileProcessor()
-
-    @staticmethod
-    def _is_openrouter_context_limit_error(exc: BaseException) -> bool:
-        """Same heuristic as Stage E / Stage TA when prompt + max_tokens exceed provider context."""
-        msg = str(exc).lower()
-        if "maximum context length" in msg:
-            return True
-        if "maximum context" in msg and "token" in msg:
-            return True
-        if "context length" in msg and ("exceed" in msg or "reduce" in msg):
-            return True
-        if "you requested about" in msg and "tokens" in msg:
-            return True
-        return False
 
     def process_stage_j(
         self,
@@ -523,103 +621,6 @@ Stage E Data - Part {part_num}/{num_parts} (JSON):
             )
         return dict(by_topic)
 
-    def _sj_sort_step1_rows(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        def _key(r: Dict[str, Any]):
-            pid = str(r.get("PointID") or r.get("PointId") or "")
-            tid = r.get("TestID")
-            try:
-                tidn = int(tid) if tid is not None else 0
-            except (TypeError, ValueError):
-                tidn = 0
-            return (pid, tidn)
-
-        return sorted(rows, key=_key)
-
-    def _sj_slim_row(self, record: Dict[str, Any]) -> Dict[str, Any]:
-        """Lesson row only — topic-level captions are passed once in topics_context (see sidebar)."""
-        return {
-            "PointId": str(record.get("PointId", "") or ""),
-            "chapter": record.get("chapter", ""),
-            "subchapter": record.get("subchapter", ""),
-            "topic": record.get("topic", ""),
-            "subtopic": record.get("subtopic", ""),
-            "subsubtopic": record.get("subsubtopic", ""),
-            "Points": record.get("Points", record.get("points", "")),
-        }
-
-    def _sj_topic_sidebar_for_chunk(
-        self,
-        chunk_ta_rows: List[Dict[str, Any]],
-        table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
-        image_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
-    ) -> List[Dict[str, Any]]:
-        """One entry per distinct topic in chunk with table/image captions (no per-row duplication)."""
-        seen = set()
-        out: List[Dict[str, Any]] = []
-        for r in chunk_ta_rows:
-            if not isinstance(r, dict):
-                continue
-            key = _sj_build_topic_key(r.get("chapter", ""), r.get("subchapter", ""), r.get("topic", ""))
-            if key in seen:
-                continue
-            seen.add(key)
-            entry: Dict[str, Any] = {
-                "chapter": r.get("chapter", ""),
-                "subchapter": r.get("subchapter", ""),
-                "topic": r.get("topic", ""),
-            }
-            tabs = table_by_topic.get(key)
-            imgs = image_by_topic.get(key)
-            if tabs:
-                entry["topic_table_captions"] = tabs
-            if imgs:
-                entry["topic_image_captions"] = imgs
-            out.append(entry)
-        return out
-
-    def _sj_step1_rows_for_chunk_topics(
-        self,
-        step1_records: List[Dict[str, Any]],
-        chunk_ta_rows: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-        keys: set = set()
-        for r in chunk_ta_rows:
-            if isinstance(r, dict):
-                keys.add(_sj_build_topic_key(r.get("chapter", ""), r.get("subchapter", ""), r.get("topic", "")))
-        ref_candidates = [
-            x for x in step1_records if isinstance(x, dict) and _sj_step1_topic_key(x) in keys
-        ]
-        return self._sj_sort_step1_rows(ref_candidates)
-
-    def _build_web_stage_j_prompt(
-        self,
-        prompt_body: str,
-        part_num: int,
-        total_parts: int,
-        topics_context: List[Dict[str, Any]],
-        slim_rows: List[Dict[str, Any]],
-        ref_questions: List[Dict[str, Any]],
-    ) -> str:
-        tc = json.dumps(topics_context, ensure_ascii=False, separators=(",", ":"))
-        sj = json.dumps(slim_rows, ensure_ascii=False, separators=(",", ":"))
-        rq = json.dumps(ref_questions, ensure_ascii=False, separators=(",", ":"))
-        return f"""{prompt_body}
-
-Structured inputs for this chunk (part {part_num} of {total_parts}):
-
-topics_context — table/image captions grouped once per topic (apply to all lesson rows with the same chapter, subchapter, topic):
-{tc}
-
-Reference test questions (Step 1 rows whose Chapter/Subchapter/Topic overlap topics in this chunk):
-{rq}
-
-Lesson rows (PointId + hierarchy + Points text only):
-{sj}
-
-Respond with a JSON object with a top-level "data" array. Each element must have EXACT keys: "PointId" (string), "Imp" (string), "Type" (string). Include one entry per PointId in the lesson rows above.
-
-Return ONLY valid JSON, no markdown fences or extra commentary."""
-
     def _parse_imp_type_rows_from_llm_response(self, response_text: str) -> List[Dict[str, Any]]:
         if not (response_text or "").strip():
             return []
@@ -631,7 +632,7 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
         rows = self.get_data_from_json(part_output)
         return [x for x in rows if isinstance(x, dict)] if rows else []
 
-    def _resolve_web_chunk_imp_type_rows(
+    def _run_web_chunk_importance_type(
         self,
         chunk_ta_rows: List[Dict[str, Any]],
         table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
@@ -642,133 +643,95 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
         prompt_body: str,
         model_name: str,
         cancel_check: Optional[Callable[[], bool]],
-        max_out_tokens: int,
-        bisect_depth: int = 0,
     ) -> Optional[List[Dict[str, Any]]]:
         """
-        Call LLM for one chunk; on OpenRouter context-limit errors, taper max_tokens then bisect rows
-        (Stage E–style context detection + adaptive split). Workers must not touch DB sessions.
+        One bounded slice of lesson rows → one prompt → LLM (fixed max_tokens).
+        Retries only on empty/unparseable model text (same prompt, same max_tokens).
+        On OpenRouter context-limit errors: log and return None (no bisect, no taper).
         """
+        logger = self.logger
         if cancel_check and cancel_check():
             return None
         if not chunk_ta_rows:
             return []
 
-        slim_rows = [self._sj_slim_row(r) for r in chunk_ta_rows if isinstance(r, dict)]
-        topics_context = self._sj_topic_sidebar_for_chunk(chunk_ta_rows, table_by_topic, image_by_topic)
-        ref_questions = self._sj_step1_rows_for_chunk_topics(step1_records, chunk_ta_rows)
-        full_prompt = self._build_web_stage_j_prompt(
+        slim_rows = [sj_web_slim_lesson_row(r) for r in chunk_ta_rows if isinstance(r, dict)]
+        topics_context = sj_web_topic_sidebar_rows(chunk_ta_rows, table_by_topic, image_by_topic)
+        ref_questions = sj_web_step1_rows_for_chunk_topics(step1_records, chunk_ta_rows)
+        full_prompt = sj_web_build_user_prompt(
             prompt_body, part_num, total_parts, topics_context, slim_rows, ref_questions
         )
+        prompt_chars = len(full_prompt)
+        sj_web_log(
+            logger,
+            "chunk_begin "
+            f"part={part_num}/{total_parts} lesson_rows={len(chunk_ta_rows)} "
+            f"topics_in_sidebar={len(topics_context)} step1_ref_rows={len(ref_questions)} "
+            f"prompt_chars={prompt_chars} max_tokens={self.STAGE_J_WEB_MAX_OUTPUT_TOKENS}",
+        )
 
-        taper = max(int(max_out_tokens), self.STAGE_J_WEB_MIN_OUTPUT_TOKENS)
-        hit_context_limit = False
+        max_out = self.STAGE_J_WEB_MAX_OUTPUT_TOKENS
 
-        while taper >= self.STAGE_J_WEB_MIN_OUTPUT_TOKENS:
+        for attempt in range(1, self.STAGE_J_WEB_LLM_PARSE_RETRIES + 1):
             if cancel_check and cancel_check():
                 return None
+
             try:
                 resp = self.api_client.process_text(
                     text=full_prompt,
                     system_prompt=None,
                     model_name=model_name,
                     temperature=APIConfig.DEFAULT_TEMPERATURE,
-                    max_tokens=taper,
+                    max_tokens=max_out,
                 )
-                if resp:
-                    rows = self._parse_imp_type_rows_from_llm_response(resp)
-                    if rows:
-                        return rows
-                    self.logger.warning(
-                        "Web Stage J chunk %s/%s: model returned text but no parseable Imp/Type rows (max_tokens=%s)",
-                        part_num,
-                        total_parts,
-                        taper,
-                    )
             except Exception as e:
-                if self._is_openrouter_context_limit_error(e):
-                    hit_context_limit = True
-                    next_taper = max(taper // 2, self.STAGE_J_WEB_MIN_OUTPUT_TOKENS)
-                    if next_taper < taper:
-                        self.logger.info(
-                            "Web Stage J chunk %s/%s: OpenRouter context limit — reducing max_tokens %s → %s",
-                            part_num,
-                            total_parts,
-                            taper,
-                            next_taper,
-                        )
-                        taper = next_taper
-                        continue
-                    break
-                self.logger.warning(
-                    "Web Stage J chunk %s/%s failed (max_tokens=%s): %s",
-                    part_num,
-                    total_parts,
-                    taper,
-                    e,
+                if sj_web_is_context_limit_error(e):
+                    sj_web_log(
+                        logger,
+                        "chunk_fail reason=context_limit "
+                        f"part={part_num}/{total_parts} lesson_rows={len(chunk_ta_rows)} "
+                        f"prompt_chars={prompt_chars}",
+                    )
+                    logger.error("%s context_limit_error: %s", STAGE_J_WEB_LOG_PREFIX, e)
+                    return None
+                sj_web_log(
+                    logger,
+                    f"chunk_fail reason=api_error part={part_num}/{total_parts} attempt={attempt}",
                 )
+                logger.exception("%s api_error", STAGE_J_WEB_LOG_PREFIX)
                 return None
 
-            next_taper = max(taper // 2, self.STAGE_J_WEB_MIN_OUTPUT_TOKENS)
-            if next_taper < taper:
-                taper = next_taper
+            if not (resp or "").strip():
+                sj_web_log(
+                    logger,
+                    f"chunk_retry reason=empty_response part={part_num}/{total_parts} attempt={attempt}",
+                )
                 continue
-            break
 
-        if len(chunk_ta_rows) <= 1:
-            self.logger.error(
-                "Web Stage J chunk %s/%s: cannot fit prompt (single row, depth=%s, context_limit=%s)",
-                part_num,
-                total_parts,
-                bisect_depth,
-                hit_context_limit,
+            rows = self._parse_imp_type_rows_from_llm_response(resp)
+            if rows:
+                sj_web_log(
+                    logger,
+                    "chunk_ok "
+                    f"part={part_num}/{total_parts} parsed_rows={len(rows)} attempt={attempt}",
+                )
+                return rows
+
+            rlen = len(resp)
+            tail = resp[-500:] if rlen > 500 else resp
+            sj_web_log(
+                logger,
+                "chunk_retry reason=unparseable_json "
+                f"part={part_num}/{total_parts} attempt={attempt} response_chars={rlen}",
             )
-            return None
+            logger.warning("%s parse_fail_tail part=%s/%s: %r", STAGE_J_WEB_LOG_PREFIX, part_num, total_parts, tail)
 
-        mid = len(chunk_ta_rows) // 2
-        left_rows = chunk_ta_rows[:mid]
-        right_rows = chunk_ta_rows[mid:]
-        self.logger.info(
-            "Web Stage J chunk %s/%s: splitting %s lesson rows → %s + %s (bisect depth=%s)",
-            part_num,
-            total_parts,
-            len(chunk_ta_rows),
-            len(left_rows),
-            len(right_rows),
-            bisect_depth + 1,
+        sj_web_log(
+            logger,
+            "chunk_fail reason=parse_exhausted "
+            f"part={part_num}/{total_parts} retries={self.STAGE_J_WEB_LLM_PARSE_RETRIES}",
         )
-        fresh_budget = self.STAGE_J_WEB_MAX_OUTPUT_TOKENS
-        left = self._resolve_web_chunk_imp_type_rows(
-            left_rows,
-            table_by_topic,
-            image_by_topic,
-            step1_records,
-            part_num,
-            total_parts,
-            prompt_body,
-            model_name,
-            cancel_check,
-            fresh_budget,
-            bisect_depth + 1,
-        )
-        if left is None:
-            return None
-        right = self._resolve_web_chunk_imp_type_rows(
-            right_rows,
-            table_by_topic,
-            image_by_topic,
-            step1_records,
-            part_num,
-            total_parts,
-            prompt_body,
-            model_name,
-            cancel_check,
-            fresh_budget,
-            bisect_depth + 1,
-        )
-        if right is None:
-            return None
-        return left + right
+        return None
 
     def process_stage_j_web_four_json(
         self,
@@ -803,6 +766,11 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
             return None
 
         _progress("Starting Web Stage J (four JSON inputs, parallel chunks)...")
+        sj_web_log(
+            self.logger,
+            f"job_begin model={model_name!r} chunk_size={chunk_sz} max_parallel={max_par} "
+            f"parse_retries_per_chunk={self.STAGE_J_WEB_LLM_PARSE_RETRIES}",
+        )
 
         ta_data = self.load_json_file(ta_json_path)
         if not ta_data:
@@ -847,7 +815,7 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
 
         nw = min(max_par, len(chunks)) if chunks else 1
 
-        chunk_responses: Dict[int, Optional[str]] = {}
+        chunk_responses: Dict[int, Optional[List[Dict[str, Any]]]] = {}
         with ThreadPoolExecutor(max_workers=nw) as executor:
             future_to_idx: Dict[Any, int] = {}
             for idx, chunk in enumerate(chunks):
@@ -857,7 +825,7 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
                 chunk_ta = [r for r in chunk if isinstance(r, dict)]
 
                 fut = executor.submit(
-                    self._resolve_web_chunk_imp_type_rows,
+                    self._run_web_chunk_importance_type,
                     chunk_ta,
                     table_by_topic,
                     image_by_topic,
@@ -867,8 +835,6 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
                     prompt,
                     model_name,
                     cancel_check,
-                    self.STAGE_J_WEB_MAX_OUTPUT_TOKENS,
-                    0,
                 )
                 future_to_idx[fut] = idx
 
@@ -877,10 +843,25 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
                 try:
                     chunk_responses[idx] = fut.result()
                 except Exception as e:
-                    self.logger.error("Web Stage J chunk worker crashed (idx=%s): %s", idx, e, exc_info=True)
+                    sj_web_log(
+                        self.logger,
+                        f"chunk_worker_crash part_index={idx} err={e!r}",
+                    )
+                    self.logger.exception("%s chunk_worker_crash idx=%s", STAGE_J_WEB_LOG_PREFIX, idx)
                     chunk_responses[idx] = None
 
         if cancel_check and cancel_check():
+            return None
+
+        failed_parts = sorted(i + 1 for i, rows in chunk_responses.items() if rows is None)
+        if failed_parts:
+            msg = (
+                f"Importance & Type stopped: chunk(s) {failed_parts} of {len(chunks)} returned no data. "
+                f"Search logs for {STAGE_J_WEB_LOG_PREFIX} (context_limit, parse_exhausted, api_error)."
+            )
+            sj_web_log(self.logger, f"job_fail failed_chunks={failed_parts} total_chunks={len(chunks)}")
+            _progress(msg)
+            self.logger.error("%s %s", STAGE_J_WEB_LOG_PREFIX, msg)
             return None
 
         combined_model_data: List[Dict[str, Any]] = []
@@ -890,10 +871,11 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
                 combined_model_data.extend(part_rows)
                 _progress(f"Chunk {idx + 1}/{len(chunks)}: collected {len(part_rows)} Imp/Type row(s)")
             else:
-                _progress(f"No Imp/Type rows for chunk {idx + 1}/{len(chunks)}")
+                _progress(f"Chunk {idx + 1}/{len(chunks)}: internal error (empty chunk result after success gate)")
 
         if not combined_model_data:
-            self.logger.error("No Imp/Type rows from any chunk")
+            sj_web_log(self.logger, "job_fail reason=no_rows_after_successful_chunks")
+            self.logger.error("No Imp/Type rows after chunk merge")
             return None
 
         base_dir = os.path.dirname(ta_json_path) or os.getcwd()
@@ -972,7 +954,8 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
             "model_used": model_name,
             "stage_j_txt_file": os.path.basename(txt_path),
             "stage_j_call_mode": "parallel_chunks",
-            "stage_j_web_context_handling": "taper_max_tokens_then_bisect_rows",
+            "stage_j_web_strategy": "single_llm_call_per_chunk_parse_retries_only",
+            "stage_j_web_parse_retries_per_chunk": self.STAGE_J_WEB_LLM_PARSE_RETRIES,
             "stage_j_web_output_max_tokens": self.STAGE_J_WEB_MAX_OUTPUT_TOKENS,
             "topic_captions_once_per_chunk_topic": True,
             "chunk_size": chunk_sz,
@@ -984,9 +967,15 @@ Return ONLY valid JSON, no markdown fences or extra commentary."""
         _progress(f"Saving Web Stage J output to: {output_path}")
         success = self.save_json_file(merged_records, output_path, output_metadata, "J")
         if success:
+            sj_web_log(
+                self.logger,
+                f"job_ok path={os.path.basename(output_path)} chunks={len(chunks)} "
+                f"imp_type_rows={len(combined_model_data)} merged={len(merged_records)}",
+            )
             _progress(f"Web Stage J completed successfully: {output_path}")
             return output_path
         self.logger.error("Failed to save Web Stage J output")
+        sj_web_log(self.logger, f"job_fail reason=save_failed path={os.path.basename(output_path)}")
         return None
 
 
