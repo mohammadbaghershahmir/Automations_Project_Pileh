@@ -34,6 +34,7 @@ from webapp.bootstrap import (
 from webapp.default_prompts import (
     get_default_document_processing_prompt,
     get_default_image_notes_prompt,
+    get_default_chapter_summary_prompt,
     get_default_flashcard_prompt,
     get_default_importance_type_prompt,
     get_default_ocr_extraction_prompt,
@@ -76,6 +77,7 @@ from webapp.models import Artifact, InboxNotification, Job, JobLogLine, JobPair,
 from webapp.tasks_stage_v import run_full_pipeline_job, run_step1_job, run_step2_job
 from stage_v_pairing import (
     attach_step1_combined_uploads_to_pairs,
+    auto_pair_chapter_summary_files,
     auto_pair_flashcard_files,
     auto_pair_stage_v_files,
 )
@@ -579,6 +581,20 @@ def create_app() -> FastAPI:
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": get_default_flashcard_prompt(),
+            },
+        )
+
+    @app.get("/chapter-summary/new", response_class=HTMLResponse)
+    def chapter_summary_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "chapter_summary_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_chapter_summary_prompt(),
+                "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
+                "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
             },
         )
 
@@ -1646,6 +1662,118 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/chapter-summary")
+        async def create_chapter_summary_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            tagged_json_files: List[UploadFile] = File(...),
+            test_bank_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider_1: str = Form(DEFAULT_TEST_BANK_PROVIDER),
+            model_1: str = Form(DEFAULT_TEST_BANK_MODEL),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="chaptersummary_upload_")
+            try:
+
+                async def _collect(files: List[UploadFile], subdir: str) -> List[str]:
+                    paths: List[str] = []
+                    for uf in files:
+                        if not uf.filename:
+                            continue
+                        dest = os.path.join(tmp, subdir, os.path.basename(uf.filename))
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        content = await uf.read()
+                        with open(dest, "wb") as f:
+                            f.write(content)
+                        paths.append(dest)
+                    return paths
+
+                tagged_paths = await _collect(tagged_json_files, "tagged")
+                test_bank_paths = await _collect(test_bank_json_files, "test_bank")
+                if not tagged_paths:
+                    raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
+                if not test_bank_paths:
+                    raise HTTPException(400, "Upload at least one Test Bank JSON (b*.json from Test Bank 2).")
+
+                pairs_spec = auto_pair_chapter_summary_files(tagged_paths, test_bank_paths)
+                if not pairs_spec:
+                    raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
+                unpaired = [p for p in pairs_spec if not p.get("word_path")]
+                if unpaired:
+                    raise HTTPException(
+                        400,
+                        f"{len(unpaired)} tagged file(s) could not be matched to a Test Bank JSON.",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_chapter_summary_prompt()
+                model_1_eff = normalize_test_bank_model(model_1)
+                if model_1_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
+                    raise HTTPException(400, "Invalid OpenRouter model.")
+                provider_1_eff = normalize_test_bank_provider(provider_1)
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider_1": provider_1_eff,
+                    "model_1": model_1_eff,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="chapter_summary",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, p in enumerate(pairs_spec):
+                    tagged = p["stage_j_path"]
+                    test_bank = p["word_path"]
+                    ensure_dirs(job_id, pair_index)
+                    tagged_name = os.path.basename(tagged)
+                    tb_name = os.path.basename(test_bank)
+                    rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
+                    rel_tb = f"pair_{pair_index}/inputs/{tb_name}"
+                    shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
+                    shutil.copy2(test_bank, os.path.join(root, rel_tb.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=tagged_name,
+                            word_filename=tb_name,
+                            stage_j_relpath=rel_tagged,
+                            word_relpath=rel_tb,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_tb, "upload_test_bank_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
         @app.post("/jobs/image-file-catalog")
         async def create_image_file_catalog_job(
             user: CurrentUser,
@@ -1804,6 +1932,10 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/flashcard")
         def create_flashcard_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/chapter-summary")
+        def create_chapter_summary_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
         @app.post("/jobs/image-file-catalog")

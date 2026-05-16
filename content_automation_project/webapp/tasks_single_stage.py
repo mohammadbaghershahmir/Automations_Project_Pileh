@@ -1058,6 +1058,156 @@ def run_flashcard_step1_job(job_id: str, pair_indices: Optional[List[int]] = Non
         db.close()
 
 
+def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Web Stage L: tagged a*.json + Test Bank b*.json → o*.json (one LLM call per pair)."""
+    from stage_l_processor import StageLProcessor
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        prompt = (cfg.get("prompt") or "").strip()
+        if not prompt:
+            from webapp.default_prompts import get_default_chapter_summary_prompt
+
+            prompt = get_default_chapter_summary_prompt()
+        from webapp.config import DEFAULT_TEST_BANK_MODEL, normalize_test_bank_model
+
+        model_name = normalize_test_bank_model(cfg.get("model_1"), DEFAULT_TEST_BANK_MODEL)
+        delay_seconds = float(cfg.get("delay_seconds", 5))
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(
+            db,
+            job_id,
+            "Chapter Summary runner started (tagged JSON + Test Bank JSON per pair).",
+            None,
+        )
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        client, _ssm = build_unified_api_client()
+        jt = (job.type or "chapter_summary").strip()
+        base = job_root(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if not pair.stage_j_relpath or not pair.word_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing tagged JSON or Test Bank JSON path"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (incomplete pair)", pair.pair_index)
+                continue
+
+            abs_tagged = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            abs_test_bank = os.path.join(base, pair.word_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_tagged) or not os.path.isfile(abs_test_bank):
+                pair.step1_status = "failed"
+                pair.step1_error = "Missing input JSON on disk"
+                db.commit()
+                append_log(db, job_id, f"pair {pair.pair_index}: input file missing on disk", pair.pair_index)
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            out_dir = pair_output(job_id, pair.pair_index)
+            os.makedirs(out_dir, exist_ok=True)
+
+            processor = StageLProcessor(
+                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            )
+
+            def progress(msg: str) -> None:
+                append_log(db, job_id, msg, pair.pair_index)
+                if _scalar_cancel_requested(db, job_id):
+                    raise JobCancelled()
+
+            try:
+                append_log(
+                    db,
+                    job_id,
+                    f"--- Chapter Summary (Stage L) start pair {pair.pair_index} ---",
+                    pair.pair_index,
+                )
+                try:
+                    result = processor.process_stage_l(
+                        stage_j_path=abs_tagged,
+                        stage_v_path=abs_test_bank,
+                        prompt=prompt,
+                        model_name=model_name,
+                        output_dir=out_dir,
+                        progress_callback=progress,
+                    )
+                except JobCancelled:
+                    _finalize_step1_cancelled(db, job_id, pairs)
+                    return
+                if result and os.path.isfile(result):
+                    pair.step1_status = "succeeded"
+                    rel_out = os.path.relpath(out_dir, base).replace("\\", "/")
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_out)
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Chapter Summary returned no output"
+                    append_log(db, job_id, f"pair {pair.pair_index}: Chapter Summary failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("Chapter Summary error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if i < len(pairs) - 1 and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- Chapter Summary job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_chapter_summary_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "Chapter Summary", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+
 def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
     """Stage F: image notes (Stage E) JSON → catalog JSON f_*.json under pair output (optional filepic JSON beside Stage E in inputs)."""
     from stage_f_processor import StageFProcessor

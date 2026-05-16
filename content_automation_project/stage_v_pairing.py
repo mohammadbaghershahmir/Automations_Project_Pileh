@@ -229,6 +229,83 @@ def auto_pair_flashcard_files(
     return pairs
 
 
+def extract_book_chapter_from_stage_v_filename_for_l(stage_v_path: str) -> Tuple[Optional[int], Optional[int]]:
+    """Extract book and chapter from Test Bank JSON (b{book}{chapter}+*.json or PointId)."""
+    try:
+        with open(stage_v_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        records = _records_from_stage_j_data(data)
+        if records:
+            pid = _point_id_to_str(records[0].get("PointId") or records[0].get("point_id"))
+            if pid and len(pid) >= 6 and pid[:6].isdigit():
+                return int(pid[0:3]), int(pid[3:6])
+    except Exception:
+        pass
+
+    try:
+        basename = os.path.basename(stage_v_path)
+        name_without_ext = os.path.splitext(basename)[0]
+        match = re.match(r"^b(\d{3})(\d{3})\+", name_without_ext)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        if name_without_ext.startswith("b") and len(name_without_ext) >= 7:
+            book_chapter = name_without_ext[1:]
+            return int(book_chapter[0:3]), int(book_chapter[3:6])
+    except Exception:
+        pass
+
+    return None, None
+
+
+def auto_pair_chapter_summary_files(
+    tagged_paths: List[str],
+    test_bank_paths: List[str],
+) -> List[Dict[str, Any]]:
+    """
+    Pair tagged lesson JSON (a*) with Test Bank JSON (b*) by book/chapter.
+
+    Returns dicts: stage_j_path (tagged), word_path (test bank — reuses JobPair column), ...
+    """
+    pairs: List[Dict[str, Any]] = []
+    paired_test_bank: set = set()
+
+    for tagged_path in tagged_paths:
+        book_id, chapter_id = extract_book_chapter_from_stage_j_for_v(tagged_path)
+        matched_tb: Optional[str] = None
+
+        if book_id is not None and chapter_id is not None:
+            for tb_path in test_bank_paths:
+                if tb_path in paired_test_bank:
+                    continue
+                tb_book, tb_chapter = extract_book_chapter_from_stage_v_filename_for_l(tb_path)
+                if tb_book == book_id and tb_chapter == chapter_id:
+                    matched_tb = tb_path
+                    paired_test_bank.add(tb_path)
+                    break
+
+        pairs.append(
+            {
+                "stage_j_path": tagged_path,
+                "word_path": matched_tb,
+                "status": "pending",
+                "output_path": None,
+                "error": None,
+            }
+        )
+
+    if len(pairs) == 1 and len(test_bank_paths) == 1 and pairs[0]["word_path"] is None:
+        pairs[0]["word_path"] = test_bank_paths[0]
+
+    remaining = [c for c in test_bank_paths if c not in paired_test_bank]
+    for pair in pairs:
+        if pair["word_path"] is None and remaining:
+            c = remaining.pop(0)
+            pair["word_path"] = c
+            paired_test_bank.add(c)
+
+    return pairs
+
+
 def extract_book_chapter_from_step1_combined_filename(path: str) -> Tuple[Optional[int], Optional[int]]:
     """
     Parse book/chapter from a Test Bank Step 1 combined JSON basename.

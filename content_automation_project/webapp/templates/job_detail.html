@@ -15,6 +15,13 @@
   <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ cfg.get('model_1') or '—' }}</code></p>
   <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.45;">This job will call OpenRouter with the model above; usage is billed to your API key. Create a new job if you need a different model.</p>
 </div>
+{% elif job.type == 'chapter_summary' %}
+<div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
+  <h2 style="margin:0 0 10px;font-size:1rem;">OpenRouter — Chapter Summary (before you run)</h2>
+  <p style="margin:0;font-size:14px;line-height:1.5;">Provider <strong>{{ cfg.get('provider_1') or 'openrouter' }}</strong></p>
+  <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ cfg.get('model_1') or '—' }}</code></p>
+  <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.45;">This job will call OpenRouter with the model above; usage is billed to your API key. Create a new job if you need a different model.</p>
+</div>
 {% elif job.type == 'test_bank_2' %}
 <div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
   <h2 style="margin:0 0 10px;font-size:1rem;">OpenRouter — Step 2 (before you run)</h2>
@@ -121,6 +128,8 @@
         <th>TA merged JSON</th><th>Tablepic</th><th>Filepic</th><th>Test Bank 1 combined</th>
         {% elif job.type == 'flashcard' %}
         <th>Tagged JSON (a*)</th><th>Image catalog (f*)</th>
+        {% elif job.type == 'chapter_summary' %}
+        <th>Tagged JSON (a*)</th><th>Test bank (b*)</th>
         {% elif job.type == 'image_file_catalog' %}
         <th>Image notes (Stage E)</th><th>Filepic JSON</th>
         {% elif job.type == 'test_bank_2' %}
@@ -154,6 +163,9 @@
         <td style="font-size:13px;">{{ pm_row.get('filepic_basename', '—') }}</td>
         <td style="font-size:13px;">{{ p.word_filename }}</td>
         {% elif job.type == 'flashcard' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+        <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
+        {% elif job.type == 'chapter_summary' %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
         {% elif job.type == 'test_bank_2' %}
@@ -223,6 +235,9 @@
   {% elif job.type == 'flashcard' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Flashcard Generation</h2>
   <p class="muted" style="margin-top:0;">Tagged <code>a*.json</code> + image catalog <code>f*.json</code> → <code>ac*.json</code> per pair (parallel ~100-row LLM chunks). Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'chapter_summary' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Chapter Summary</h2>
+  <p class="muted" style="margin-top:0;">Tagged <code>a*.json</code> + Test Bank <code>b*.json</code> → <code>o*.json</code> per pair (one overview LLM call). Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'image_file_catalog' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
   <p class="muted" style="margin-top:0;">Image notes (Stage E) → catalog JSON (<code>f_*.json</code>) per pair. Runs in the <strong>background worker</strong>.</p>
@@ -242,6 +257,11 @@
     <strong style="font-size:13px;display:block;margin-bottom:6px;">Token spend — OpenRouter model for this run</strong>
     <span style="font-size:13px;word-break:break-all;"><code>{{ cfg.get('model_1') or '—' }}</code> via {{ cfg.get('provider_1') or 'openrouter' }}</span>
   </div>
+  {% elif job.type == 'chapter_summary' %}
+  <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
+    <strong style="font-size:13px;display:block;margin-bottom:6px;">Token spend — OpenRouter model for this run</strong>
+    <span style="font-size:13px;word-break:break-all;"><code>{{ cfg.get('model_1') or '—' }}</code> via {{ cfg.get('provider_1') or 'openrouter' }}</span>
+  </div>
   {% elif job.type == 'test_bank_2' %}
   <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
     <strong style="font-size:13px;display:block;margin-bottom:6px;">Token spend — OpenRouter Step 2 model for this run</strong>
@@ -249,7 +269,7 @@
   </div>
   {% endif %}
   {% if is_job_owner %}
-  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'flashcard' %}Run Flashcard Generation{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'flashcard' %}Run Flashcard Generation{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}</span></button>
+  <button type="button" id="btn-s1" class="btn-cta btn-step{% if p0 and p0.step1_status == 'running' %} is-running{% elif p0 and p0.step1_status == 'failed' %} is-failed{% endif %}" data-default-label="{% if single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'flashcard' %}Run Flashcard Generation{% elif job.type == 'chapter_summary' %}Run Chapter Summary{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}"{% if p0 and p0.step1_status == 'running' %} disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and p0.step1_status == 'running' %}Running…{% elif p0 and p0.step1_status == 'failed' %}Failed — run again{% elif single_stage_job %}{% if job.type == 'pre_ocr_topic' %}Run Pre-OCR{% elif job.type == 'ocr_extraction' %}Run OCR extraction{% elif job.type == 'document_processing' %}Run document processing{% elif job.type == 'image_notes' %}Run image notes{% elif job.type == 'table_notes' %}Run table notes{% elif job.type == 'importance_type' %}Run Importance &amp; Type{% elif job.type == 'flashcard' %}Run Flashcard Generation{% elif job.type == 'chapter_summary' %}Run Chapter Summary{% elif job.type == 'image_file_catalog' %}Run image file catalog{% elif job.type == 'test_bank_2' %}Run Test Bank 2{% else %}Run processing{% endif %}{% else %}{% if job.type == 'test_bank_1' %}Run Test Bank 1{% else %}Run Step 1{% endif %}{% endif %}</span></button>
 
   <div id="stop-under-s1" class="stop-under-step" style="display:{% if show_stop_s1 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 1</button>
