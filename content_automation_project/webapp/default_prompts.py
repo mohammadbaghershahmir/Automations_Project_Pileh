@@ -15,6 +15,7 @@ _DOCUMENT_PROCESSING_KEY = "Document Processing Prompt"
 _IMAGE_NOTES_KEY = "Image Notes Prompt"
 _TABLE_NOTES_KEY = "Table Notes Prompt"
 _IMPORTANCE_TYPE_KEY = "Importance & Type Prompt"
+_FLASHCARD_KEY = "Flashcard Prompt"
 
 
 def _read_prompts() -> dict:
@@ -57,6 +58,10 @@ def get_default_table_notes_prompt() -> str:
 
 def get_default_importance_type_prompt() -> str:
     return _read_prompts()[_IMPORTANCE_TYPE_KEY].strip()
+
+
+def get_default_flashcard_prompt() -> str:
+    return _read_prompts()[_FLASHCARD_KEY].strip()
 
 
 DEFAULT_TEST_BANK_STEP1_PROMPT = get_default_step1_prompt()

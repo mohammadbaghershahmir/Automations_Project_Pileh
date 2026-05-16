@@ -7,6 +7,7 @@ from typing import Any, Dict, List, TypedDict
 from webapp.default_prompts import (
     get_default_document_processing_prompt,
     get_default_image_notes_prompt,
+    get_default_flashcard_prompt,
     get_default_importance_type_prompt,
     get_default_ocr_extraction_prompt,
     get_default_pre_ocr_prompt,
@@ -40,6 +41,7 @@ _PROMPT_KEYS: Dict[str, List[tuple[str, str]]] = {
     "image_notes": [("prompt", "Image notes (Stage E) prompt")],
     "table_notes": [("prompt", "Table notes (Stage TA) prompt")],
     "importance_type": [("prompt", "Importance & Type (Stage J) prompt")],
+    "flashcard": [("prompt", "Flashcard Generation (Stage H) prompt")],
 }
 
 
@@ -89,6 +91,8 @@ def _default_for_config_key(job_type: str, key: str) -> str:
         return get_default_table_notes_prompt()
     if job_type == "importance_type":
         return get_default_importance_type_prompt()
+    if job_type == "flashcard":
+        return get_default_flashcard_prompt()
     return ""
 
 

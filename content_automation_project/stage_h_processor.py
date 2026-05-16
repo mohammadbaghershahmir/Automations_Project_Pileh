@@ -7,19 +7,423 @@ import json
 import logging
 import math
 import os
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable
+
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
+from stage_j_processor import sj_web_is_context_limit_error
+
+STAGE_H_WEB_LOG_PREFIX = "[stage_h_web]"
+
+_SH_WEB_JSON_RETRY_SUFFIX = (
+    "\n\nCRITICAL (retry): Reply with ONLY one JSON object {\"data\":[...]}. "
+    "Each element: PointId, Qtext, Choice1, Choice2, Choice3, Choice4, Correct. "
+    "No markdown, no chain-of-thought."
+)
+
+
+def sh_web_log(logger: logging.Logger, message: str) -> None:
+    logger.info("%s %s", STAGE_H_WEB_LOG_PREFIX, message)
+
+
+def sh_web_slim_lesson_row(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "PointId": str(record.get("PointId", "") or ""),
+        "chapter": record.get("chapter", ""),
+        "subchapter": record.get("subchapter", ""),
+        "topic": record.get("topic", ""),
+        "subtopic": record.get("subtopic", ""),
+        "subsubtopic": record.get("subsubtopic", ""),
+        "Points": record.get("Points", record.get("points", "")),
+    }
+
+
+def sh_web_build_user_prompt(
+    prompt_body: str,
+    part_num: int,
+    total_parts: int,
+    stage_f_json_str: str,
+    slim_rows: List[Dict[str, Any]],
+) -> str:
+    sj = json.dumps(slim_rows, ensure_ascii=False, separators=(",", ":"))
+    return f"""{prompt_body}
+
+Stage F Data (Image files catalog):
+{stage_f_json_str}
+
+Structured inputs for this chunk (part {part_num} of {total_parts}):
+
+Lesson rows (PointId + hierarchy + Points only — no Imp/Type in this block):
+{sj}
+
+Generate one flashcard per PointId in the lesson rows above. Reply with ONE JSON object per the Output rules (root key "data"). No markdown outside JSON."""
+
+
+def sh_web_max_tokens_for_chunk(chunk_len: int) -> int:
+    estimated = int(chunk_len * 250 * 1.5)
+    cap = min(APIConfig.DEFAULT_MAX_TOKENS * 2, getattr(APIConfig, "DEFAULT_OPENROUTER_MAX_TOKENS", 65536))
+    return max(4096, min(estimated, cap))
 
 
 class StageHProcessor(BaseStageProcessor):
     """Process Stage H: Generate flashcards from Stage J and Stage F data"""
-    
+
+    STAGE_H_WEB_CHUNK_SIZE = 100
+    STAGE_H_WEB_PARALLEL_CHUNKS = 6
+    STAGE_H_WEB_LLM_PARSE_RETRIES = 3
+
     def __init__(self, api_client):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
-    
+
+    def _parse_flashcard_rows_from_llm_response(self, response_text: str) -> List[Dict[str, Any]]:
+        if not (response_text or "").strip():
+            return []
+        part_output = self.extract_json_from_response(response_text)
+        if not part_output:
+            part_output = self.load_txt_as_json_from_text(response_text)
+        if not part_output:
+            return []
+        rows = self.get_data_from_json(part_output)
+        out: List[Dict[str, Any]] = []
+        for x in rows or []:
+            if not isinstance(x, dict):
+                continue
+            pid = str(x.get("PointId", "") or x.get("point_id", "") or "")
+            if not pid:
+                continue
+            row = {
+                "PointId": pid,
+                "Qtext": str(x.get("Qtext", "") or ""),
+                "Choice1": str(x.get("Choice1", "") or ""),
+                "Choice2": str(x.get("Choice2", "") or ""),
+                "Choice3": str(x.get("Choice3", "") or ""),
+                "Choice4": str(x.get("Choice4", "") or ""),
+                "Correct": str(x.get("Correct", "") or ""),
+            }
+            if row["Qtext"] or row["Correct"]:
+                out.append(row)
+        return out
+
+    def _run_web_chunk_flashcards(
+        self,
+        chunk_rows: List[Dict[str, Any]],
+        stage_f_json_str: str,
+        part_num: int,
+        total_parts: int,
+        prompt_body: str,
+        model_name: str,
+        cancel_check: Optional[Callable[[], bool]],
+    ) -> Optional[List[Dict[str, Any]]]:
+        logger = self.logger
+        if cancel_check and cancel_check():
+            return None
+        if not chunk_rows:
+            return []
+
+        slim_rows = [sh_web_slim_lesson_row(r) for r in chunk_rows if isinstance(r, dict)]
+        full_prompt = sh_web_build_user_prompt(
+            prompt_body, part_num, total_parts, stage_f_json_str, slim_rows
+        )
+        prompt_chars = len(full_prompt)
+        max_out = sh_web_max_tokens_for_chunk(len(chunk_rows))
+        sh_web_log(
+            logger,
+            "chunk_begin "
+            f"part={part_num}/{total_parts} lesson_rows={len(chunk_rows)} "
+            f"prompt_chars={prompt_chars} max_tokens={max_out}",
+        )
+
+        for attempt in range(1, self.STAGE_H_WEB_LLM_PARSE_RETRIES + 1):
+            if cancel_check and cancel_check():
+                return None
+
+            attempt_prompt = full_prompt
+            if attempt >= 2:
+                attempt_prompt = full_prompt + _SH_WEB_JSON_RETRY_SUFFIX
+            last_attempt = attempt >= self.STAGE_H_WEB_LLM_PARSE_RETRIES
+            use_content_only = not last_attempt
+            use_reasoning_none = not last_attempt
+
+            try:
+                resp = self.api_client.process_text(
+                    text=attempt_prompt,
+                    system_prompt=None,
+                    model_name=model_name,
+                    temperature=APIConfig.DEFAULT_TEMPERATURE,
+                    max_tokens=max_out,
+                    reasoning_effort_none=use_reasoning_none,
+                    content_only=use_content_only,
+                )
+            except Exception as e:
+                if sj_web_is_context_limit_error(e):
+                    sh_web_log(
+                        logger,
+                        f"chunk_fail reason=context_limit part={part_num}/{total_parts} prompt_chars={prompt_chars}",
+                    )
+                    logger.error("%s context_limit_error: %s", STAGE_H_WEB_LOG_PREFIX, e)
+                    return None
+                sh_web_log(logger, f"chunk_fail reason=api_error part={part_num}/{total_parts} attempt={attempt}")
+                logger.exception("%s api_error", STAGE_H_WEB_LOG_PREFIX)
+                return None
+
+            if not (resp or "").strip():
+                sh_web_log(
+                    logger,
+                    f"chunk_retry reason=empty_response part={part_num}/{total_parts} attempt={attempt}",
+                )
+                continue
+
+            rows = self._parse_flashcard_rows_from_llm_response(resp)
+            min_rows = max(1, int(len(chunk_rows) * 0.5))
+            if rows and len(rows) >= min_rows:
+                sh_web_log(
+                    logger,
+                    f"chunk_ok part={part_num}/{total_parts} parsed_rows={len(rows)} attempt={attempt}",
+                )
+                return rows
+
+            rlen = len(resp)
+            tail = resp[-500:] if rlen > 500 else resp
+            reason = "too_few_rows" if rows else "unparseable_json"
+            sh_web_log(
+                logger,
+                f"chunk_retry reason={reason} part={part_num}/{total_parts} attempt={attempt} "
+                f"parsed_rows={len(rows)} need>={min_rows}",
+            )
+            logger.warning("%s parse_fail_tail part=%s/%s: %r", STAGE_H_WEB_LOG_PREFIX, part_num, total_parts, tail)
+
+        sh_web_log(
+            logger,
+            f"chunk_fail reason=parse_exhausted part={part_num}/{total_parts} retries={self.STAGE_H_WEB_LLM_PARSE_RETRIES}",
+        )
+        return None
+
+    def process_stage_h_web_two_json(
+        self,
+        tagged_json_path: str,
+        catalog_json_path: str,
+        prompt: str,
+        model_name: str,
+        output_dir: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        chunk_size: Optional[int] = None,
+        max_parallel_chunks: Optional[int] = None,
+    ) -> Optional[str]:
+        """Web Stage H: tagged a*.json + image catalog f*.json → parallel chunks → ac*.json."""
+        chunk_sz = chunk_size if chunk_size is not None else self.STAGE_H_WEB_CHUNK_SIZE
+        max_par = max_parallel_chunks if max_parallel_chunks is not None else self.STAGE_H_WEB_PARALLEL_CHUNKS
+
+        def _progress(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
+            self.logger.info(msg)
+
+        if hasattr(self.api_client, "set_stage"):
+            self.api_client.set_stage("stage_h")
+
+        if cancel_check and cancel_check():
+            return None
+
+        _progress("Starting Web Flashcard Generation (parallel chunks)...")
+        sh_web_log(
+            self.logger,
+            f"job_begin model={model_name!r} chunk_size={chunk_sz} max_parallel={max_par}",
+        )
+
+        stage_j_data = self.load_json_file(tagged_json_path)
+        if not stage_j_data:
+            self.logger.error("Failed to load tagged JSON")
+            return None
+        stage_j_records = self.get_data_from_json(stage_j_data)
+        if not stage_j_records:
+            self.logger.error("Tagged JSON has no data")
+            return None
+
+        first_point_id = stage_j_records[0].get("PointId")
+        if not first_point_id:
+            self.logger.error("No PointId in tagged JSON")
+            return None
+        try:
+            book_id, chapter_id = self.extract_book_chapter_from_pointid(first_point_id)
+        except ValueError as e:
+            self.logger.error("Error extracting book/chapter: %s", e)
+            return None
+
+        chapter_name = ""
+        stage_j_metadata = self.get_metadata_from_json(stage_j_data)
+        chapter_name = (
+            stage_j_metadata.get("chapter", "")
+            or stage_j_metadata.get("Chapter", "")
+            or stage_j_metadata.get("chapter_name", "")
+            or stage_j_metadata.get("Chapter_Name", "")
+            or ""
+        )
+        if not chapter_name and stage_j_records:
+            chapter_name = stage_j_records[0].get("chapter", "") or ""
+        chapter_name_clean = ""
+        if chapter_name:
+            chapter_name_clean = re.sub(r'[<>:"/\\|?*]', "_", chapter_name)
+            chapter_name_clean = chapter_name_clean.replace(" ", "_")
+            chapter_name_clean = re.sub(r"_+", "_", chapter_name_clean).strip("_")
+
+        stage_f_data = self.load_json_file(catalog_json_path)
+        if not stage_f_data:
+            self.logger.error("Failed to load image catalog JSON")
+            return None
+        stage_f_records = self.get_data_from_json(stage_f_data)
+        if not stage_f_records:
+            self.logger.warning("Image catalog JSON has no rows")
+            stage_f_records = []
+        stage_f_json_str = json.dumps(stage_f_records, ensure_ascii=False, separators=(",", ":"))
+
+        _progress(f"Loaded tagged rows={len(stage_j_records)}, catalog rows={len(stage_f_records)}")
+
+        n_chunks = max(1, math.ceil(len(stage_j_records) / chunk_sz))
+        _progress(f"Chunk size={chunk_sz}, chunks={n_chunks}, parallel workers={min(max_par, n_chunks)}")
+
+        chunks: List[List[Dict[str, Any]]] = []
+        for i in range(0, len(stage_j_records), chunk_sz):
+            chunks.append(stage_j_records[i : i + chunk_sz])
+
+        nw = min(max_par, len(chunks)) if chunks else 1
+        chunk_responses: Dict[int, Optional[List[Dict[str, Any]]]] = {}
+
+        with ThreadPoolExecutor(max_workers=nw) as executor:
+            future_to_idx: Dict[Any, int] = {}
+            for idx, chunk in enumerate(chunks):
+                if cancel_check and cancel_check():
+                    _progress("Cancelled before scheduling chunks.")
+                    break
+                chunk_rows = [r for r in chunk if isinstance(r, dict)]
+                fut = executor.submit(
+                    self._run_web_chunk_flashcards,
+                    chunk_rows,
+                    stage_f_json_str,
+                    idx + 1,
+                    len(chunks),
+                    prompt,
+                    model_name,
+                    cancel_check,
+                )
+                future_to_idx[fut] = idx
+
+            for fut in as_completed(future_to_idx):
+                idx = future_to_idx[fut]
+                try:
+                    chunk_responses[idx] = fut.result()
+                except Exception as e:
+                    sh_web_log(self.logger, f"chunk_worker_crash part_index={idx} err={e!r}")
+                    self.logger.exception("%s chunk_worker_crash idx=%s", STAGE_H_WEB_LOG_PREFIX, idx)
+                    chunk_responses[idx] = None
+
+        if cancel_check and cancel_check():
+            return None
+
+        failed_parts = sorted(i + 1 for i, rows in chunk_responses.items() if rows is None)
+        if failed_parts:
+            msg = (
+                f"Flashcard generation stopped: chunk(s) {failed_parts} of {len(chunks)} failed. "
+                f"Search logs for {STAGE_H_WEB_LOG_PREFIX}."
+            )
+            sh_web_log(self.logger, f"job_fail failed_chunks={failed_parts} total_chunks={len(chunks)}")
+            _progress(msg)
+            self.logger.error("%s %s", STAGE_H_WEB_LOG_PREFIX, msg)
+            return None
+
+        combined_model_data: List[Dict[str, Any]] = []
+        for idx in sorted(chunk_responses.keys()):
+            part_rows = chunk_responses.get(idx)
+            if part_rows:
+                combined_model_data.extend(part_rows)
+                _progress(f"Chunk {idx + 1}/{len(chunks)}: collected {len(part_rows)} flashcard row(s)")
+
+        if not combined_model_data:
+            sh_web_log(self.logger, "job_fail reason=no_rows_after_merge")
+            return None
+
+        pointid_to_flashcard: Dict[str, Dict[str, Any]] = {}
+        for record in combined_model_data:
+            point_id = str(record.get("PointId", "") or "")
+            if point_id:
+                pointid_to_flashcard[point_id] = record
+
+        matched_count = 0
+        flashcard_records: List[Dict[str, Any]] = []
+        for record in stage_j_records:
+            if not isinstance(record, dict):
+                continue
+            point_id = str(record.get("PointId", "") or "")
+            fc = pointid_to_flashcard.get(point_id, {})
+            flashcard_record = {
+                "PointId": point_id,
+                "chapter": record.get("chapter", ""),
+                "subchapter": record.get("subchapter", ""),
+                "topic": record.get("topic", ""),
+                "subtopic": record.get("subtopic", ""),
+                "subsubtopic": record.get("subsubtopic", ""),
+                "Points": record.get("Points", record.get("points", "")),
+                "Type": record.get("Type", ""),
+                "Imp": record.get("Imp", ""),
+                "Qtext": fc.get("Qtext", ""),
+                "Choice1": fc.get("Choice1", ""),
+                "Choice2": fc.get("Choice2", ""),
+                "Choice3": fc.get("Choice3", ""),
+                "Choice4": fc.get("Choice4", ""),
+                "Correct": fc.get("Correct", ""),
+                "Mainanswer": "زیرعنوان",
+            }
+            if fc.get("Qtext") or fc.get("Correct"):
+                matched_count += 1
+            flashcard_records.append(flashcard_record)
+
+        _progress(f"Merged {len(flashcard_records)} records; matched flashcards for {matched_count}")
+
+        out_dir = output_dir or os.path.dirname(tagged_json_path) or os.getcwd()
+        if chapter_name_clean:
+            base_filename = f"ac{book_id:03d}{chapter_id:03d}+{chapter_name_clean}.json"
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"ac{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+        output_path = os.path.join(out_dir, base_filename)
+        if os.path.exists(output_path) and chapter_name_clean:
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"ac{book_id:03d}{chapter_id:03d}+{chapter_name_clean}_{counter}.json"
+                output_path = os.path.join(out_dir, base_filename)
+                counter += 1
+
+        output_metadata = {
+            "book_id": book_id,
+            "chapter_id": chapter_id,
+            "source_stage_j": os.path.basename(tagged_json_path),
+            "source_stage_f": os.path.basename(catalog_json_path),
+            "model_used": model_name,
+            "stage_h_call_mode": "parallel_chunks",
+            "stage_h_web_strategy": "single_llm_call_per_chunk_parse_retries",
+            "chunk_size": chunk_sz,
+            "parallel_workers_used": nw,
+            "total_records": len(flashcard_records),
+            "records_with_flashcards": matched_count,
+        }
+
+        _progress(f"Saving flashcard output to: {output_path}")
+        success = self.save_json_file(flashcard_records, output_path, output_metadata, "H")
+        if success:
+            sh_web_log(
+                self.logger,
+                f"job_ok path={os.path.basename(output_path)} chunks={len(chunks)} "
+                f"flashcard_rows={len(combined_model_data)} merged={len(flashcard_records)}",
+            )
+            _progress(f"Web Flashcard Generation completed: {output_path}")
+            return output_path
+        sh_web_log(self.logger, f"job_fail reason=save_failed path={os.path.basename(output_path)}")
+        return None
+
     def process_stage_h(
         self,
         stage_j_path: str,

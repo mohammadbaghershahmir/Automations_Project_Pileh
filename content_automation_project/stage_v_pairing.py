@@ -163,6 +163,72 @@ def auto_pair_stage_v_files(
     return pairs
 
 
+def extract_book_chapter_from_stage_f_filename_for_h(stage_f_path: str) -> Tuple[Optional[int], Optional[int]]:
+    """Extract book and chapter from Image File Catalog JSON (f_e{book}{chapter}.json, f_{book}{chapter}.json)."""
+    try:
+        basename = os.path.basename(stage_f_path)
+        name_without_ext = os.path.splitext(basename)[0]
+        if name_without_ext.startswith("f_e") and len(name_without_ext) >= 9:
+            book_chapter = name_without_ext[3:]
+            return int(book_chapter[0:3]), int(book_chapter[3:6])
+        if name_without_ext.startswith("f_") and len(name_without_ext) >= 8:
+            book_chapter = name_without_ext[2:]
+            if len(book_chapter) >= 6:
+                return int(book_chapter[0:3]), int(book_chapter[3:6])
+    except (ValueError, IndexError):
+        pass
+    return None, None
+
+
+def auto_pair_flashcard_files(
+    tagged_paths: List[str],
+    catalog_paths: List[str],
+) -> List[Dict[str, Any]]:
+    """
+    Pair tagged JSON (a*) with image catalog JSON (f*) by book/chapter.
+
+    Returns dicts: stage_j_path (tagged), word_path (catalog — reuses JobPair column), status, ...
+    """
+    pairs: List[Dict[str, Any]] = []
+    paired_catalog: set = set()
+
+    for tagged_path in tagged_paths:
+        book_id, chapter_id = extract_book_chapter_from_stage_j_for_v(tagged_path)
+        matched_catalog: Optional[str] = None
+
+        if book_id is not None and chapter_id is not None:
+            for catalog_path in catalog_paths:
+                if catalog_path in paired_catalog:
+                    continue
+                f_book, f_chapter = extract_book_chapter_from_stage_f_filename_for_h(catalog_path)
+                if f_book == book_id and f_chapter == chapter_id:
+                    matched_catalog = catalog_path
+                    paired_catalog.add(catalog_path)
+                    break
+
+        pairs.append(
+            {
+                "stage_j_path": tagged_path,
+                "word_path": matched_catalog,
+                "status": "pending",
+                "output_path": None,
+                "error": None,
+            }
+        )
+
+    if len(pairs) == 1 and len(catalog_paths) == 1 and pairs[0]["word_path"] is None:
+        pairs[0]["word_path"] = catalog_paths[0]
+
+    remaining = [c for c in catalog_paths if c not in paired_catalog]
+    for pair in pairs:
+        if pair["word_path"] is None and remaining:
+            c = remaining.pop(0)
+            pair["word_path"] = c
+            paired_catalog.add(c)
+
+    return pairs
+
+
 def extract_book_chapter_from_step1_combined_filename(path: str) -> Tuple[Optional[int], Optional[int]]:
     """
     Parse book/chapter from a Test Bank Step 1 combined JSON basename.

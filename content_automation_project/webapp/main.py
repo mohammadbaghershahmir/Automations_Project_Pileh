@@ -34,6 +34,7 @@ from webapp.bootstrap import (
 from webapp.default_prompts import (
     get_default_document_processing_prompt,
     get_default_image_notes_prompt,
+    get_default_flashcard_prompt,
     get_default_importance_type_prompt,
     get_default_ocr_extraction_prompt,
     get_default_pre_ocr_prompt,
@@ -73,7 +74,11 @@ from webapp.job_prompts import (
 )
 from webapp.models import Artifact, InboxNotification, Job, JobLogLine, JobPair, User
 from webapp.tasks_stage_v import run_full_pipeline_job, run_step1_job, run_step2_job
-from stage_v_pairing import attach_step1_combined_uploads_to_pairs, auto_pair_stage_v_files
+from stage_v_pairing import (
+    attach_step1_combined_uploads_to_pairs,
+    auto_pair_flashcard_files,
+    auto_pair_stage_v_files,
+)
 
 try:
     import multipart  # noqa: F401 — python-multipart (required for large file uploads)
@@ -562,6 +567,18 @@ def create_app() -> FastAPI:
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": get_default_importance_type_prompt(),
+            },
+        )
+
+    @app.get("/flashcard/new", response_class=HTMLResponse)
+    def flashcard_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "flashcard_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt": get_default_flashcard_prompt(),
             },
         )
 
@@ -1521,6 +1538,114 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/flashcard")
+        async def create_flashcard_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            tagged_json_files: List[UploadFile] = File(...),
+            catalog_json_files: List[UploadFile] = File(...),
+            prompt: str = Form(""),
+            provider: str = Form("openrouter"),
+            model: str = Form("z-ai/glm-5"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="flashcard_upload_")
+            try:
+
+                async def _collect(files: List[UploadFile], subdir: str) -> List[str]:
+                    paths: List[str] = []
+                    for uf in files:
+                        if not uf.filename:
+                            continue
+                        dest = os.path.join(tmp, subdir, os.path.basename(uf.filename))
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        content = await uf.read()
+                        with open(dest, "wb") as f:
+                            f.write(content)
+                        paths.append(dest)
+                    return paths
+
+                tagged_paths = await _collect(tagged_json_files, "tagged")
+                catalog_paths = await _collect(catalog_json_files, "catalog")
+                if not tagged_paths:
+                    raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
+                if not catalog_paths:
+                    raise HTTPException(400, "Upload at least one image catalog JSON (f*.json from Image File Catalog).")
+
+                pairs_spec = auto_pair_flashcard_files(tagged_paths, catalog_paths)
+                if not pairs_spec:
+                    raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
+                unpaired = [p for p in pairs_spec if not p.get("word_path")]
+                if unpaired:
+                    raise HTTPException(
+                        400,
+                        f"{len(unpaired)} tagged file(s) could not be matched to an image catalog JSON.",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+
+                prompt_eff = prompt.strip() or get_default_flashcard_prompt()
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt": prompt_eff,
+                    "provider": provider,
+                    "model": model,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="flashcard",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, p in enumerate(pairs_spec):
+                    tagged = p["stage_j_path"]
+                    catalog = p["word_path"]
+                    ensure_dirs(job_id, pair_index)
+                    tagged_name = os.path.basename(tagged)
+                    catalog_name = os.path.basename(catalog)
+                    rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
+                    rel_catalog = f"pair_{pair_index}/inputs/{catalog_name}"
+                    shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
+                    shutil.copy2(catalog, os.path.join(root, rel_catalog.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=tagged_name,
+                            word_filename=catalog_name,
+                            stage_j_relpath=rel_tagged,
+                            word_relpath=rel_catalog,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_catalog, "upload_image_catalog_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
         @app.post("/jobs/image-file-catalog")
         async def create_image_file_catalog_job(
             user: CurrentUser,
@@ -1675,6 +1800,10 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/importance-type")
         def create_importance_type_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/flashcard")
+        def create_flashcard_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
         @app.post("/jobs/image-file-catalog")

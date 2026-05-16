@@ -28,6 +28,7 @@ SINGLE_STAGE_JOB_TYPES = frozenset(
         "table_notes",
         "image_file_catalog",
         "importance_type",
+        "flashcard",
         "test_bank_1",
         "test_bank_2",
     }
