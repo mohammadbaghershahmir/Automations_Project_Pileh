@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import re
 import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -40,6 +41,76 @@ def _sj_step1_topic_key(row: Dict[str, Any]) -> Tuple[str, str, str]:
 
 
 STAGE_J_WEB_LOG_PREFIX = "[stage_j_web]"
+
+_SJ_WEB_VALID_TYPES = frozenset({
+    "Cp", "Epi", "Rf", "Tr", "Meth", "Def", "Histo", "Ddx", "Gen", "Comp",
+    "Img", "Lab", "Screen", "Follow", "Phys", "Contra", "Dose", "Exam", "Prev",
+})
+
+_SJ_WEB_PID_RE = re.compile(
+    r"(?:PointId|Point)\s*[:\*\s#]*\*{0,2}\s*(\d{8,})",
+    re.IGNORECASE,
+)
+_SJ_WEB_IMP_RE = re.compile(r'\bImp\.?\s*[:\s]*["\']?([123])["\']?', re.IGNORECASE)
+_SJ_WEB_TYPE_RE = re.compile(r'\bType\.?\s*[:\s]*\*{0,2}([A-Za-z]{2,10})\*{0,2}', re.IGNORECASE)
+
+_SJ_WEB_JSON_RETRY_SUFFIX = (
+    "\n\nCRITICAL (retry): Reply with ONLY one JSON object {\"data\":[...]}. "
+    "No markdown scoring lists, no chain-of-thought, no analysis text."
+)
+
+
+def _sj_web_norm_type(raw: str) -> str:
+    t = (raw or "").strip().rstrip(".")
+    for code in _SJ_WEB_VALID_TYPES:
+        if t.lower() == code.lower():
+            return code
+    return ""
+
+
+def sj_web_parse_scoring_markdown(text: str) -> List[Dict[str, Any]]:
+    """Salvage Imp/Type rows when the model returns markdown scoring instead of JSON."""
+    if not (text or "").strip():
+        return []
+    rows: List[Dict[str, Any]] = []
+    current_pid: Optional[str] = None
+    current_imp = ""
+    current_type = ""
+
+    def flush() -> None:
+        nonlocal current_pid, current_imp, current_type
+        if not current_pid:
+            return
+        imp = current_imp if current_imp in ("1", "2", "3") else ""
+        typ = _sj_web_norm_type(current_type)
+        if imp or typ:
+            rows.append({"PointId": current_pid, "Imp": imp, "Type": typ})
+        current_pid = None
+        current_imp = ""
+        current_type = ""
+
+    for line in text.splitlines():
+        pid_m = _SJ_WEB_PID_RE.search(line)
+        if pid_m:
+            flush()
+            current_pid = pid_m.group(1)
+            imp_m = _SJ_WEB_IMP_RE.search(line)
+            if imp_m:
+                current_imp = imp_m.group(1)
+            type_m = _SJ_WEB_TYPE_RE.search(line)
+            if type_m:
+                current_type = type_m.group(1)
+            continue
+        if not current_pid:
+            continue
+        imp_m = _SJ_WEB_IMP_RE.search(line)
+        if imp_m:
+            current_imp = imp_m.group(1)
+        type_m = _SJ_WEB_TYPE_RE.search(line)
+        if type_m:
+            current_type = type_m.group(1)
+    flush()
+    return rows
 
 
 def sj_web_is_context_limit_error(exc: BaseException) -> bool:
@@ -627,10 +698,15 @@ Stage E Data - Part {part_num}/{num_parts} (JSON):
         part_output = self.extract_json_from_response(response_text)
         if not part_output:
             part_output = self.load_txt_as_json_from_text(response_text)
-        if not part_output:
-            return []
-        rows = self.get_data_from_json(part_output)
-        return [x for x in rows if isinstance(x, dict)] if rows else []
+        if part_output:
+            rows = self.get_data_from_json(part_output)
+            parsed = [x for x in rows if isinstance(x, dict)] if rows else []
+            if parsed:
+                return parsed
+        md_rows = sj_web_parse_scoring_markdown(response_text)
+        if md_rows:
+            sj_web_log(self.logger, f"parsed_rows_from_markdown count={len(md_rows)}")
+        return md_rows
 
     def _run_web_chunk_importance_type(
         self,
@@ -676,13 +752,23 @@ Stage E Data - Part {part_num}/{num_parts} (JSON):
             if cancel_check and cancel_check():
                 return None
 
+            attempt_prompt = full_prompt
+            if attempt >= 2:
+                attempt_prompt = full_prompt + _SJ_WEB_JSON_RETRY_SUFFIX
+            # Last attempt: allow reasoning markdown salvage if JSON-only calls still fail.
+            last_attempt = attempt >= self.STAGE_J_WEB_LLM_PARSE_RETRIES
+            use_content_only = not last_attempt
+            use_reasoning_none = not last_attempt
+
             try:
                 resp = self.api_client.process_text(
-                    text=full_prompt,
+                    text=attempt_prompt,
                     system_prompt=None,
                     model_name=model_name,
                     temperature=APIConfig.DEFAULT_TEMPERATURE,
                     max_tokens=max_out,
+                    reasoning_effort_none=use_reasoning_none,
+                    content_only=use_content_only,
                 )
             except Exception as e:
                 if sj_web_is_context_limit_error(e):
@@ -710,20 +796,24 @@ Stage E Data - Part {part_num}/{num_parts} (JSON):
                 continue
 
             rows = self._parse_imp_type_rows_from_llm_response(resp)
-            if rows:
+            min_rows = max(1, int(len(chunk_ta_rows) * 0.5))
+            if rows and len(rows) >= min_rows:
                 sj_web_log(
                     logger,
                     "chunk_ok "
-                    f"part={part_num}/{total_parts} parsed_rows={len(rows)} attempt={attempt}",
+                    f"part={part_num}/{total_parts} parsed_rows={len(rows)} attempt={attempt} "
+                    f"reasoning_none={use_reasoning_none} content_only={use_content_only}",
                 )
                 return rows
 
             rlen = len(resp)
             tail = resp[-500:] if rlen > 500 else resp
+            reason = "too_few_rows" if rows else "unparseable_json"
             sj_web_log(
                 logger,
-                "chunk_retry reason=unparseable_json "
-                f"part={part_num}/{total_parts} attempt={attempt} response_chars={rlen}",
+                f"chunk_retry reason={reason} part={part_num}/{total_parts} attempt={attempt} "
+                f"response_chars={rlen} parsed_rows={len(rows)} need>={min_rows} "
+                f"reasoning_none={use_reasoning_none} content_only={use_content_only}",
             )
             logger.warning("%s parse_fail_tail part=%s/%s: %r", STAGE_J_WEB_LOG_PREFIX, part_num, total_parts, tail)
 

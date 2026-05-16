@@ -98,12 +98,17 @@ class UnifiedAPIClient:
                     max_tokens: int = APIConfig.DEFAULT_MAX_TOKENS,
                     api_key: Optional[str] = None,
                     cancel_check: Optional[Callable[[], bool]] = None,
-                    timeout_s: float = 600.0) -> Optional[str]:
+                    timeout_s: float = 600.0,
+                    reasoning_effort_none: bool = False,
+                    openrouter_payload_extra: Optional[Dict[str, Any]] = None,
+                    content_only: bool = False) -> Optional[str]:
         """
         Process text using appropriate API for current stage
         
         Process text using OpenRouter for current stage.
         cancel_check: optional callable returning True to abort (uses streaming on OpenRouter).
+        reasoning_effort_none: OpenRouter reasoning.effort=none for JSON-only structured output.
+        content_only: use assistant message.content only (ignore reasoning trace).
         """
         client = self.get_client_for_stage()
         stage = self._current_stage or "unknown"
@@ -119,6 +124,9 @@ class UnifiedAPIClient:
             api_key or stage_api_key,
             cancel_check=cancel_check,
             timeout_s=timeout_s,
+            reasoning_effort_none=reasoning_effort_none,
+            openrouter_payload_extra=openrouter_payload_extra,
+            content_only=content_only,
         )
     
     def process_pdf_with_prompt(self,

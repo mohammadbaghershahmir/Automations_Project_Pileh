@@ -95,14 +95,32 @@ def _extract_assistant_text_from_message(message: Any) -> Optional[str]:
     return text
 
 
-def _extract_assistant_text_from_message_with_source(message: Any) -> tuple[Optional[str], str]:
+def _string_field(val: Any) -> Optional[str]:
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    return None
+
+
+def _extract_assistant_text_from_message_with_source(
+    message: Any,
+    *,
+    content_only: bool = False,
+) -> tuple[Optional[str], str]:
     """
     OpenRouter models may return assistant text in content, reasoning (GLM/Z), or multipart content.
     Returns (text, source_field) where source_field is for logging.
+    When content_only=True, never return reasoning (avoids parsing chain-of-thought markdown as output).
     """
     if not isinstance(message, dict):
         return None, "none"
-    for key in ("content", "reasoning", "text"):
+    content_text = _string_field(message.get("content"))
+    if content_text:
+        return content_text, "content"
+    if content_only:
+        if _string_field(message.get("reasoning")):
+            return None, "reasoning_skipped"
+        return None, "none"
+    for key in ("reasoning", "text"):
         val = message.get(key)
         if isinstance(val, str) and val.strip():
             return val.strip(), key
@@ -123,6 +141,8 @@ def _extract_assistant_text_from_message_with_source(message: Any) -> tuple[Opti
 
 def _extract_assistant_text_from_completion_data(
     data: Dict[str, Any],
+    *,
+    content_only: bool = False,
 ) -> tuple[Optional[str], str]:
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -131,7 +151,24 @@ def _extract_assistant_text_from_completion_data(
     if not isinstance(first, dict):
         return None, "none"
     message = first.get("message")
-    return _extract_assistant_text_from_message_with_source(message)
+    return _extract_assistant_text_from_message_with_source(message, content_only=content_only)
+
+
+def _merge_openrouter_payload(
+    payload: Dict[str, Any],
+    *,
+    reasoning_effort_none: bool,
+    openrouter_payload_extra: Optional[Dict[str, Any]],
+) -> None:
+    if reasoning_effort_none:
+        payload["reasoning"] = {"effort": "none"}
+        payload.setdefault("response_format", {"type": "json_object"})
+    if openrouter_payload_extra:
+        for key, val in openrouter_payload_extra.items():
+            if key == "reasoning" and isinstance(val, dict) and isinstance(payload.get("reasoning"), dict):
+                payload["reasoning"] = {**payload["reasoning"], **val}
+            else:
+                payload[key] = val
 
 
 def _log_openrouter_completion_diag(
@@ -265,6 +302,9 @@ class OpenRouterAPIClient:
         api_key: Optional[str],
         timeout_s: float,
         cancel_check: Callable[[], bool],
+        reasoning_effort_none: bool = False,
+        openrouter_payload_extra: Optional[Dict[str, Any]] = None,
+        content_only: bool = False,
     ) -> Optional[str]:
         """Stream tokens from OpenRouter and check cancel between SSE lines (enables user stop)."""
         key = self._resolve_api_key(api_key)
@@ -292,6 +332,11 @@ class OpenRouterAPIClient:
             "max_tokens": max_tokens,
             "stream": True,
         }
+        _merge_openrouter_payload(
+            payload,
+            reasoning_effort_none=reasoning_effort_none,
+            openrouter_payload_extra=openrouter_payload_extra,
+        )
 
         if cancel_check():
             raise OpenRouterRequestAborted()
@@ -357,7 +402,8 @@ class OpenRouterAPIClient:
                     delta = choice.get("delta") or {}
                     if not isinstance(delta, dict):
                         continue
-                    for key in ("content", "reasoning", "text"):
+                    stream_keys = ("content",) if content_only else ("content", "reasoning", "text")
+                    for key in stream_keys:
                         piece = delta.get(key)
                         if isinstance(piece, str) and piece:
                             if stream_source == "none":
@@ -402,6 +448,9 @@ class OpenRouterAPIClient:
         timeout_s: float = 600.0,
         cancel_check: Optional[Callable[[], bool]] = None,
         use_streaming: bool = False,
+        reasoning_effort_none: bool = False,
+        openrouter_payload_extra: Optional[Dict[str, Any]] = None,
+        content_only: bool = False,
     ) -> Optional[str]:
         if use_streaming:
             return self._stream_chat_completions(
@@ -413,6 +462,9 @@ class OpenRouterAPIClient:
                 api_key=api_key,
                 timeout_s=timeout_s,
                 cancel_check=cancel_check,
+                reasoning_effort_none=reasoning_effort_none,
+                openrouter_payload_extra=openrouter_payload_extra,
+                content_only=content_only,
             )
 
         key = self._resolve_api_key(api_key)
@@ -442,6 +494,19 @@ class OpenRouterAPIClient:
             "max_tokens": max_tokens,
             "stream": False,
         }
+        _merge_openrouter_payload(
+            payload,
+            reasoning_effort_none=reasoning_effort_none,
+            openrouter_payload_extra=openrouter_payload_extra,
+        )
+        if reasoning_effort_none or content_only:
+            self.logger.info(
+                "%s payload_options reasoning_effort_none=%s content_only=%s response_format=%s",
+                OPENROUTER_LOG_PREFIX,
+                reasoning_effort_none,
+                content_only,
+                payload.get("response_format"),
+            )
 
         try:
             resp = self.session.post(self.base_url, headers=headers, json=payload, timeout=timeout_s)
@@ -482,7 +547,15 @@ class OpenRouterAPIClient:
                     api_message=api_msg,
                     model_name=model_name,
                 )
-            text, source = _extract_assistant_text_from_completion_data(data)
+            text, source = _extract_assistant_text_from_completion_data(data, content_only=content_only)
+            if source == "reasoning_skipped":
+                self.logger.warning(
+                    "%s content_empty_reasoning_present model=%s finish_reason=%s "
+                    "(use reasoning_effort_none; reasoning text is not used for JSON stages)",
+                    OPENROUTER_LOG_PREFIX,
+                    model_name,
+                    (data.get("choices") or [{}])[0].get("finish_reason") if data.get("choices") else None,
+                )
             if text:
                 _log_openrouter_completion_ok(
                     self.logger,
@@ -518,11 +591,16 @@ class OpenRouterAPIClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         use_streaming: bool = False,
         timeout_s: float = 600.0,
+        reasoning_effort_none: bool = False,
+        openrouter_payload_extra: Optional[Dict[str, Any]] = None,
+        content_only: bool = False,
     ) -> Optional[str]:
         """Process text via OpenRouter chat completions.
 
         Non-streaming is the default for higher stability. Set use_streaming=True to enable
         streamed responses (e.g. when frequent cancel checks during generation are required).
+        reasoning_effort_none: OpenRouter reasoning.effort=none (JSON-only tasks, e.g. Stage J).
+        content_only: return message.content only; ignore reasoning chain-of-thought text.
         """
         if not model_name:
             model_name = APIConfig.DEFAULT_OPENROUTER_MODEL
@@ -537,6 +615,9 @@ class OpenRouterAPIClient:
             timeout_s=timeout_s,
             cancel_check=cancel_check,
             use_streaming=use_streaming,
+            reasoning_effort_none=reasoning_effort_none,
+            openrouter_payload_extra=openrouter_payload_extra,
+            content_only=content_only,
         )
 
     def process_pdf_with_prompt(
