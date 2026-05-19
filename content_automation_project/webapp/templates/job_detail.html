@@ -128,6 +128,8 @@
         <th>TA merged JSON</th><th>Tablepic</th><th>Filepic</th><th>Test Bank 1 combined</th>
         {% elif job.type == 'flashcard' %}
         <th>Tagged JSON (a*)</th><th>Image catalog (f*)</th>
+        {% elif job.type == 'json_to_csv' %}
+        <th>JSON file</th>
         {% elif job.type == 'chapter_summary' %}
         <th>Importance &amp; Type (a*)</th><th>Test Bank 1 combined</th>
         {% elif job.type == 'image_file_catalog' %}
@@ -165,6 +167,8 @@
         {% elif job.type == 'flashcard' %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
+        {% elif job.type == 'json_to_csv' %}
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         {% elif job.type == 'chapter_summary' %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>

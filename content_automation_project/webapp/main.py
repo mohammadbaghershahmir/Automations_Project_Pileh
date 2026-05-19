@@ -223,6 +223,7 @@ JOB_STAGE_LABELS = {
     "stage_m": "Topic List Extraction",
     # Chapter Summary — Stage L
     "chapter_summary": "Chapter Summary",
+    "json_to_csv": "JSON to CSV",
     "stage_l": "Chapter Summary",
     # Book Changes Detection — Stage X
     "book_changes": "Book Changes Detection",
@@ -693,6 +694,18 @@ def create_app() -> FastAPI:
                 "multipart_ok": HAS_MULTIPART,
             },
         )
+
+    @app.get("/json-to-csv/new", response_class=HTMLResponse)
+    def json_to_csv_new(request: Request, user: CurrentUser) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "json_to_csv_new.html",
+            {
+                "user": user,
+                "multipart_ok": HAS_MULTIPART,
+            },
+        )
+
 
     if HAS_MULTIPART:
 
@@ -1971,6 +1984,87 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/json-to-csv")
+        async def create_json_to_csv_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            json_files: List[UploadFile] = File(...),
+            delimiter: str = Form(";;;"),
+            flashcard_columns: str = Form("auto"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            delim = (delimiter or ";;;").strip() or ";;;"
+            fc_mode = (flashcard_columns or "auto").strip().lower()
+            if fc_mode not in ("auto", "always", "never"):
+                fc_mode = "auto"
+
+            tmp = tempfile.mkdtemp(prefix="jsontocsv_upload_")
+            try:
+                json_paths: List[str] = []
+                for uf in json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    json_paths.append(dest)
+
+                sorted_json = _sorted_nonempty_paths(json_paths)
+                if not sorted_json:
+                    raise HTTPException(400, "Upload at least one JSON file.")
+
+                cfg = {
+                    "display_name": name_stripped,
+                    "delimiter": delim,
+                    "flashcard_columns": fc_mode,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="json_to_csv",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, jp in enumerate(sorted_json):
+                    ensure_dirs(job_id, pair_index)
+                    jn = os.path.basename(jp)
+                    rel_j = f"pair_{pair_index}/inputs/{jn}"
+                    shutil.copy2(jp, os.path.join(root, rel_j.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=jn,
+                            word_filename="",
+                            stage_j_relpath=rel_j,
+                            word_relpath=None,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_j, "upload_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
     else:
 
         @app.post("/jobs/test-bank")
@@ -2028,6 +2122,10 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/image-file-catalog")
         def create_image_file_catalog_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/json-to-csv")
+        def create_json_to_csv_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)

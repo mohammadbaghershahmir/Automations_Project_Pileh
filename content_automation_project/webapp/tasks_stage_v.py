@@ -124,6 +124,12 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             run_chapter_summary_step1_job(job_id, pair_indices)
             return
+        if jt == "json_to_csv":
+            db.close()
+            from webapp.tasks_single_stage import run_json_to_csv_step1_job
+
+            run_json_to_csv_step1_job(job_id, pair_indices)
+            return
         if jt == "image_file_catalog":
             db.close()
             from webapp.tasks_single_stage import run_image_file_catalog_step1_job

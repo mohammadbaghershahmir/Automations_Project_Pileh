@@ -12,6 +12,11 @@ import threading
 import csv
 import io
 import json
+from json_to_csv_converter import (
+    convert_json_file_to_csv,
+    convert_json_file_to_csv_text,
+    is_flashcard_json_basename,
+)
 import glob
 import time
 from datetime import datetime
@@ -2095,64 +2100,18 @@ class ContentAutomationGUI:
         threading.Thread(target=worker, daemon=True).start()
     
     def convert_json_to_csv(self, json_file_path: str) -> Optional[str]:
-        """
-        Convert JSON file to CSV format with ";;;" delimiter.
-        Supports multiple JSON structures: {rows: [...]}, {data: [...]}, {points: [...]}
-        
-        Args:
-            json_file_path: Path to JSON file
-            
-        Returns:
-            CSV text string or None on error
-        """
+        """Convert JSON file to CSV text (;;; delimiter). Flashcard ac*.json gets five trailing empty columns."""
         try:
-            # Load JSON file
-            with open(json_file_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-            
-            # Extract rows from JSON (support multiple structures)
-            rows = []
-            if 'rows' in json_data:
-                rows = json_data.get('rows', [])
-            elif 'data' in json_data:
-                rows = json_data.get('data', [])
-            elif 'points' in json_data:
-                rows = json_data.get('points', [])
-            elif isinstance(json_data, list):
-                rows = json_data
-            else:
-                messagebox.showwarning("No Data", "The JSON file contains no recognizable data structure.")
-                return None
-            
-            if not rows:
+            flashcard_cols = is_flashcard_json_basename(json_file_path)
+            csv_text = convert_json_file_to_csv_text(
+                json_file_path,
+                delimiter=";;;",
+                flashcard_trailing_columns=flashcard_cols,
+            )
+            if not csv_text:
                 messagebox.showwarning("No Data", "The JSON file contains no data rows.")
                 return None
-            
-            # Convert to CSV format with ";;;" delimiter
-            delimiter = ";;;"
-            
-            # Get headers from first row
-            if not isinstance(rows, list) or len(rows) == 0:
-                messagebox.showerror("Error", "Invalid JSON format: no rows found")
-                return None
-            
-            headers = list(rows[0].keys())
-            
-            # Build CSV with header first
-            csv_lines = [delimiter.join(headers)]
-            
-            # Add data rows
-            for row in rows:
-                csv_line = delimiter.join(str(row.get(h, "")) for h in headers)
-                csv_lines.append(csv_line)
-            
-            csv_text = "\n".join(csv_lines)
             return csv_text
-            
-        except json.JSONDecodeError as e:
-            messagebox.showerror("Error", f"Failed to parse JSON file:\n{str(e)}")
-            self.logger.error(f"Failed to parse JSON: {str(e)}")
-            return None
         except Exception as e:
             messagebox.showerror("Error", f"Error converting JSON to CSV:\n{str(e)}")
             self.logger.error(f"Error converting JSON to CSV: {str(e)}", exc_info=True)
@@ -14582,260 +14541,18 @@ class ContentAutomationGUI:
             self.json_to_csv_output_dir_entry.configure(state="normal")
     
     def convert_json_to_csv_file(self, json_file_path: str, output_csv_path: str, delimiter: str = ";;;") -> bool:
-        """
-        Convert JSON file to CSV file with comprehensive support for multiple JSON structures.
-        
-        Supports:
-        - Direct arrays: [{...}, {...}]
-        - Objects with data/points/rows: {metadata: {...}, data: [...]}
-        - Nested structures: {metadata: {...}, chapters: [{subchapters: [{topics: [{extractions: [...]}]}]}]}
-        
-        Args:
-            json_file_path: Path to JSON file
-            output_csv_path: Path to output CSV file
-            delimiter: CSV delimiter (default: ";;;")
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        def flatten_nested_structure(data, parent_key: str = "", separator: str = "_"):
-            """
-            Flatten nested structures (chapters -> subchapters -> topics -> extractions) into flat rows.
-            
-            Args:
-                data: The data structure to flatten
-                parent_key: Parent key for nested structures
-                separator: Separator for nested keys
-                
-            Returns:
-                List of flattened dictionaries
-            """
-            rows = []
-            
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, dict):
-                        # Check if this is a nested structure with chapters/subchapters/topics/extractions
-                        if "chapters" in item:
-                            # Process chapters
-                            for chapter in item.get("chapters", []):
-                                chapter_name = chapter.get("chapter", "")
-                                
-                                # Process subchapters
-                                for subchapter in chapter.get("subchapters", []):
-                                    subchapter_name = subchapter.get("subchapter", "")
-                                    
-                                    # Process topics
-                                    for topic in subchapter.get("topics", []):
-                                        topic_name = topic.get("topic", "")
-                                        
-                                        # Process extractions
-                                        for extraction in topic.get("extractions", []):
-                                            row = {
-                                                "chapter": chapter_name,
-                                                "subchapter": subchapter_name,
-                                                "topic": topic_name,
-                                                **extraction
-                                            }
-                                            rows.append(row)
-                                        
-                                        # If topic has no extractions but has other data, add it
-                                        if not topic.get("extractions") and topic:
-                                            row = {
-                                                "chapter": chapter_name,
-                                                "subchapter": subchapter_name,
-                                                "topic": topic_name,
-                                                **{k: v for k, v in topic.items() if k != "extractions"}
-                                            }
-                                            rows.append(row)
-                                    
-                                    # If subchapter has no topics but has other data
-                                    if not subchapter.get("topics") and subchapter:
-                                        row = {
-                                            "chapter": chapter_name,
-                                            "subchapter": subchapter_name,
-                                            **{k: v for k, v in subchapter.items() if k != "topics"}
-                                        }
-                                        rows.append(row)
-                                
-                                # If chapter has no subchapters but has other data
-                                if not chapter.get("subchapters") and chapter:
-                                    row = {
-                                        "chapter": chapter_name,
-                                        **{k: v for k, v in chapter.items() if k != "subchapters"}
-                                    }
-                                    rows.append(row)
-                        else:
-                            # Regular list item, add as is
-                            rows.append(item)
-            elif isinstance(data, dict):
-                # Single dictionary, return as list
-                return [data]
-            
-            return rows
-        
-        def extract_rows_from_json(json_data):
-            """
-            Extract rows from JSON data supporting multiple structures.
-            
-            Args:
-                json_data: JSON data (dict or list)
-                
-            Returns:
-                List of data records
-            """
-            # If json_data is already a list, check if it needs flattening
-            if isinstance(json_data, list):
-                # Check if first item has nested structure
-                if json_data and isinstance(json_data[0], dict) and "chapters" in json_data[0]:
-                    return flatten_nested_structure(json_data)
-                return json_data
-            
-            # If json_data is a dict, look for data/points/rows/chapters keys
-            if isinstance(json_data, dict):
-                # Check for nested chapters structure first
-                if "chapters" in json_data:
-                    chapters_data = json_data["chapters"]
-                    if isinstance(chapters_data, list):
-                        # Check if it's a nested structure
-                        if chapters_data and isinstance(chapters_data[0], dict) and "subchapters" in chapters_data[0]:
-                            return flatten_nested_structure(chapters_data)
-                        return chapters_data
-                    elif isinstance(chapters_data, dict):
-                        # Single chapter dict, try to extract rows/data from it
-                        if "rows" in chapters_data:
-                            return chapters_data["rows"]
-                        elif "data" in chapters_data:
-                            return chapters_data["data"]
-                        else:
-                            return [chapters_data]
-                
-                # Check for standard keys
-                if "data" in json_data:
-                    data = json_data["data"]
-                    if isinstance(data, list) and data and isinstance(data[0], dict) and "chapters" in data[0]:
-                        return flatten_nested_structure(data)
-                    return data if isinstance(data, list) else [data]
-                
-                elif "points" in json_data:
-                    return json_data["points"] if isinstance(json_data["points"], list) else [json_data["points"]]
-                
-                elif "rows" in json_data:
-                    return json_data["rows"] if isinstance(json_data["rows"], list) else [json_data["rows"]]
-                
-                else:
-                    # Try using BaseStageProcessor method if available
-                    if hasattr(self, 'stage_z_processor'):
-                        rows = self.stage_z_processor.get_data_from_json(json_data)
-                        if rows:
-                            return rows
-                    elif hasattr(self, 'stage_e_processor'):
-                        rows = self.stage_e_processor.get_data_from_json(json_data)
-                        if rows:
-                            return rows
-                    
-                    # No recognized key, return empty list
-                    return []
-            
-            return []
-        
-        try:
-            # Load JSON file
-            with open(json_file_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-            
-            # Extract rows from JSON
-            rows = extract_rows_from_json(json_data)
-            
-            if not rows:
-                self.logger.warning(f"No data rows found in {json_file_path}")
-                return False
-            
-            # Filter out non-dict items
-            rows = [row for row in rows if isinstance(row, dict)]
-            
-            if not rows:
-                self.logger.error(f"Invalid JSON format: no valid dictionary rows found in {json_file_path}")
-                return False
-            
-            # Get all unique headers from all rows and normalize case-sensitive duplicates
-            all_headers_dict = {}  # lowercase_key -> original_key (most common case)
-            header_counts = {}  # lowercase_key -> {original_key: count}
-            
-            for row in rows:
-                for key in row.keys():
-                    key_lower = key.lower()
-                    if key_lower not in header_counts:
-                        header_counts[key_lower] = {}
-                    if key not in header_counts[key_lower]:
-                        header_counts[key_lower][key] = 0
-                    header_counts[key_lower][key] += 1
-            
-            # For each lowercase key, choose the most common original case
-            for key_lower, variants in header_counts.items():
-                # Choose the variant with highest count, or first alphabetically if tie
-                most_common = max(variants.items(), key=lambda x: (x[1], x[0]))
-                all_headers_dict[key_lower] = most_common[0]
-            
-            headers = sorted(list(all_headers_dict.values()))
-            
-            if not headers:
-                self.logger.error(f"No headers found in {json_file_path}")
-                return False
-            
-            # Create mapping from original keys to normalized keys (build once, use many times)
-            key_mapping = {}
-            for key_lower, normalized_key in all_headers_dict.items():
-                # Find all original keys that map to this normalized key
-                for original_key in header_counts[key_lower].keys():
-                    if original_key != normalized_key:
-                        key_mapping[original_key] = normalized_key
-            
-            # Normalize all rows to use consistent key casing
-            normalized_rows = []
-            for row in rows:
-                normalized_row = {}
-                for key, value in row.items():
-                    normalized_key = key_mapping.get(key, key)
-                    # If normalized key already exists in this row, merge values (prefer non-empty)
-                    if normalized_key in normalized_row:
-                        if not normalized_row[normalized_key] and value:
-                            normalized_row[normalized_key] = value
-                        # If both have values, prefer the one from the normalized key
-                    else:
-                        normalized_row[normalized_key] = value
-                normalized_rows.append(normalized_row)
-            
-            rows = normalized_rows
-            
-            # Build CSV content
-            csv_lines = []
-            
-            # Add header row
-            csv_lines.append(delimiter.join(headers))
-            
-            # Add data rows
-            for row in rows:
-                csv_line = delimiter.join(str(row.get(h, "")) for h in headers)
-                csv_lines.append(csv_line)
-            
-            csv_text = "\n".join(csv_lines)
-            
-            # Save CSV file
-            os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
-            with open(output_csv_path, 'w', encoding='utf-8') as f:
-                f.write(csv_text)
-            
-            self.logger.info(f"Successfully converted {json_file_path} to {output_csv_path} (Total rows: {len(rows)}, Total columns: {len(headers)})")
-            return True
-            
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse JSON file {json_file_path}: {str(e)}")
-            return False
-        except Exception as e:
-            self.logger.error(f"Error converting {json_file_path} to CSV: {str(e)}", exc_info=True)
-            return False
-    
+        """Convert JSON file to CSV (delegates to json_to_csv_converter)."""
+        flashcard_cols = is_flashcard_json_basename(json_file_path)
+        ok = convert_json_file_to_csv(
+            json_file_path,
+            output_csv_path,
+            delimiter=delimiter,
+            flashcard_trailing_columns=flashcard_cols,
+        )
+        if not ok:
+            self.logger.warning("convert_json_to_csv_file failed for %s", json_file_path)
+        return ok
+
     def convert_json_to_csv_batch(self):
         """Convert multiple JSON files to CSV format"""
         def worker():

@@ -1310,3 +1310,134 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
             db.rollback()
     finally:
         db.close()
+
+def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Convert uploaded JSON files to CSV (no LLM). Flashcard ac*.json adds five empty trailing columns."""
+    from json_to_csv_converter import (
+        convert_json_file_to_csv,
+        resolve_flashcard_trailing_columns,
+    )
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        cfg = json.loads(job.config_json or "{}")
+        delimiter = (cfg.get("delimiter") or ";;;").strip() or ";;;"
+        flashcard_mode = (cfg.get("flashcard_columns") or "auto").strip()
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "JSON to CSV runner started.", None)
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        base = job_root(job_id)
+
+        for i, pair in enumerate(pairs):
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if not pair.stage_j_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "No JSON input"
+                db.commit()
+                continue
+
+            abs_json = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_json):
+                pair.step1_status = "failed"
+                pair.step1_error = "JSON file missing on disk"
+                db.commit()
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            out_dir = pair_output(job_id, pair.pair_index)
+            os.makedirs(out_dir, exist_ok=True)
+
+            json_basename = os.path.basename(abs_json)
+            stem = os.path.splitext(json_basename)[0]
+            csv_name = f"{stem}.csv"
+            csv_path = os.path.join(out_dir, csv_name)
+
+            flashcard_cols = resolve_flashcard_trailing_columns(flashcard_mode, json_basename)
+
+            try:
+                append_log(
+                    db,
+                    job_id,
+                    f"--- JSON to CSV start pair {pair.pair_index}: {json_basename} ---",
+                    pair.pair_index,
+                )
+                ok = convert_json_file_to_csv(
+                    abs_json,
+                    csv_path,
+                    delimiter=delimiter,
+                    flashcard_trailing_columns=flashcard_cols,
+                )
+                if ok and os.path.isfile(csv_path):
+                    pair.step1_status = "succeeded"
+                    rel_out = os.path.relpath(out_dir, base).replace("\\", "/")
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_out)
+                    append_log(
+                        db,
+                        job_id,
+                        f"pair {pair.pair_index}: {json_basename} → {csv_name} (flashcard import columns: {'yes' if flashcard_cols else 'no'})",
+                        pair.pair_index,
+                    )
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Conversion failed or produced no rows"
+                    append_log(db, job_id, f"pair {pair.pair_index}: conversion failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("JSON to CSV error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, "--- JSON to CSV job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_json_to_csv_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                notify_job_crash(db, job, "JSON to CSV", str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
