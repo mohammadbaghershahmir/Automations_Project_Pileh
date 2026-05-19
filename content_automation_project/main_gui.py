@@ -17,6 +17,13 @@ from json_to_csv_converter import (
     convert_json_file_to_csv_text,
     is_flashcard_json_basename,
 )
+
+
+def _json_to_csv_conversion_mode(json_file_path: str) -> Optional[str]:
+    base = os.path.basename(json_file_path or "").lower()
+    if base.endswith(".json") and base.startswith("o"):
+        return "chapter_summary"
+    return None
 import glob
 import time
 from datetime import datetime
@@ -2107,6 +2114,7 @@ class ContentAutomationGUI:
                 json_file_path,
                 delimiter=";;;",
                 flashcard_trailing_columns=flashcard_cols,
+                conversion_mode=_json_to_csv_conversion_mode(json_file_path),
             )
             if not csv_text:
                 messagebox.showwarning("No Data", "The JSON file contains no data rows.")
@@ -14548,6 +14556,7 @@ class ContentAutomationGUI:
             output_csv_path,
             delimiter=delimiter,
             flashcard_trailing_columns=flashcard_cols,
+            conversion_mode=_json_to_csv_conversion_mode(json_file_path),
         )
         if not ok:
             self.logger.warning("convert_json_to_csv_file failed for %s", json_file_path)

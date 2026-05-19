@@ -1316,6 +1316,7 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
     from json_to_csv_converter import convert_json_file_to_csv
     from webapp.json_to_csv_jobs import (
         JSON_TO_CSV_JOB_LABELS,
+        conversion_mode_for_job_type,
         json_to_csv_uses_flashcard_trailing_columns,
     )
 
@@ -1330,6 +1331,7 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
         cfg = json.loads(job.config_json or "{}")
         delimiter = (cfg.get("delimiter") or ";;;").strip() or ";;;"
         flashcard_cols = json_to_csv_uses_flashcard_trailing_columns(jt)
+        conv_mode = conversion_mode_for_job_type(jt)
         stage_label = JSON_TO_CSV_JOB_LABELS.get(jt, "JSON to CSV")
 
         job.status = "running"
@@ -1387,6 +1389,7 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                     csv_path,
                     delimiter=delimiter,
                     flashcard_trailing_columns=flashcard_cols,
+                    conversion_mode=conv_mode,
                 )
                 if ok and os.path.isfile(csv_path):
                     pair.step1_status = "succeeded"

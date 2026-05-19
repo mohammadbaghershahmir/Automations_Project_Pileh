@@ -29,6 +29,69 @@ def is_flashcard_json_basename(name: str) -> bool:
     return base.endswith(".json") and base.startswith("ac")
 
 
+CHAPTER_SUMMARY_CSV_HEADERS = ("chapter_name", "summary")
+
+
+def _escape_csv_field(value: Any, delimiter: str) -> str:
+    """Quote fields that contain delimiter, quotes, or line breaks (RFC 4180)."""
+    s = "" if value is None else str(value)
+    if not s:
+        return ""
+    needs_quote = (
+        delimiter in s
+        or '"' in s
+        or "\n" in s
+        or "\r" in s
+    )
+    if needs_quote:
+        return '"' + s.replace('"', '""') + '"'
+    return s
+
+
+def extract_chapter_summary_row(json_data: Any) -> Optional[Dict[str, str]]:
+    """Stage L o*.json → exactly one row: chapter_name, summary."""
+
+    def _pick(d: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        chapter_name = (
+            d.get("chapter_name")
+            or d.get("chapter")
+            or d.get("Chapter")
+            or d.get("Chapter_Name")
+            or ""
+        )
+        summary = (
+            d.get("summary")
+            or d.get("Summary")
+            or d.get("overview")
+            or d.get("Overview")
+            or d.get("Description")
+            or ""
+        )
+        if isinstance(summary, dict):
+            summary = json.dumps(summary, ensure_ascii=False)
+        chapter_name = str(chapter_name or "").strip()
+        summary = str(summary or "").strip()
+        if not chapter_name and not summary:
+            return None
+        return {"chapter_name": chapter_name, "summary": summary}
+
+    if isinstance(json_data, dict):
+        if "chapter_name" in json_data or "summary" in json_data:
+            row = _pick(json_data)
+            if row:
+                return row
+        data = json_data.get("data")
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return _pick(data[0])
+        if isinstance(data, dict):
+            return _pick(data)
+
+    if isinstance(json_data, list) and json_data and isinstance(json_data[0], dict):
+        return _pick(json_data[0])
+
+    return None
+
+
 def resolve_flashcard_trailing_columns(mode: str, basename: str) -> bool:
     """Map config flashcard_columns: auto | always | never."""
     m = (mode or "auto").strip().lower()
@@ -181,29 +244,35 @@ def rows_to_csv_text(
     *,
     delimiter: str = ";;;",
     flashcard_trailing_columns: bool = False,
+    fixed_headers: Optional[List[str]] = None,
 ) -> Optional[str]:
     rows = [row for row in rows if isinstance(row, dict)]
     if not rows:
         return None
 
-    headers, normalized_rows = _normalize_rows(rows)
-    if not headers:
-        return None
+    if fixed_headers:
+        headers = list(fixed_headers)
+        normalized_rows = rows
+    else:
+        headers, normalized_rows = _normalize_rows(rows)
+        if not headers:
+            return None
 
     if flashcard_trailing_columns:
         for col in FLASHCARD_CSV_TRAILING_COLUMNS:
             if col not in headers:
                 headers.append(col)
 
-    csv_lines = [delimiter.join(headers)]
+    delim = delimiter if delimiter is not None else ";;;"
+    csv_lines = [delim.join(_escape_csv_field(h, delim) for h in headers)]
     for row in normalized_rows:
-        values = [str(row.get(h, "")) for h in headers]
+        values = [_escape_csv_field(row.get(h, ""), delim) for h in headers]
         if flashcard_trailing_columns:
             for col in FLASHCARD_CSV_TRAILING_COLUMNS:
                 if col in headers:
                     idx = headers.index(col)
-                    values[idx] = ""
-        csv_lines.append(delimiter.join(values))
+                    values[idx] = _escape_csv_field("", delim)
+        csv_lines.append(delim.join(values))
 
     return "\n".join(csv_lines)
 
@@ -214,20 +283,31 @@ def convert_json_file_to_csv(
     *,
     delimiter: str = ";;;",
     flashcard_trailing_columns: bool = False,
+    conversion_mode: Optional[str] = None,
 ) -> bool:
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
 
-        rows = extract_rows_from_json(json_data)
-        if not rows:
-            logger.warning("No data rows found in %s", json_path)
-            return False
+        fixed_headers: Optional[List[str]] = None
+        if (conversion_mode or "").strip() == "chapter_summary":
+            row = extract_chapter_summary_row(json_data)
+            if not row:
+                logger.warning("No chapter_name/summary in %s", json_path)
+                return False
+            rows = [row]
+            fixed_headers = list(CHAPTER_SUMMARY_CSV_HEADERS)
+        else:
+            rows = extract_rows_from_json(json_data)
+            if not rows:
+                logger.warning("No data rows found in %s", json_path)
+                return False
 
         csv_text = rows_to_csv_text(
             rows,
             delimiter=delimiter,
             flashcard_trailing_columns=flashcard_trailing_columns,
+            fixed_headers=fixed_headers,
         )
         if not csv_text:
             logger.error("No valid dictionary rows in %s", json_path)
@@ -236,7 +316,8 @@ def convert_json_file_to_csv(
         out_dir = os.path.dirname(csv_path)
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
-        with open(csv_path, "w", encoding="utf-8") as f:
+        # UTF-8 BOM helps Excel/Sheets open Persian text and respect quoted fields.
+        with open(csv_path, "w", encoding="utf-8-sig") as f:
             f.write(csv_text)
 
         row_count = csv_text.count("\n")
@@ -261,17 +342,27 @@ def convert_json_file_to_csv_text(
     *,
     delimiter: str = ";;;",
     flashcard_trailing_columns: bool = False,
+    conversion_mode: Optional[str] = None,
 ) -> Optional[str]:
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
-        rows = extract_rows_from_json(json_data)
-        if not rows:
-            return None
+        fixed_headers: Optional[List[str]] = None
+        if (conversion_mode or "").strip() == "chapter_summary":
+            row = extract_chapter_summary_row(json_data)
+            if not row:
+                return None
+            rows = [row]
+            fixed_headers = list(CHAPTER_SUMMARY_CSV_HEADERS)
+        else:
+            rows = extract_rows_from_json(json_data)
+            if not rows:
+                return None
         return rows_to_csv_text(
             rows,
             delimiter=delimiter,
             flashcard_trailing_columns=flashcard_trailing_columns,
+            fixed_headers=fixed_headers,
         )
     except (json.JSONDecodeError, OSError) as e:
         logger.error("convert_json_file_to_csv_text failed for %s: %s", json_path, e)
