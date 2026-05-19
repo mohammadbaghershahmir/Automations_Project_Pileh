@@ -2015,7 +2015,7 @@ def create_app() -> FastAPI:
             job_type: str,
             json_files: List[UploadFile],
             job_name: str,
-            delimiter: str = ";;;",
+            delimiter: str = ",",
         ) -> RedirectResponse:
             from webapp.json_to_csv_jobs import JSON_TO_CSV_JOB_LABELS
 
@@ -2025,7 +2025,7 @@ def create_app() -> FastAPI:
             if len(name_stripped) > 200:
                 raise HTTPException(400, "Job name must be at most 200 characters.")
 
-            delim = (delimiter or ";;;").strip() or ";;;"
+            delim = (delimiter or ",").strip() or ","
             jt = (job_type or "").strip()
             if jt not in JSON_TO_CSV_JOB_LABELS:
                 raise HTTPException(400, f"Unknown JSON to CSV job type: {jt}")
@@ -2094,7 +2094,7 @@ def create_app() -> FastAPI:
             db: Session = Depends(get_db),
             conversion_type: str = Form(...),
             json_files: List[UploadFile] = File(...),
-            delimiter: str = Form(";;;"),
+            delimiter: str = Form(","),
             job_name: str = Form(""),
         ) -> RedirectResponse:
             from webapp.json_to_csv_jobs import job_type_for_conversion_key

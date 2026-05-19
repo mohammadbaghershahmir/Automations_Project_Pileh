@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted">Choose which stage output you are converting, upload JSON file(s), then run the job to download CSV files (<code>;;;</code> delimiter by default).</p>
+<p class="muted">Choose which stage output you are converting, upload JSON file(s), then run the job to download CSV files (<code>,</code> comma delimiter by default).</p>
 
 <form method="post" action="/jobs/json-to-csv" enctype="multipart/form-data">
   <div class="card">
@@ -37,8 +37,8 @@
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Delimiter</h2>
-    <label style="margin-right:14px;"><input type="radio" name="delimiter" value=";;;" checked/> ;;; (default)</label>
-    <label style="margin-right:14px;"><input type="radio" name="delimiter" value=","/> , (comma)</label>
+    <label style="margin-right:14px;"><input type="radio" name="delimiter" value="," checked/> , (comma, default)</label>
+    <label style="margin-right:14px;"><input type="radio" name="delimiter" value=";;;"/> ;;;</label>
     <label style="margin-right:14px;"><input type="radio" name="delimiter" value=";"/> ; (semicolon)</label>
     <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
   </div>

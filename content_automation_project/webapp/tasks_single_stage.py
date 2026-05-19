@@ -1329,7 +1329,7 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
 
         jt = (job.type or "").strip()
         cfg = json.loads(job.config_json or "{}")
-        delimiter = (cfg.get("delimiter") or ";;;").strip() or ";;;"
+        delimiter = (cfg.get("delimiter") or ",").strip() or ","
         flashcard_cols = json_to_csv_uses_flashcard_trailing_columns(jt)
         conv_mode = conversion_mode_for_job_type(jt)
         stage_label = JSON_TO_CSV_JOB_LABELS.get(jt, "JSON to CSV")
