@@ -19,3 +19,20 @@ def apply_schema_migrations(engine: Engine) -> None:
                 )
             )
             conn.commit()
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system_prompt_defaults (
+                    job_type VARCHAR(32) NOT NULL,
+                    config_key VARCHAR(32) NOT NULL,
+                    prompt_text TEXT NOT NULL,
+                    updated_at DATETIME,
+                    updated_by_id INTEGER,
+                    PRIMARY KEY (job_type, config_key),
+                    FOREIGN KEY(updated_by_id) REFERENCES users (id)
+                )
+                """
+            )
+        )

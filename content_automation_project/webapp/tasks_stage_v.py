@@ -41,7 +41,7 @@ from webapp.job_files import (
     pair_output,
     register_artifacts_under,
 )
-from webapp.default_prompts import get_default_step1_prompt, get_default_step2_prompt
+from webapp.system_prompt_defaults import resolve_prompt_for_job
 from webapp.inbox import notify_job_crash, notify_step1_finished, notify_step2_finished
 from webapp.models import Job, JobPair
 from webapp.job_runner_common import (
@@ -137,7 +137,7 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt_1 = (cfg.get("prompt_1") or "").strip() or get_default_step1_prompt()
+        prompt_1 = resolve_prompt_for_job(db, jt, cfg, "prompt_1")
         model_1 = normalize_test_bank_model(cfg.get("model_1"), DEFAULT_TEST_BANK_MODEL)
         provider_1 = normalize_test_bank_provider(cfg.get("provider_1"))
         delay_seconds = float(cfg.get("delay_seconds", 5))
@@ -283,14 +283,14 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             logger.error("Job not found: %s", job_id)
             return
 
-        jt_gate = (job.type or "test_bank").strip()
-        if jt_gate in SINGLE_STAGE_JOB_TYPES:
+        jt = (job.type or "test_bank").strip()
+        if jt in SINGLE_STAGE_JOB_TYPES:
             return
-        if jt_gate == "test_bank_1":
+        if jt == "test_bank_1":
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt_2 = (cfg.get("prompt_2") or "").strip() or get_default_step2_prompt()
+        prompt_2 = resolve_prompt_for_job(db, jt_gate, cfg, "prompt_2")
         model_2 = normalize_test_bank_model(cfg.get("model_2"))
         provider_2 = normalize_test_bank_provider(cfg.get("provider_2"))
         model_1 = normalize_test_bank_model(cfg.get("model_1"))
@@ -501,7 +501,7 @@ def run_test_bank_step2_only_job(job_id: str, pair_indices: Optional[List[int]] 
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt_2 = (cfg.get("prompt_2") or "").strip() or get_default_step2_prompt()
+        prompt_2 = resolve_prompt_for_job(db, "test_bank_2", cfg, "prompt_2")
         model_2 = normalize_test_bank_model(cfg.get("model_2"))
         provider_2 = normalize_test_bank_provider(cfg.get("provider_2"))
         model_1 = normalize_test_bank_model(cfg.get("model_1"))

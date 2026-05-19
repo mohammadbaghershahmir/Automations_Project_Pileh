@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted"><strong>Stage L (web)</strong>: upload tagged lesson JSON (<code>a*.json</code> from <strong>Importance &amp; Type</strong>) and Test Bank JSON (<code>b*.json</code> from <strong>Test Bank 2</strong>). Files are paired by book/chapter (same as Flashcards). Output is <code>o*.json</code> per chapter (one LLM overview call per pair).</p>
+<p class="muted"><strong>Stage L (web)</strong>: upload <strong>Importance &amp; Type</strong> output (<code>a*.json</code>) and <strong>Test Bank 1</strong> combined JSON (<code>step1_combined_*.json</code>). Files are paired by book/chapter. The LLM writes one chapter overview per pair: <strong>chapter_name</strong> and <strong>summary</strong> (saved in <code>o*.json</code>).</p>
 
 <form method="post" action="/jobs/chapter-summary" enctype="multipart/form-data">
   <div class="card">
@@ -26,14 +26,18 @@
     <input type="file" name="tagged_json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Test Bank JSON</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;"><code>b*.json</code> from a <strong>Test Bank 2</strong> job.</p>
-    <input type="file" name="test_bank_json_files" multiple accept=".json,application/json" required/>
+    <h2 style="margin-top:0;font-size:1rem;">Test Bank 1 combined JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;"><code>step1_combined_*.json</code> from a finished <strong>Test Bank 1</strong> job (not Test Bank 2).</p>
+    <input type="file" name="step1_combined_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Prompt &amp; model</h2>
+    {% if request.query_params.get('prompt_saved') %}
+    <p class="muted" style="margin:0 0 10px;color:var(--accent);font-size:13px;">System default prompt saved.</p>
+    {% endif %}
+    <p class="muted" style="margin-top:0;font-size:13px;">{% if is_admin %}<strong>Submit</strong> saves the default for all future Chapter Summary jobs.{% else %}Only admins can change the system default on this page.{% endif %} Leave empty on <strong>Create job</strong> to use the system default.</p>
     <label>Prompt</label>
-    <textarea name="prompt" dir="auto">{{ default_prompt }}</textarea>
+    <textarea name="prompt" dir="auto"{% if not is_admin %} readonly{% endif %}>{{ default_prompt }}</textarea>
     <div class="tb-row">
       <label for="provider_1">Provider
         <select name="provider_1" id="provider_1" autocomplete="off">
@@ -50,6 +54,9 @@
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+    {% if is_admin %}
+    <button type="submit" class="btn-cta secondary" formaction="/admin/prompt-defaults/chapter_summary" formmethod="post" formnovalidate style="margin-top:16px;margin-right:8px;">Submit</button>
+    {% endif %}
     <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
   </div>
 </form>

@@ -4,6 +4,7 @@ from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from webapp.auth_utils import COOKIE_NAME, decode_token
+from webapp.bootstrap import admin_emails_from_env
 from webapp.database import get_db
 from webapp.models import User
 
@@ -24,3 +25,16 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def is_admin_user(user: User) -> bool:
+    email = (user.email or "").strip().lower()
+    return email in admin_emails_from_env()
+
+
+def require_admin(user: User) -> None:
+    if not is_admin_user(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )

@@ -11,6 +11,10 @@ from webapp.models import User
 logger = logging.getLogger(__name__)
 
 
+def admin_emails_from_env() -> set[str]:
+    return {email for email, _password in _admin_pairs_from_env()}
+
+
 def _admin_pairs_from_env():
     """Return [(email_lower, password_plain), ...] from ADMIN_BOOTSTRAP or ADMIN_EMAIL_1..3."""
     admins = []

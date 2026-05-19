@@ -116,3 +116,15 @@ class InboxNotification(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     user = relationship("User", back_populates="inbox_notifications")
+
+
+class SystemPromptDefault(Base):
+    """Global default LLM prompt per job type (web app source of truth after seed)."""
+
+    __tablename__ = "system_prompt_defaults"
+
+    job_type = Column(String(32), primary_key=True)
+    config_key = Column(String(32), primary_key=True)
+    prompt_text = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)

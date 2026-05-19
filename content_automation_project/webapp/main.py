@@ -31,18 +31,6 @@ from webapp.bootstrap import (
     ensure_missing_env_admins,
     sync_admin_password_from_env,
 )
-from webapp.default_prompts import (
-    get_default_document_processing_prompt,
-    get_default_image_notes_prompt,
-    get_default_chapter_summary_prompt,
-    get_default_flashcard_prompt,
-    get_default_importance_type_prompt,
-    get_default_ocr_extraction_prompt,
-    get_default_pre_ocr_prompt,
-    get_default_step1_prompt,
-    get_default_step2_prompt,
-    get_default_table_notes_prompt,
-)
 from webapp.config import (
     DEFAULT_TEST_BANK_MODEL,
     DEFAULT_TEST_BANK_PROVIDER,
@@ -56,7 +44,7 @@ from webapp.config import (
 from webapp.database import Base, SessionLocal, engine, get_db
 from webapp.schema_migrate import apply_schema_migrations
 import webapp.models  # noqa: F401 — register models with metadata
-from webapp.deps import CurrentUser
+from webapp.deps import CurrentUser, is_admin_user, require_admin
 from webapp.datetime_jalali import format_tehran_shamsi
 from webapp.job_files import (
     append_log,
@@ -72,6 +60,14 @@ from webapp.job_prompts import (
     apply_submitted_prompts_to_cfg,
     build_prompt_editor_rows,
     job_type_has_editable_prompts,
+)
+from webapp.system_prompt_defaults import (
+    NEW_JOB_PAGE_BY_TYPE,
+    PromptNotConfiguredError,
+    apply_submitted_system_prompts,
+    get_system_prompt_default,
+    resolve_prompt_for_job,
+    seed_system_prompt_defaults,
 )
 from webapp.models import Artifact, InboxNotification, Job, JobLogLine, JobPair, User
 from webapp.tasks_stage_v import run_full_pipeline_job, run_step1_job, run_step2_job
@@ -329,6 +325,25 @@ def _iso_utc(dt: Optional[datetime]) -> Optional[str]:
     return s + "Z" if getattr(dt, "tzinfo", None) is None else s
 
 
+def _system_prompt_for_ui(db: Session, job_type: str, config_key: str) -> str:
+    try:
+        return get_system_prompt_default(db, job_type, config_key)
+    except PromptNotConfiguredError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+def _prompt_for_new_job(
+    db: Session,
+    job_type: str,
+    form_value: str,
+    config_key: str,
+) -> str:
+    try:
+        return resolve_prompt_for_job(db, job_type, {config_key: form_value}, config_key)
+    except PromptNotConfiguredError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Content Automation Admin", version="1.0")
 
@@ -343,6 +358,7 @@ def create_app() -> FastAPI:
             bootstrap_admins(db)
             ensure_missing_env_admins(db)
             sync_admin_password_from_env(db)
+            seed_system_prompt_defaults(db)
         finally:
             db.close()
 
@@ -473,130 +489,199 @@ def create_app() -> FastAPI:
         return RedirectResponse("/test-bank-1/new", status_code=302)
 
     @app.get("/test-bank-1/new", response_class=HTMLResponse)
-    def test_bank_1_new(request: Request, user: CurrentUser) -> Any:
+    def test_bank_1_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "test_bank_1_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt_1": get_default_step1_prompt(),
+                "default_prompt_1": _system_prompt_for_ui(db, "test_bank_1", "prompt_1"),
                 "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
                 "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
             },
         )
 
     @app.get("/test-bank-2/new", response_class=HTMLResponse)
-    def test_bank_2_new(request: Request, user: CurrentUser) -> Any:
+    def test_bank_2_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "test_bank_2_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt_2": get_default_step2_prompt(),
+                "default_prompt_2": _system_prompt_for_ui(db, "test_bank_2", "prompt_2"),
                 "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
                 "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
             },
         )
 
     @app.get("/pre-ocr/new", response_class=HTMLResponse)
-    def pre_ocr_new(request: Request, user: CurrentUser) -> Any:
+    def pre_ocr_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "pre_ocr_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_pre_ocr_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "pre_ocr_topic", "prompt"),
             },
         )
 
     @app.get("/ocr-extraction/new", response_class=HTMLResponse)
-    def ocr_extraction_new(request: Request, user: CurrentUser) -> Any:
+    def ocr_extraction_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "ocr_extraction_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_ocr_extraction_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "ocr_extraction", "prompt"),
             },
         )
 
     @app.get("/document-processing/new", response_class=HTMLResponse)
-    def document_processing_new(request: Request, user: CurrentUser) -> Any:
+    def document_processing_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "document_processing_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_document_processing_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "document_processing", "prompt"),
             },
         )
 
     @app.get("/image-notes/new", response_class=HTMLResponse)
-    def image_notes_new(request: Request, user: CurrentUser) -> Any:
+    def image_notes_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "image_notes_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_image_notes_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "image_notes", "prompt"),
             },
         )
 
     @app.get("/table-notes/new", response_class=HTMLResponse)
-    def table_notes_new(request: Request, user: CurrentUser) -> Any:
+    def table_notes_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "table_notes_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_table_notes_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "table_notes", "prompt"),
             },
         )
 
     @app.get("/importance-type/new", response_class=HTMLResponse)
-    def importance_type_new(request: Request, user: CurrentUser) -> Any:
+    def importance_type_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "importance_type_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_importance_type_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "importance_type", "prompt"),
             },
         )
 
     @app.get("/flashcard/new", response_class=HTMLResponse)
-    def flashcard_new(request: Request, user: CurrentUser) -> Any:
+    def flashcard_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "flashcard_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_flashcard_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "flashcard", "prompt"),
             },
         )
 
     @app.get("/chapter-summary/new", response_class=HTMLResponse)
-    def chapter_summary_new(request: Request, user: CurrentUser) -> Any:
+    def chapter_summary_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
         return templates.TemplateResponse(
             request,
             "chapter_summary_new.html",
             {
                 "user": user,
+                "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
-                "default_prompt": get_default_chapter_summary_prompt(),
+                "default_prompt": _system_prompt_for_ui(db, "chapter_summary", "prompt"),
                 "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
                 "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
             },
         )
+
+    @app.post("/admin/prompt-defaults/{job_type}")
+    async def post_admin_prompt_defaults(
+        job_type: str,
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> RedirectResponse:
+        require_admin(user)
+        jt = (job_type or "").strip()
+        if not job_type_has_editable_prompts(jt):
+            raise HTTPException(400, "This job type has no editable LLM prompts.")
+        form = await request.form()
+        try:
+            apply_submitted_system_prompts(db, jt, form, user.id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        redirect_path = NEW_JOB_PAGE_BY_TYPE.get(jt, "/jobs")
+        return RedirectResponse(f"{redirect_path}?prompt_saved=1", status_code=302)
 
     @app.get("/image-file-catalog/new", response_class=HTMLResponse)
     def image_file_catalog_new(request: Request, user: CurrentUser) -> Any:
@@ -667,7 +752,7 @@ def create_app() -> FastAPI:
                     delay_val = 5.0
 
                 display_name = name_stripped
-                prompt_1_eff = prompt_1.strip() or get_default_step1_prompt()
+                prompt_1_eff = _prompt_for_new_job(db, "test_bank_1", prompt_1, "prompt_1")
                 model_1_eff = normalize_test_bank_model(model_1)
                 if model_1_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
                     raise HTTPException(400, "Invalid OpenRouter model for Step 1.")
@@ -806,7 +891,7 @@ def create_app() -> FastAPI:
                     delay_val = 5.0
 
                 step1_rel_by_pair: dict[str, str] = {}
-                prompt_2_eff = prompt_2.strip() or get_default_step2_prompt()
+                prompt_2_eff = _prompt_for_new_job(db, "test_bank_2", prompt_2, "prompt_2")
                 model_2_eff = normalize_test_bank_model(model_2)
                 model_1_eff_tb2 = normalize_test_bank_model(model_1)
                 if model_2_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
@@ -924,7 +1009,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_pre_ocr_prompt()
+                prompt_eff = _prompt_for_new_job(db, "pre_ocr_topic", prompt, "prompt")
                 cfg = {
                     "display_name": name_stripped,
                     "prompt": prompt_eff,
@@ -1029,7 +1114,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_ocr_extraction_prompt()
+                prompt_eff = _prompt_for_new_job(db, "ocr_extraction", prompt, "prompt")
                 cfg = {
                     "display_name": name_stripped,
                     "prompt": prompt_eff,
@@ -1123,7 +1208,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_document_processing_prompt()
+                prompt_eff = _prompt_for_new_job(db, "document_processing", prompt, "prompt")
                 pointid_rel: Optional[str] = None
                 job_id = str(uuid.uuid4())
                 root = job_root(job_id)
@@ -1250,7 +1335,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_image_notes_prompt()
+                prompt_eff = _prompt_for_new_job(db, "image_notes", prompt, "prompt")
                 cfg = {
                     "display_name": name_stripped,
                     "prompt": prompt_eff,
@@ -1361,7 +1446,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_table_notes_prompt()
+                prompt_eff = _prompt_for_new_job(db, "table_notes", prompt, "prompt")
                 cfg = {
                     "display_name": name_stripped,
                     "prompt": prompt_eff,
@@ -1474,7 +1559,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_importance_type_prompt()
+                prompt_eff = _prompt_for_new_job(db, "importance_type", prompt, "prompt")
                 pair_media: dict = {}
                 job_id = str(uuid.uuid4())
                 root = job_root(job_id)
@@ -1610,7 +1695,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_flashcard_prompt()
+                prompt_eff = _prompt_for_new_job(db, "flashcard", prompt, "prompt")
                 cfg = {
                     "display_name": name_stripped,
                     "prompt": prompt_eff,
@@ -1667,7 +1752,7 @@ def create_app() -> FastAPI:
             user: CurrentUser,
             db: Session = Depends(get_db),
             tagged_json_files: List[UploadFile] = File(...),
-            test_bank_json_files: List[UploadFile] = File(...),
+            step1_combined_files: List[UploadFile] = File(...),
             prompt: str = Form(""),
             provider_1: str = Form(DEFAULT_TEST_BANK_PROVIDER),
             model_1: str = Form(DEFAULT_TEST_BANK_MODEL),
@@ -1697,20 +1782,23 @@ def create_app() -> FastAPI:
                     return paths
 
                 tagged_paths = await _collect(tagged_json_files, "tagged")
-                test_bank_paths = await _collect(test_bank_json_files, "test_bank")
+                step1_paths = await _collect(step1_combined_files, "step1")
                 if not tagged_paths:
                     raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
-                if not test_bank_paths:
-                    raise HTTPException(400, "Upload at least one Test Bank JSON (b*.json from Test Bank 2).")
+                if not step1_paths:
+                    raise HTTPException(
+                        400,
+                        "Upload at least one Test Bank 1 combined JSON (step1_combined_*.json).",
+                    )
 
-                pairs_spec = auto_pair_chapter_summary_files(tagged_paths, test_bank_paths)
+                pairs_spec = auto_pair_chapter_summary_files(tagged_paths, step1_paths)
                 if not pairs_spec:
                     raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
                 unpaired = [p for p in pairs_spec if not p.get("word_path")]
                 if unpaired:
                     raise HTTPException(
                         400,
-                        f"{len(unpaired)} tagged file(s) could not be matched to a Test Bank JSON.",
+                        f"{len(unpaired)} tagged file(s) could not be matched to a Test Bank 1 combined JSON.",
                     )
 
                 try:
@@ -1718,7 +1806,7 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                prompt_eff = prompt.strip() or get_default_chapter_summary_prompt()
+                prompt_eff = _prompt_for_new_job(db, "chapter_summary", prompt, "prompt")
                 model_1_eff = normalize_test_bank_model(model_1)
                 if model_1_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
                     raise HTTPException(400, "Invalid OpenRouter model.")
@@ -1746,27 +1834,27 @@ def create_app() -> FastAPI:
 
                 for pair_index, p in enumerate(pairs_spec):
                     tagged = p["stage_j_path"]
-                    test_bank = p["word_path"]
+                    step1 = p["word_path"]
                     ensure_dirs(job_id, pair_index)
                     tagged_name = os.path.basename(tagged)
-                    tb_name = os.path.basename(test_bank)
+                    s1_name = os.path.basename(step1)
                     rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
-                    rel_tb = f"pair_{pair_index}/inputs/{tb_name}"
+                    rel_s1 = f"pair_{pair_index}/inputs/{s1_name}"
                     shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
-                    shutil.copy2(test_bank, os.path.join(root, rel_tb.replace("/", os.sep)))
+                    shutil.copy2(step1, os.path.join(root, rel_s1.replace("/", os.sep)))
                     db.add(
                         JobPair(
                             job_id=job_id,
                             pair_index=pair_index,
                             stage_j_filename=tagged_name,
-                            word_filename=tb_name,
+                            word_filename=s1_name,
                             stage_j_relpath=rel_tagged,
-                            word_relpath=rel_tb,
+                            word_relpath=rel_s1,
                             output_relpath=f"pair_{pair_index}/output",
                         )
                     )
                     register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
-                    register_input_artifact(db, job_id, pair_index, root, rel_tb, "upload_test_bank_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_s1, "upload_step1_combined_json")
 
                 db.commit()
             finally:
@@ -2011,7 +2099,7 @@ def create_app() -> FastAPI:
             )
         stage_label = job_stage_label(job)
         cfg_dict = json.loads(job.config_json or "{}")
-        prompt_editor_rows = build_prompt_editor_rows(jt, cfg_dict)
+        prompt_editor_rows = build_prompt_editor_rows(db, jt, cfg_dict)
         return templates.TemplateResponse(
             request,
             "job_detail.html",

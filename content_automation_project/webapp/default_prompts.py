@@ -1,4 +1,7 @@
-"""Default Test Bank (Stage V) Step 1 / Step 2 prompts — canonical copy lives in `prompts.json`."""
+"""Prompt text from `prompts.json` — used for DB seed at web startup and desktop GUI only.
+
+The web app reads runtime defaults from `system_prompt_defaults` (see system_prompt_defaults.py).
+"""
 
 from __future__ import annotations
 

@@ -129,7 +129,7 @@
         {% elif job.type == 'flashcard' %}
         <th>Tagged JSON (a*)</th><th>Image catalog (f*)</th>
         {% elif job.type == 'chapter_summary' %}
-        <th>Tagged JSON (a*)</th><th>Test bank (b*)</th>
+        <th>Importance &amp; Type (a*)</th><th>Test Bank 1 combined</th>
         {% elif job.type == 'image_file_catalog' %}
         <th>Image notes (Stage E)</th><th>Filepic JSON</th>
         {% elif job.type == 'test_bank_2' %}
@@ -194,7 +194,7 @@
 {% if job_type_has_editable_prompts %}
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">LLM prompts</h2>
-  <p class="muted" style="margin-top:0;font-size:13px;">Stored in the job record (<code style="font-size:11px;">config_json</code> in the database). The worker reloads this on each run. Clear a field and save to fall back to the app default from <code style="font-size:11px;">prompts.json</code>.</p>
+  <p class="muted" style="margin-top:0;font-size:13px;">Stored in this job’s <code style="font-size:11px;">config_json</code>. The worker reloads it on each run. Clear a field and save to use the <strong>system default</strong> from the database. Global defaults for new jobs are set on the matching <strong>New …</strong> page (admins only).</p>
   {% if is_job_owner %}
   <form method="post" action="/jobs/{{ job.id }}/prompts">
     {% for row in prompt_editor_rows %}
@@ -237,7 +237,7 @@
   <p class="muted" style="margin-top:0;">Tagged <code>a*.json</code> + image catalog <code>f*.json</code> → <code>ac*.json</code> per pair (parallel ~100-row LLM chunks). Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'chapter_summary' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Chapter Summary</h2>
-  <p class="muted" style="margin-top:0;">Tagged <code>a*.json</code> + Test Bank <code>b*.json</code> → <code>o*.json</code> per pair (one overview LLM call). Runs in the <strong>background worker</strong>.</p>
+  <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> + Test Bank&nbsp;1 <code>step1_combined_*.json</code> → <code>o*.json</code> with <strong>chapter_name</strong> and <strong>summary</strong> (one LLM call per pair). Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'image_file_catalog' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
   <p class="muted" style="margin-top:0;">Image notes (Stage E) → catalog JSON (<code>f_*.json</code>) per pair. Runs in the <strong>background worker</strong>.</p>

@@ -360,5 +360,247 @@ IMPORTANT:
             "total_questions": sum(t["num_questions"] for t in context_list),
         }
 
+    def _resolve_chapter_name(
+        self,
+        importance_type_path: str,
+        importance_data: Any,
+        importance_records: List[Dict[str, Any]],
+    ) -> str:
+        """Best-effort chapter title from metadata, records, or a*.json filename."""
+        meta = self.get_metadata_from_json(importance_data)
+        chapter_name = (
+            meta.get("chapter", "")
+            or meta.get("Chapter", "")
+            or meta.get("chapter_name", "")
+            or meta.get("Chapter_Name", "")
+            or ""
+        )
+        if not chapter_name and importance_records:
+            chapter_name = importance_records[0].get("chapter", "") or importance_records[0].get("Chapter", "")
+        if not chapter_name:
+            import re
+
+            basename = os.path.basename(importance_type_path)
+            name_without_ext = os.path.splitext(basename)[0]
+            match = re.match(r"^a\d{6}\+(.+)$", name_without_ext)
+            if match:
+                chapter_name = match.group(1).replace("_", " ")
+        return str(chapter_name or "").strip()
+
+    def _normalize_chapter_summary_record(self, json_output: Any) -> Optional[Dict[str, str]]:
+        """Map LLM JSON to exactly two fields: chapter_name, summary."""
+        if isinstance(json_output, dict):
+            if "data" in json_output and isinstance(json_output["data"], list) and json_output["data"]:
+                first = json_output["data"][0]
+                if isinstance(first, dict):
+                    json_output = first
+            chapter_name = (
+                json_output.get("chapter_name")
+                or json_output.get("chapter")
+                or json_output.get("Chapter")
+                or json_output.get("Chapter_Name")
+                or ""
+            )
+            summary = (
+                json_output.get("summary")
+                or json_output.get("Summary")
+                or json_output.get("overview")
+                or json_output.get("Overview")
+                or json_output.get("Description")
+                or ""
+            )
+            if isinstance(summary, dict):
+                summary = json.dumps(summary, ensure_ascii=False)
+            chapter_name = str(chapter_name or "").strip()
+            summary = str(summary or "").strip()
+            if chapter_name and summary:
+                return {"chapter_name": chapter_name, "summary": summary}
+        return None
+
+    def process_stage_l_web_chapter_summary(
+        self,
+        importance_type_path: str,
+        step1_combined_path: str,
+        prompt: str,
+        model_name: str,
+        output_dir: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> Optional[str]:
+        """
+        Web Chapter Summary: Importance & Type (a*) + Test Bank 1 step1_combined → o*.json
+        with one row: chapter_name + summary.
+        """
+        def _progress(msg: str):
+            if progress_callback:
+                progress_callback(msg)
+            self.logger.info(msg)
+
+        if hasattr(self.api_client, "set_stage"):
+            self.api_client.set_stage("stage_l")
+
+        _progress("Starting Chapter Summary (web)...")
+
+        _progress("Loading Importance & Type JSON...")
+        imp_data = self.load_json_file(importance_type_path)
+        if not imp_data:
+            self.logger.error("Failed to load Importance & Type JSON")
+            return None
+        imp_records = self.get_data_from_json(imp_data)
+        if not imp_records:
+            self.logger.error("Importance & Type JSON has no data")
+            return None
+        _progress(f"Loaded {len(imp_records)} tagged lesson rows")
+
+        first_point_id = imp_records[0].get("PointId") or imp_records[0].get("point_id")
+        if not first_point_id:
+            self.logger.error("No PointId found in Importance & Type data")
+            return None
+        try:
+            book_id, chapter_id = self.extract_book_chapter_from_pointid(str(first_point_id))
+        except ValueError as e:
+            self.logger.error(f"Error extracting book/chapter: {e}")
+            return None
+
+        fallback_chapter_name = self._resolve_chapter_name(
+            importance_type_path, imp_data, imp_records
+        )
+
+        _progress("Loading Test Bank 1 combined JSON...")
+        step1_data = self.load_json_file(step1_combined_path)
+        if not step1_data:
+            self.logger.error("Failed to load Test Bank 1 combined JSON")
+            return None
+        step1_records = self.get_data_from_json(step1_data)
+        if not step1_records:
+            self.logger.warning("Test Bank 1 combined JSON has no questions")
+            step1_records = []
+        _progress(f"Loaded {len(step1_records)} Test Bank 1 question rows")
+
+        _progress("Building overview context from tagged lesson + Test Bank 1...")
+        overview_context = self._build_overview_context(imp_records, step1_records)
+        overview_json_str = json.dumps(overview_context, ensure_ascii=False, indent=2)
+
+        json_schema = """
+The JSON response MUST be a single object with EXACTLY these two fields (no other top-level keys):
+{
+  "chapter_name": "chapter title in Farsi",
+  "summary": "chapter overview text in Farsi (Big Picture only — no teaching, no topic-by-topic detail)"
+}
+
+Alternatively you may wrap it as: {"data": [{"chapter_name": "...", "summary": "..."}]} with exactly one element in data.
+
+IMPORTANT:
+- Output ONLY valid JSON. No markdown fences, no prose outside JSON.
+- chapter_name: one short chapter title.
+- summary: one cohesive chapter-level overview (not a list of per-topic summaries).
+"""
+
+        full_prompt = f"""{prompt}
+
+{json_schema}
+
+Importance & Type lesson context (compact stats from tagged a*.json):
+{overview_json_str}
+
+Test Bank 1 questions are included in the stats above (num_questions per topic). Use Shenasname / exam-year columns in the source tests when judging high-yield topics.
+
+Suggested chapter_name (if helpful): {fallback_chapter_name or "(derive from inputs)"}
+"""
+
+        _progress("Calling model for Chapter Summary...")
+        max_retries = 3
+        response_text = None
+        for attempt in range(max_retries):
+            try:
+                response_text = self.api_client.process_text(
+                    text=full_prompt,
+                    system_prompt=None,
+                    model_name=model_name,
+                    temperature=APIConfig.DEFAULT_TEMPERATURE,
+                    max_tokens=APIConfig.DEFAULT_MAX_TOKENS,
+                )
+                if response_text:
+                    _progress(f"Model response received ({len(response_text)} characters)")
+                    break
+            except Exception as e:
+                self.logger.warning(f"Chapter Summary model call attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    _progress(f"Retrying... (attempt {attempt + 2}/{max_retries})")
+
+        if not response_text:
+            self.logger.error("No response from model in Chapter Summary")
+            return None
+
+        if not output_dir:
+            output_dir = os.path.dirname(importance_type_path) or os.getcwd()
+
+        base_name, _ = os.path.splitext(os.path.basename(importance_type_path))
+        txt_path = os.path.join(output_dir, f"{base_name}_stage_l.txt")
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(response_text)
+            _progress(f"Saved raw model response to: {txt_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to save Chapter Summary TXT file: {e}")
+
+        _progress("Extracting JSON from model response...")
+        json_output = self.extract_json_from_response(response_text)
+        if not json_output:
+            json_output = self.load_txt_as_json_from_text(response_text)
+
+        normalized = self._normalize_chapter_summary_record(json_output) if json_output else None
+        if not normalized:
+            self.logger.error("Failed to parse chapter_name + summary from model response")
+            return None
+
+        if not normalized.get("chapter_name") and fallback_chapter_name:
+            normalized["chapter_name"] = fallback_chapter_name
+
+        if not normalized.get("chapter_name") or not normalized.get("summary"):
+            self.logger.error("Chapter Summary output missing chapter_name or summary")
+            return None
+
+        chapter_name_clean = normalized["chapter_name"]
+        import re
+
+        filename_chapter = re.sub(r'[<>:"/\\|?*]', "_", chapter_name_clean)
+        filename_chapter = filename_chapter.replace(" ", "_")
+        filename_chapter = re.sub(r"_+", "_", filename_chapter).strip("_")
+
+        if filename_chapter:
+            base_filename = f"o{book_id:03d}{chapter_id:03d}+{filename_chapter}.json"
+        else:
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"o{book_id:03d}{chapter_id:03d}+{timestamp}.json"
+
+        output_path = os.path.join(output_dir, base_filename)
+        if os.path.exists(output_path) and filename_chapter:
+            counter = 1
+            while os.path.exists(output_path):
+                base_filename = f"o{book_id:03d}{chapter_id:03d}+{filename_chapter}_{counter}.json"
+                output_path = os.path.join(output_dir, base_filename)
+                counter += 1
+
+        output_records = [normalized]
+        output_metadata = {
+            "book_id": book_id,
+            "chapter_id": chapter_id,
+            "source_importance_type": os.path.basename(importance_type_path),
+            "source_step1_combined": os.path.basename(step1_combined_path),
+            "stage_l_txt_file": os.path.basename(txt_path),
+            "model_used": model_name,
+            "output_format": "chapter_name_summary",
+        }
+
+        _progress(f"Saving Chapter Summary output to: {output_path}")
+        success = self.save_json_file(output_records, output_path, output_metadata, "L")
+        if success:
+            _progress(f"Chapter Summary completed: {output_path}")
+            return output_path
+        self.logger.error("Failed to save Chapter Summary output")
+        return None
+
 
 

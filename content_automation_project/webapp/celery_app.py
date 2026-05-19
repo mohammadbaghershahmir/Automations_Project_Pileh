@@ -31,7 +31,18 @@ import webapp.models  # noqa: F401, E402 — register models
 from webapp.database import Base, engine  # noqa: E402
 from webapp.schema_migrate import apply_schema_migrations  # noqa: E402
 
+from webapp.database import SessionLocal  # noqa: E402
+from webapp.bootstrap import bootstrap_admins, ensure_missing_env_admins  # noqa: E402
+from webapp.system_prompt_defaults import seed_system_prompt_defaults  # noqa: E402
+
 Base.metadata.create_all(bind=engine)
 apply_schema_migrations(engine)
+_worker_db = SessionLocal()
+try:
+    bootstrap_admins(_worker_db)
+    ensure_missing_env_admins(_worker_db)
+    seed_system_prompt_defaults(_worker_db)
+finally:
+    _worker_db.close()
 
 celery_app.autodiscover_tasks(packages=["webapp"], related_name="celery_tasks", force=True)

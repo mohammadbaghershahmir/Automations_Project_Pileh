@@ -26,6 +26,7 @@ from webapp.job_runner_common import (
 )
 from webapp.processor_context import build_unified_api_client
 from webapp.prompt_capture import wrap_prompt_capture
+from webapp.system_prompt_defaults import resolve_prompt_for_job
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +55,8 @@ def run_pre_ocr_topic_step1_job(job_id: str, pair_indices: Optional[List[int]] =
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_pre_ocr_prompt
-
-            prompt = get_default_pre_ocr_prompt()
+        jt = (job.type or "pre_ocr_topic").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
@@ -187,11 +185,8 @@ def run_ocr_extraction_step1_job(job_id: str, pair_indices: Optional[List[int]] 
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_ocr_extraction_prompt
-
-            prompt = get_default_ocr_extraction_prompt()
+        jt = (job.type or "ocr_extraction").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
@@ -323,11 +318,8 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
             return
 
         cfg = json.loads(job.config_json or "{}")
-        user_prompt = (cfg.get("prompt") or "").strip()
-        if not user_prompt:
-            from webapp.default_prompts import get_default_document_processing_prompt
-
-            user_prompt = get_default_document_processing_prompt()
+        jt = (job.type or "document_processing").strip()
+        user_prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
         book_id = cfg.get("book_id")
@@ -497,11 +489,8 @@ def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_image_notes_prompt
-
-            prompt = get_default_image_notes_prompt()
+        jt = (job.type or "image_notes").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
@@ -631,11 +620,8 @@ def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_table_notes_prompt
-
-            prompt = get_default_table_notes_prompt()
+        jt = (job.type or "table_notes").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
@@ -765,11 +751,8 @@ def run_importance_type_step1_job(job_id: str, pair_indices: Optional[List[int]]
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_importance_type_prompt
-
-            prompt = get_default_importance_type_prompt()
+        jt = (job.type or "importance_type").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
@@ -920,11 +903,8 @@ def run_flashcard_step1_job(job_id: str, pair_indices: Optional[List[int]] = Non
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_flashcard_prompt
-
-            prompt = get_default_flashcard_prompt()
+        jt = (job.type or "flashcard").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         model_name = (cfg.get("model") or "z-ai/glm-5").strip()
         delay_seconds = float(cfg.get("delay_seconds", 5))
 
@@ -1059,7 +1039,7 @@ def run_flashcard_step1_job(job_id: str, pair_indices: Optional[List[int]] = Non
 
 
 def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
-    """Web Stage L: tagged a*.json + Test Bank b*.json → o*.json (one LLM call per pair)."""
+    """Web Stage L: Importance & Type a*.json + Test Bank 1 step1_combined → o*.json (chapter_name + summary)."""
     from stage_l_processor import StageLProcessor
 
     db = SessionLocal()
@@ -1070,11 +1050,8 @@ def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]]
             return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt = (cfg.get("prompt") or "").strip()
-        if not prompt:
-            from webapp.default_prompts import get_default_chapter_summary_prompt
-
-            prompt = get_default_chapter_summary_prompt()
+        jt = (job.type or "chapter_summary").strip()
+        prompt = resolve_prompt_for_job(db, jt, cfg, "prompt")
         from webapp.config import DEFAULT_TEST_BANK_MODEL, normalize_test_bank_model
 
         model_name = normalize_test_bank_model(cfg.get("model_1"), DEFAULT_TEST_BANK_MODEL)
@@ -1087,7 +1064,7 @@ def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]]
         append_log(
             db,
             job_id,
-            "Chapter Summary runner started (tagged JSON + Test Bank JSON per pair).",
+            "Chapter Summary runner started (Importance & Type + Test Bank 1 combined per pair).",
             None,
         )
 
@@ -1107,14 +1084,14 @@ def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]]
 
             if not pair.stage_j_relpath or not pair.word_relpath:
                 pair.step1_status = "failed"
-                pair.step1_error = "Missing tagged JSON or Test Bank JSON path"
+                pair.step1_error = "Missing Importance & Type or Test Bank 1 combined path"
                 db.commit()
                 append_log(db, job_id, f"pair {pair.pair_index}: skipped (incomplete pair)", pair.pair_index)
                 continue
 
             abs_tagged = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
-            abs_test_bank = os.path.join(base, pair.word_relpath.replace("/", os.sep))
-            if not os.path.isfile(abs_tagged) or not os.path.isfile(abs_test_bank):
+            abs_step1 = os.path.join(base, pair.word_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_tagged) or not os.path.isfile(abs_step1):
                 pair.step1_status = "failed"
                 pair.step1_error = "Missing input JSON on disk"
                 db.commit()
@@ -1145,9 +1122,9 @@ def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]]
                     pair.pair_index,
                 )
                 try:
-                    result = processor.process_stage_l(
-                        stage_j_path=abs_tagged,
-                        stage_v_path=abs_test_bank,
+                    result = processor.process_stage_l_web_chapter_summary(
+                        importance_type_path=abs_tagged,
+                        step1_combined_path=abs_step1,
                         prompt=prompt,
                         model_name=model_name,
                         output_dir=out_dir,

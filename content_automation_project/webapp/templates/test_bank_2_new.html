@@ -39,7 +39,11 @@
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Step 2 (Test Bank 2)</h2>
     <label>Prompt Step 2</label>
-    <textarea name="prompt_2" dir="auto" placeholder="پیش‌فرض از prompts.json؛ می‌توانید خالی بگذارید یا ویرایش کنید.">{{ default_prompt_2 }}</textarea>
+    {% if request.query_params.get('prompt_saved') %}
+    <p class="muted" style="margin:0 0 10px;color:var(--accent);font-size:13px;">System default prompt saved.</p>
+    {% endif %}
+    <p class="muted" style="margin-top:0;font-size:13px;">{% if is_admin %}<strong>Submit</strong> saves the default for all future Test Bank 2 jobs.{% else %}Only admins can change the system default on this page.{% endif %} Leave empty on <strong>Create Test Bank 2 job</strong> to use the system default.</p>
+    <textarea name="prompt_2" dir="auto"{% if not is_admin %} readonly{% endif %}>{{ default_prompt_2 }}</textarea>
     <div class="tb-row">
       <label for="provider_2">Provider
         <select name="provider_2" id="provider_2" autocomplete="off">
@@ -57,6 +61,9 @@
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <label class="muted" style="font-size:13px;">Seconds between processing each pair</label>
     <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+    {% if is_admin %}
+    <button type="submit" class="btn-cta secondary" formaction="/admin/prompt-defaults/test_bank_2" formmethod="post" formnovalidate style="margin-top:16px;margin-right:8px;">Submit</button>
+    {% endif %}
     <button type="submit" class="btn-cta" style="margin-top:16px;">Create Test Bank 2 job</button>
   </div>
 </form>
