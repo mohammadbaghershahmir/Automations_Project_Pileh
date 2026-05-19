@@ -1312,10 +1312,11 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
         db.close()
 
 def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
-    """Convert uploaded JSON files to CSV (no LLM). Flashcard ac*.json adds five empty trailing columns."""
-    from json_to_csv_converter import (
-        convert_json_file_to_csv,
-        resolve_flashcard_trailing_columns,
+    """Convert uploaded JSON files to CSV (no LLM). Only flashcard_json_to_csv adds five empty trailing columns."""
+    from json_to_csv_converter import convert_json_file_to_csv
+    from webapp.json_to_csv_jobs import (
+        JSON_TO_CSV_JOB_LABELS,
+        json_to_csv_uses_flashcard_trailing_columns,
     )
 
     db = SessionLocal()
@@ -1325,15 +1326,17 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             logger.error("Job not found: %s", job_id)
             return
 
+        jt = (job.type or "").strip()
         cfg = json.loads(job.config_json or "{}")
         delimiter = (cfg.get("delimiter") or ";;;").strip() or ";;;"
-        flashcard_mode = (cfg.get("flashcard_columns") or "auto").strip()
+        flashcard_cols = json_to_csv_uses_flashcard_trailing_columns(jt)
+        stage_label = JSON_TO_CSV_JOB_LABELS.get(jt, "JSON to CSV")
 
         job.status = "running"
         if not job.started_at:
             job.started_at = datetime.utcnow()
         db.commit()
-        append_log(db, job_id, "JSON to CSV runner started.", None)
+        append_log(db, job_id, f"{stage_label} runner started.", None)
 
         pairs = _load_pairs(db, job_id, pair_indices)
         if job.cancel_requested:
@@ -1372,13 +1375,11 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             csv_name = f"{stem}.csv"
             csv_path = os.path.join(out_dir, csv_name)
 
-            flashcard_cols = resolve_flashcard_trailing_columns(flashcard_mode, json_basename)
-
             try:
                 append_log(
                     db,
                     job_id,
-                    f"--- JSON to CSV start pair {pair.pair_index}: {json_basename} ---",
+                    f"--- {stage_label} start pair {pair.pair_index}: {json_basename} ---",
                     pair.pair_index,
                 )
                 ok = convert_json_file_to_csv(
@@ -1422,7 +1423,7 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             job.error_summary = None
         job.finished_at = datetime.utcnow()
         db.commit()
-        append_log(db, job_id, "--- JSON to CSV job finished ---", None)
+        append_log(db, job_id, f"--- {stage_label} job finished ---", None)
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if job:
             notify_step1_finished(db, job, pairs)
@@ -1435,7 +1436,8 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                 job.error_summary = str(e)
                 job.finished_at = datetime.utcnow()
                 db.commit()
-                notify_job_crash(db, job, "JSON to CSV", str(e))
+                crash_label = JSON_TO_CSV_JOB_LABELS.get((job.type or "").strip(), "JSON to CSV")
+                notify_job_crash(db, job, crash_label, str(e))
         except Exception:
             db.rollback()
     finally:

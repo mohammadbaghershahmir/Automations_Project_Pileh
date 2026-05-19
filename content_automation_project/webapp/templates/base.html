@@ -337,9 +337,9 @@
       <a href="/importance-type/new" class="{% if request.url.path.startswith('/importance-type') %}active{% endif %}">Importance &amp; Type</a>
       <a href="/test-bank-2/new" class="{% if request.url.path.startswith('/test-bank-2') %}active{% endif %}">Test Bank 2</a>
       <a href="/image-file-catalog/new" class="{% if request.url.path.startswith('/image-file-catalog') %}active{% endif %}">Image File Catalog</a>
-      <a href="/flashcard/new" class="{% if request.url.path.startswith('/flashcard') %}active{% endif %}">Flashcards</a>
+      <a href="/flashcard/new" class="{% if request.url.path == '/flashcard/new' %}active{% endif %}">Flashcards</a>
+      <a href="/chapter-summary/new" class="{% if request.url.path == '/chapter-summary/new' %}active{% endif %}">Chapter Summary</a>
       <a href="/json-to-csv/new" class="{% if request.url.path.startswith('/json-to-csv') %}active{% endif %}">JSON to CSV</a>
-      <a href="/chapter-summary/new" class="{% if request.url.path.startswith('/chapter-summary') %}active{% endif %}">Chapter Summary</a>
       {% block sidebar_extra %}{% endblock %}
     </nav>
   </aside>

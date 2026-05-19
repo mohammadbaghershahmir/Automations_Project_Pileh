@@ -124,7 +124,12 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             run_chapter_summary_step1_job(job_id, pair_indices)
             return
-        if jt == "json_to_csv":
+        if jt in (
+            "chapter_summary_json_to_csv",
+            "image_catalog_json_to_csv",
+            "test_bank_2_json_to_csv",
+            "flashcard_json_to_csv",
+        ):
             db.close()
             from webapp.tasks_single_stage import run_json_to_csv_step1_job
 

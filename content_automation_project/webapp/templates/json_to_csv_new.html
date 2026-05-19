@@ -1,13 +1,30 @@
 {% extends "base.html" %}
-{% block title %}New JSON to CSV{% endblock %}
+{% block title %}JSON to CSV{% endblock %}
+{% block head %}
+<style>
+  .jtc-hint { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .jtc-hint code { font-size: 12px; }
+  #conversion_type { width: 100%; max-width: 480px; padding: 10px 12px; margin-top: 8px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 14px; }
+</style>
+{% endblock %}
 {% block content %}
 <h1>JSON to CSV</h1>
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted">Convert one or more JSON files to CSV (<code>;;;</code> delimiter by default). Row data comes from the JSON. For <strong>flashcard</strong> files (<code>ac*.json</code>), five extra columns are added at the end (<strong>Card ID</strong>, <strong>Deck</strong>, <strong>Tags</strong>, <strong>Flag</strong>, <strong>Card State</strong>) — left empty for import into the target website.</p>
+<p class="muted">Choose which stage output you are converting, upload JSON file(s), then run the job to download CSV files (<code>;;;</code> delimiter by default).</p>
 
 <form method="post" action="/jobs/json-to-csv" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Conversion type</h2>
+    <label for="conversion_type" class="muted" style="font-size:13px;">What kind of JSON are you uploading?</label>
+    <select id="conversion_type" name="conversion_type" required>
+      {% for opt in conversion_options %}
+      <option value="{{ opt.key }}"{% if opt.key == default_conversion %} selected{% endif %}>{{ opt.label }}</option>
+      {% endfor %}
+    </select>
+    <div id="jtc-type-hint" class="jtc-hint"></div>
+  </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
     <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
@@ -15,21 +32,32 @@
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">JSON files</h2>
+    <p id="jtc-file-hint" class="muted" style="margin-top:0;font-size:13px;"></p>
     <input type="file" name="json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Settings</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">Delimiter</p>
+    <h2 style="margin-top:0;font-size:1rem;">Delimiter</h2>
     <label style="margin-right:14px;"><input type="radio" name="delimiter" value=";;;" checked/> ;;; (default)</label>
     <label style="margin-right:14px;"><input type="radio" name="delimiter" value=","/> , (comma)</label>
     <label style="margin-right:14px;"><input type="radio" name="delimiter" value=";"/> ; (semicolon)</label>
-    <p class="muted" style="margin-top:16px;font-size:13px;">Flashcard import columns (Card ID, Deck, Tags, Flag, Card State)</p>
-    <select name="flashcard_columns" style="padding:8px 12px;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);">
-      <option value="auto" selected>Auto — add for ac*.json only</option>
-      <option value="always">Always add five columns</option>
-      <option value="never">Never add</option>
-    </select>
     <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
   </div>
 </form>
+<script>
+(function () {
+  var hints = {{ conversion_hints | tojson }};
+  var sel = document.getElementById('conversion_type');
+  var typeHint = document.getElementById('jtc-type-hint');
+  var fileHint = document.getElementById('jtc-file-hint');
+  var jobName = document.getElementById('job_name');
+  function sync() {
+    var h = hints[sel.value] || {};
+    typeHint.innerHTML = h.description || '';
+    fileHint.textContent = h.file_hint || '';
+    if (h.placeholder) jobName.placeholder = h.placeholder;
+  }
+  sel.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endblock %}

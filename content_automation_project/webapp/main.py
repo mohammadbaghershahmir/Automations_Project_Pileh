@@ -223,7 +223,10 @@ JOB_STAGE_LABELS = {
     "stage_m": "Topic List Extraction",
     # Chapter Summary — Stage L
     "chapter_summary": "Chapter Summary",
-    "json_to_csv": "JSON to CSV",
+    "chapter_summary_json_to_csv": "Chapter Summary → CSV",
+    "image_catalog_json_to_csv": "Image Catalog → CSV",
+    "test_bank_2_json_to_csv": "Test Bank 2 → CSV",
+    "flashcard_json_to_csv": "Flashcard → CSV",
     "stage_l": "Chapter Summary",
     # Book Changes Detection — Stage X
     "book_changes": "Book Changes Detection",
@@ -696,16 +699,38 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/json-to-csv/new", response_class=HTMLResponse)
-    def json_to_csv_new(request: Request, user: CurrentUser) -> Any:
+    def json_to_csv_new(request: Request, user: CurrentUser, type: Optional[str] = None) -> Any:
+        from webapp.json_to_csv_jobs import JSON_TO_CSV_CONVERSION_ORDER, json_to_csv_page_context
+
+        ctx = json_to_csv_page_context()
+        t = (type or "").strip()
+        if t in JSON_TO_CSV_CONVERSION_ORDER:
+            ctx["default_conversion"] = t
         return templates.TemplateResponse(
             request,
             "json_to_csv_new.html",
             {
                 "user": user,
                 "multipart_ok": HAS_MULTIPART,
+                **ctx,
             },
         )
 
+    @app.get("/chapter-summary/json-to-csv/new", response_class=HTMLResponse)
+    def chapter_summary_json_to_csv_new_redirect(user: CurrentUser) -> RedirectResponse:
+        return RedirectResponse("/json-to-csv/new?type=chapter_summary", status_code=302)
+
+    @app.get("/image-catalog/json-to-csv/new", response_class=HTMLResponse)
+    def image_catalog_json_to_csv_new_redirect(user: CurrentUser) -> RedirectResponse:
+        return RedirectResponse("/json-to-csv/new?type=image_catalog", status_code=302)
+
+    @app.get("/test-bank-2/json-to-csv/new", response_class=HTMLResponse)
+    def test_bank_2_json_to_csv_new_redirect(user: CurrentUser) -> RedirectResponse:
+        return RedirectResponse("/json-to-csv/new?type=test_bank_2", status_code=302)
+
+    @app.get("/flashcard/json-to-csv/new", response_class=HTMLResponse)
+    def flashcard_json_to_csv_new_redirect(user: CurrentUser) -> RedirectResponse:
+        return RedirectResponse("/json-to-csv/new?type=flashcard", status_code=302)
 
     if HAS_MULTIPART:
 
@@ -1984,15 +2009,16 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
-        @app.post("/jobs/json-to-csv")
-        async def create_json_to_csv_job(
+        async def _create_json_to_csv_stage_job(
             user: CurrentUser,
-            db: Session = Depends(get_db),
-            json_files: List[UploadFile] = File(...),
-            delimiter: str = Form(";;;"),
-            flashcard_columns: str = Form("auto"),
-            job_name: str = Form(""),
+            db: Session,
+            job_type: str,
+            json_files: List[UploadFile],
+            job_name: str,
+            delimiter: str = ";;;",
         ) -> RedirectResponse:
+            from webapp.json_to_csv_jobs import JSON_TO_CSV_JOB_LABELS
+
             name_stripped = (job_name or "").strip()
             if not name_stripped:
                 raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
@@ -2000,9 +2026,9 @@ def create_app() -> FastAPI:
                 raise HTTPException(400, "Job name must be at most 200 characters.")
 
             delim = (delimiter or ";;;").strip() or ";;;"
-            fc_mode = (flashcard_columns or "auto").strip().lower()
-            if fc_mode not in ("auto", "always", "never"):
-                fc_mode = "auto"
+            jt = (job_type or "").strip()
+            if jt not in JSON_TO_CSV_JOB_LABELS:
+                raise HTTPException(400, f"Unknown JSON to CSV job type: {jt}")
 
             tmp = tempfile.mkdtemp(prefix="jsontocsv_upload_")
             try:
@@ -2023,7 +2049,6 @@ def create_app() -> FastAPI:
                 cfg = {
                     "display_name": name_stripped,
                     "delimiter": delim,
-                    "flashcard_columns": fc_mode,
                 }
                 job_id = str(uuid.uuid4())
                 root = job_root(job_id)
@@ -2031,7 +2056,7 @@ def create_app() -> FastAPI:
 
                 job = Job(
                     id=job_id,
-                    type="json_to_csv",
+                    type=jt,
                     status="draft",
                     created_by_id=user.id,
                     config_json=json.dumps(cfg, ensure_ascii=False),
@@ -2063,7 +2088,28 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
-            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+        @app.post("/jobs/json-to-csv")
+        async def create_json_to_csv_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            conversion_type: str = Form(...),
+            json_files: List[UploadFile] = File(...),
+            delimiter: str = Form(";;;"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            from webapp.json_to_csv_jobs import job_type_for_conversion_key
+
+            job_type = job_type_for_conversion_key(conversion_type)
+            if not job_type:
+                raise HTTPException(400, "Invalid conversion type.")
+            return await _create_json_to_csv_stage_job(
+                user,
+                db,
+                job_type,
+                json_files,
+                job_name,
+                delimiter,
+            )
 
     else:
 
