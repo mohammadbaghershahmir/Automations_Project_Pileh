@@ -133,7 +133,7 @@
         {% elif job.type == 'chapter_summary' %}
         <th>Importance &amp; Type (a*)</th><th>Test Bank 1 combined</th>
         {% elif job.type == 'image_file_catalog' %}
-        <th>Image notes (Stage E)</th><th>Filepic JSON</th>
+        <th>Table notes (TA)</th><th>Filepic JSON</th><th>Tablepic JSON</th>
         {% elif job.type == 'test_bank_2' %}
         <th>Table notes (Stage J)</th><th>Word</th><th>Test Bank 1 combined</th>
         {% else %}
@@ -178,8 +178,10 @@
         <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
         <td style="font-size:13px;word-break:break-all;">{{ s1rel.split('/')[-1] if s1rel else "—" }}</td>
         {% elif job.type == 'image_file_catalog' %}
+        {% set pm_row = (cfg.get('pair_media') or {}).get(p.pair_index | string, {}) %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
-        <td style="font-size:13px;">{{ p.word_filename or "—" }}</td>
+        <td style="font-size:13px;">{{ pm_row.get('filepic_basename', '—') }}</td>
+        <td style="font-size:13px;">{{ pm_row.get('tablepic_basename', '—') }}</td>
         {% else %}
         <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
         {% endif %}
@@ -244,7 +246,7 @@
   <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> + Test Bank&nbsp;1 <code>step1_combined_*.json</code> → <code>o*.json</code> with <strong>chapter_name</strong> and <strong>summary</strong> (one LLM call per pair). Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'image_file_catalog' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
-  <p class="muted" style="margin-top:0;">Image notes (Stage E) → catalog JSON (<code>f_*.json</code>) per pair. Runs in the <strong>background worker</strong>.</p>
+  <p class="muted" style="margin-top:0;">Table notes (TA merged) + filepic + tablepic → catalog JSON (<code>f_*.json</code>) with both images and tables. Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'test_bank_1' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Test Bank 1</h2>
   <p class="muted" style="margin-top:0;">Table notes output (Stage J JSON) + Word → Step&nbsp;1 combined JSON. Runs in the <strong>background worker</strong>. Download <code>step1_combined_*.json</code> below for <strong>Test Bank 2</strong> or Importance&nbsp;&amp;&nbsp;Type.</p>

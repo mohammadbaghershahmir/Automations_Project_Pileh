@@ -29,7 +29,19 @@ def is_flashcard_json_basename(name: str) -> bool:
     return base.endswith(".json") and base.startswith("ac")
 
 
-CHAPTER_SUMMARY_CSV_HEADERS = ("chapter_name", "summary")
+CHAPTER_SUMMARY_CSV_HEADERS = ("Chapter", "Description")
+
+FLASHCARD_HEADER_ALIASES = {
+    "chapter": "Chapter",
+    "subchapter": "Subchapter",
+    "topic": "Topic",
+    "subtopic": "Subtopic",
+    "subsubtopic": "Subsubtopic",
+}
+
+TEST_BANK_2_HEADER_ALIASES = {
+    "qid": "QID",
+}
 
 
 def _escape_csv_field(value: Any, delimiter: str) -> str:
@@ -46,6 +58,26 @@ def _escape_csv_field(value: Any, delimiter: str) -> str:
     if needs_quote:
         return '"' + s.replace('"', '""') + '"'
     return s
+
+
+def _apply_header_aliases(
+    rows: List[Dict[str, Any]],
+    aliases_by_lower: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    """Rename row keys with case-insensitive aliases."""
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        renamed: Dict[str, Any] = {}
+        for key, value in row.items():
+            key_str = str(key)
+            new_key = aliases_by_lower.get(key_str.lower(), key_str)
+            if new_key in renamed:
+                if not renamed[new_key] and value:
+                    renamed[new_key] = value
+            else:
+                renamed[new_key] = value
+        out.append(renamed)
+    return out
 
 
 def extract_chapter_summary_row(json_data: Any) -> Optional[Dict[str, str]]:
@@ -73,7 +105,7 @@ def extract_chapter_summary_row(json_data: Any) -> Optional[Dict[str, str]]:
         summary = str(summary or "").strip()
         if not chapter_name and not summary:
             return None
-        return {"chapter_name": chapter_name, "summary": summary}
+        return {"Chapter": chapter_name, "Description": summary}
 
     if isinstance(json_data, dict):
         if "chapter_name" in json_data or "summary" in json_data:
@@ -290,7 +322,8 @@ def convert_json_file_to_csv(
             json_data = json.load(f)
 
         fixed_headers: Optional[List[str]] = None
-        if (conversion_mode or "").strip() == "chapter_summary":
+        mode = (conversion_mode or "").strip()
+        if mode == "chapter_summary":
             row = extract_chapter_summary_row(json_data)
             if not row:
                 logger.warning("No chapter_name/summary in %s", json_path)
@@ -302,6 +335,10 @@ def convert_json_file_to_csv(
             if not rows:
                 logger.warning("No data rows found in %s", json_path)
                 return False
+            if mode == "flashcard":
+                rows = _apply_header_aliases(rows, FLASHCARD_HEADER_ALIASES)
+            elif mode == "test_bank_2":
+                rows = _apply_header_aliases(rows, TEST_BANK_2_HEADER_ALIASES)
 
         csv_text = rows_to_csv_text(
             rows,
@@ -348,7 +385,8 @@ def convert_json_file_to_csv_text(
         with open(json_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
         fixed_headers: Optional[List[str]] = None
-        if (conversion_mode or "").strip() == "chapter_summary":
+        mode = (conversion_mode or "").strip()
+        if mode == "chapter_summary":
             row = extract_chapter_summary_row(json_data)
             if not row:
                 return None
@@ -358,6 +396,10 @@ def convert_json_file_to_csv_text(
             rows = extract_rows_from_json(json_data)
             if not rows:
                 return None
+            if mode == "flashcard":
+                rows = _apply_header_aliases(rows, FLASHCARD_HEADER_ALIASES)
+            elif mode == "test_bank_2":
+                rows = _apply_header_aliases(rows, TEST_BANK_2_HEADER_ALIASES)
         return rows_to_csv_text(
             rows,
             delimiter=delimiter,

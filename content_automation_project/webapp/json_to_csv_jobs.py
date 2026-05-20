@@ -19,7 +19,7 @@ JSON_TO_CSV_STAGE_SPECS: Dict[str, Dict[str, Any]] = {
         "title": "Chapter Summary → CSV",
         "description": (
             "Upload <strong>Chapter Summary</strong> output (<code>o*.json</code>). "
-            "Produces exactly <strong>2 columns</strong> (<code>chapter_name</code>, <code>summary</code>) and "
+            "Produces exactly <strong>2 columns</strong> (<code>Chapter</code>, <code>Description</code>) and "
             "<strong>2 rows</strong> (header + one data row). Long summaries stay in a single cell (quoted). "
             "In Google Sheets / Excel use <strong>File → Import</strong> and set the separator to "
             "<code>;;;</code> or <code>,</code> — do not rely on double-click open alone."
@@ -116,4 +116,8 @@ def conversion_mode_for_job_type(job_type: str) -> Optional[str]:
     jt = (job_type or "").strip()
     if jt == "chapter_summary_json_to_csv":
         return "chapter_summary"
+    if jt == "flashcard_json_to_csv":
+        return "flashcard"
+    if jt == "test_bank_2_json_to_csv":
+        return "test_bank_2"
     return None

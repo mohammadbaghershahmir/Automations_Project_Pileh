@@ -18,6 +18,17 @@ class StageFProcessor(BaseStageProcessor):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
     
+    def _is_media_points(self, points_value: str) -> bool:
+        """True when Points looks like an image or table reference."""
+        if not points_value:
+            return False
+        pv = points_value.strip()
+        pl = pv.lower()
+        return any(
+            token in pv or token in pl
+            for token in ("تصویر", "جدول", "fig", "table", "الکترونیکی")
+        )
+
     def determine_image_type(self, file_name: str) -> int:
         """
         Determine image type from file name.
@@ -129,20 +140,89 @@ class StageFProcessor(BaseStageProcessor):
             result = f"{prefix} {file_name}"
         
         return result
+
+    def _resolve_sidecar_json_path(
+        self,
+        base_dir: str,
+        base_name: str,
+        metadata: Dict[str, Any],
+        *,
+        file_meta_key: str,
+        path_meta_key: str,
+        default_suffix: str,
+        override_path: Optional[str] = None,
+    ) -> Optional[str]:
+        if override_path and os.path.isfile(override_path):
+            return override_path
+
+        path_from_meta = metadata.get(path_meta_key)
+        if path_from_meta and os.path.isfile(path_from_meta):
+            return path_from_meta
+
+        file_from_meta = metadata.get(file_meta_key)
+        if file_from_meta:
+            candidate = os.path.join(base_dir, file_from_meta)
+            if os.path.isfile(candidate):
+                return candidate
+
+        candidate = os.path.join(base_dir, f"{base_name}{default_suffix}")
+        if os.path.isfile(candidate):
+            return candidate
+        return None
+
+    def _load_pic_captions(
+        self,
+        pic_json_path: Optional[str],
+        label: str,
+        _progress: Callable[[str], None],
+    ) -> List[str]:
+        descriptions: List[str] = []
+        if not pic_json_path or not os.path.isfile(pic_json_path):
+            return descriptions
+
+        _progress(f"Loading {label} captions from {os.path.basename(pic_json_path)}...")
+        pic_data = self.load_json_file(pic_json_path)
+        if not pic_data:
+            self.logger.warning("Failed to load %s JSON: %s", label, pic_json_path)
+            return descriptions
+
+        pic_records = self.get_data_from_json(pic_data)
+        _progress(f"Found {len(pic_records)} records in {label} JSON")
+
+        for idx, record in enumerate(pic_records):
+            if not isinstance(record, dict):
+                descriptions.append("")
+                continue
+            caption = (
+                record.get("caption", "")
+                or record.get("Caption", "")
+                or record.get("CAPTION", "")
+            )
+            descriptions.append(str(caption or ""))
+            if caption:
+                self.logger.debug("%s record %s: caption (%s chars)", label, idx, len(caption))
+
+        non_empty = sum(1 for d in descriptions if d)
+        _progress(f"Loaded {len(descriptions)} {label} captions ({non_empty} non-empty)")
+        return descriptions
     
     def process_stage_f(
         self,
         stage_e_path: str,
         output_dir: Optional[str] = None,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[Callable[[str], None]] = None,
+        filepic_json_path: Optional[str] = None,
+        tablepic_json_path: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Process Stage F: Generate image file JSON from Stage E.
+        Process Stage F: Generate catalog JSON from merged notes (Stage TA) or Stage E.
         
         Args:
-            stage_e_path: Path to Stage E JSON file
+            stage_e_path: Path to Stage TA merged JSON (preferred) or Stage E JSON file
             output_dir: Output directory (defaults to stage_e_path directory)
             progress_callback: Optional callback for progress updates
+            filepic_json_path: Optional override for image captions sidecar JSON
+            tablepic_json_path: Optional override for table captions sidecar JSON
             
         Returns:
             Path to output file (f.json) or None on error
@@ -158,197 +238,123 @@ class StageFProcessor(BaseStageProcessor):
         
         _progress("Starting Stage F processing...")
         
-        # Load Stage E JSON
-        _progress("Loading Stage E JSON...")
-        stage_e_data = self.load_json_file(stage_e_path)
-        if not stage_e_data:
-            self.logger.error("Failed to load Stage E JSON")
+        _progress("Loading notes JSON (Stage TA merged or Stage E)...")
+        notes_data = self.load_json_file(stage_e_path)
+        if not notes_data:
+            self.logger.error("Failed to load notes JSON")
             return None
         
-        # Get metadata and data
-        metadata = self.get_metadata_from_json(stage_e_data)
-        stage_e_points = self.get_data_from_json(stage_e_data)
+        metadata = self.get_metadata_from_json(notes_data)
+        all_points = self.get_data_from_json(notes_data)
         
-        if not stage_e_points:
-            self.logger.error("Stage E JSON has no data/points")
+        if not all_points:
+            self.logger.error("Notes JSON has no data/points")
             return None
         
-        # Get first_image_point_id from metadata
         first_image_point_id = metadata.get("first_image_point_id")
         if not first_image_point_id:
-            self.logger.error("No first_image_point_id found in Stage E metadata")
+            self.logger.error("No first_image_point_id found in notes metadata")
             return None
         
         _progress(f"First image PointId: {first_image_point_id}")
+        if metadata.get("first_table_point_id"):
+            _progress(f"First table PointId: {metadata.get('first_table_point_id')}")
         
-        # Find the index where images start
         image_start_index = None
-        for idx, point in enumerate(stage_e_points):
+        for idx, point in enumerate(all_points):
             if point.get("PointId") == first_image_point_id:
                 image_start_index = idx
                 break
         
         if image_start_index is None:
-            self.logger.error(f"Could not find point with PointId {first_image_point_id} in Stage E data")
+            self.logger.error(f"Could not find point with PointId {first_image_point_id} in notes data")
             return None
         
-        _progress(f"Found {len(stage_e_points) - image_start_index} image records starting from index {image_start_index}")
-        
-        # Load filepic JSON to get descriptions (from caption column)
         base_dir = os.path.dirname(stage_e_path) or os.getcwd()
         base_name, _ = os.path.splitext(os.path.basename(stage_e_path))
         
-        # Try to get filepic path from metadata first
-        filepic_json_path = None
-        filepic_json_file = metadata.get("filepic_json_file")
-        filepic_json_path_from_meta = metadata.get("filepic_json_path")
-        
-        if filepic_json_path_from_meta and os.path.exists(filepic_json_path_from_meta):
-            filepic_json_path = filepic_json_path_from_meta
-            _progress(f"Using filepic path from metadata: {filepic_json_path}")
-        elif filepic_json_file:
-            # Try relative to base_dir
-            filepic_json_path = os.path.join(base_dir, filepic_json_file)
-            if not os.path.exists(filepic_json_path):
-                # Try with base_name prefix
-                filepic_json_path = os.path.join(base_dir, f"{base_name}_filepic.json")
-        else:
-            # Fallback: construct from base_name
-            filepic_json_path = os.path.join(base_dir, f"{base_name}_filepic.json")
-        
-        # Try to load from filepic JSON first (preferred)
-        descriptions = []
-        if filepic_json_path and os.path.exists(filepic_json_path):
-            _progress("Loading descriptions from filepic JSON...")
-            filepic_data = self.load_json_file(filepic_json_path)
-            if filepic_data:
-                filepic_records = self.get_data_from_json(filepic_data)
-                _progress(f"Found {len(filepic_records)} records in filepic JSON")
-                
-                # Extract captions as descriptions (in order)
-                for idx, record in enumerate(filepic_records):
-                    if isinstance(record, dict):
-                        # Get caption value - try different possible keys
-                        caption = record.get("caption", "") or record.get("Caption", "") or record.get("CAPTION", "")
-                        if caption:
-                            descriptions.append(caption)
-                            self.logger.debug(f"Record {idx}: Found caption ({len(caption)} chars)")
-                        else:
-                            # If no caption, add empty string to maintain order
-                            descriptions.append("")
-                            self.logger.debug(f"Record {idx}: No caption found. Keys: {list(record.keys())}")
-                    else:
-                        descriptions.append("")
-                        self.logger.warning(f"Record {idx} is not a dict")
-                
-                _progress(f"Loaded {len(descriptions)} descriptions from filepic JSON")
-                non_empty_count = sum(1 for d in descriptions if d)
-                if non_empty_count > 0:
-                    _progress(f"Found {non_empty_count} non-empty captions out of {len(descriptions)}")
-                else:
-                    self.logger.warning("All captions are empty in filepic JSON")
-                    _progress("Warning: All captions are empty in filepic JSON")
-        
-        # Fallback: Try to load from TXT file if JSON doesn't exist or all descriptions are empty
-        if not descriptions or not any(desc for desc in descriptions):
-            _progress("Trying fallback: Loading from TXT file...")
+        resolved_filepic = self._resolve_sidecar_json_path(
+            base_dir,
+            base_name,
+            metadata,
+            file_meta_key="filepic_json_file",
+            path_meta_key="filepic_json_path",
+            default_suffix="_filepic.json",
+            override_path=filepic_json_path,
+        )
+        resolved_tablepic = self._resolve_sidecar_json_path(
+            base_dir,
+            base_name,
+            metadata,
+            file_meta_key="tablepic_json_file",
+            path_meta_key="tablepic_json_path",
+            default_suffix="_tablepic.json",
+            override_path=tablepic_json_path,
+        )
+
+        image_descriptions = self._load_pic_captions(resolved_filepic, "filepic", _progress)
+        table_descriptions = self._load_pic_captions(resolved_tablepic, "tablepic", _progress)
+
+        if not image_descriptions and not table_descriptions:
             stage_e_txt_file = metadata.get("stage_e_txt_file")
             if stage_e_txt_file:
                 stage_e_txt_path = os.path.join(base_dir, stage_e_txt_file)
-                if not os.path.exists(stage_e_txt_path):
-                    # Try to find TXT file in parent directory or current directory
-                    possible_paths = [
-                        stage_e_txt_path,
-                        os.path.join(os.path.dirname(base_dir), stage_e_txt_file),
-                        os.path.join(os.getcwd(), stage_e_txt_file)
-                    ]
-                    for path in possible_paths:
-                        if os.path.exists(path):
-                            stage_e_txt_path = path
-                            break
-                
-                if os.path.exists(stage_e_txt_path):
-                    _progress(f"Loading descriptions from Stage E TXT file: {os.path.basename(stage_e_txt_path)}")
+                if os.path.isfile(stage_e_txt_path):
+                    _progress(f"Trying fallback captions from TXT: {os.path.basename(stage_e_txt_path)}")
                     filepic_data = self.load_txt_as_json(stage_e_txt_path)
-                    if filepic_data:
-                        # Extract records from filepic
-                        if isinstance(filepic_data, list):
-                            filepic_records = filepic_data
-                        elif isinstance(filepic_data, dict):
-                            filepic_records = filepic_data.get("data", filepic_data.get("rows", []))
-                        else:
-                            filepic_records = []
-                        
-                        _progress(f"Found {len(filepic_records)} records in filepic TXT")
-                        
-                        # Extract captions as descriptions (in order)
-                        for idx, record in enumerate(filepic_records):
-                            if isinstance(record, dict):
-                                # Get caption value - try different possible keys
-                                caption = record.get("caption", "") or record.get("Caption", "") or record.get("CAPTION", "")
-                                if caption:
-                                    descriptions.append(caption)
-                                    self.logger.debug(f"Record {idx}: Found caption ({len(caption)} chars)")
-                                else:
-                                    # If no caption, add empty string to maintain order
-                                    descriptions.append("")
-                                    self.logger.debug(f"Record {idx}: No caption found. Keys: {list(record.keys())}")
-                            else:
-                                descriptions.append("")
-                                self.logger.warning(f"Record {idx} is not a dict")
-                        
-                        _progress(f"Loaded {len(descriptions)} descriptions from TXT file")
-                        non_empty_count = sum(1 for d in descriptions if d)
-                        if non_empty_count > 0:
-                            _progress(f"Found {non_empty_count} non-empty captions out of {len(descriptions)}")
-                        else:
-                            self.logger.warning("All captions are empty in filepic TXT")
-                            _progress("Warning: All captions are empty in filepic TXT")
+                    if isinstance(filepic_data, list):
+                        image_descriptions = [
+                            str(r.get("caption", "") or r.get("Caption", "") or "")
+                            if isinstance(r, dict)
+                            else ""
+                            for r in filepic_data
+                        ]
         
-        if not descriptions:
-            self.logger.warning("No descriptions found in filepic. Descriptions will be empty.")
-        
-        # Process image points
-        _progress("Processing image records...")
+        _progress("Processing image and table records...")
         image_records = []
+        image_desc_index = 0
+        table_desc_index = 0
         
-        for idx, point in enumerate(stage_e_points[image_start_index:], start=image_start_index):
+        for point in all_points[image_start_index:]:
             point_id = point.get("PointId", "")
             points_value = point.get("Points", point.get("points", ""))
             
-            if not point_id or not points_value:
+            if not point_id or not points_value or not self._is_media_points(points_value):
                 continue
             
-            # Extract file name from Points
             file_name = self.extract_file_name_from_points(points_value)
+            image_type = self.determine_image_type(points_value)
+            if image_type == 3:
+                description = ""
+                if table_desc_index < len(table_descriptions):
+                    description = table_descriptions[table_desc_index]
+                table_desc_index += 1
+            else:
+                description = ""
+                if image_desc_index < len(image_descriptions):
+                    description = image_descriptions[image_desc_index]
+                image_desc_index += 1
             
-            # Determine image type
-            image_type = self.determine_image_type(file_name)
-            
-            # Get description (in order from filepic)
-            description = ""
-            desc_index = idx - image_start_index
-            if desc_index < len(descriptions):
-                description = descriptions[desc_index]
-            
-            # Create image record
-            image_record = {
-                "point_id": point_id,
-                "file_name": file_name,
-                "image_type": image_type,
-                "display_level": 6,
-                "description": description,
-                "question": "",  # Empty as specified
-                "is_title": ""   # Empty as specified
-            }
-            
-            image_records.append(image_record)
+            image_records.append(
+                {
+                    "point_id": point_id,
+                    "file_name": file_name,
+                    "image_type": image_type,
+                    "display_level": 6,
+                    "description": description,
+                    "question": "",
+                    "is_title": "",
+                }
+            )
         
         if not image_records:
-            self.logger.error("No image records generated")
+            self.logger.error("No image/table records generated")
             return None
         
-        _progress(f"Generated {len(image_records)} image records")
+        _progress(
+            f"Generated {len(image_records)} catalog records "
+            f"({image_desc_index} images, {table_desc_index} tables)"
+        )
         
         # Prepare output directory
         if not output_dir:
@@ -364,10 +370,16 @@ class StageFProcessor(BaseStageProcessor):
         
         # Prepare metadata
         output_metadata = {
+            "source_notes_json": os.path.basename(stage_e_path),
             "source_stage_e": os.path.basename(stage_e_path),
             "first_image_point_id": first_image_point_id,
+            "first_table_point_id": metadata.get("first_table_point_id"),
             "total_images": len(image_records),
-            "image_start_index": image_start_index
+            "image_start_index": image_start_index,
+            "image_caption_count": image_desc_index,
+            "table_caption_count": table_desc_index,
+            "filepic_json_file": os.path.basename(resolved_filepic) if resolved_filepic else None,
+            "tablepic_json_file": os.path.basename(resolved_tablepic) if resolved_tablepic else None,
         }
         
         # Save JSON

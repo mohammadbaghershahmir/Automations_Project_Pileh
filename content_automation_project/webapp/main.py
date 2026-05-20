@@ -1904,12 +1904,13 @@ def create_app() -> FastAPI:
         async def create_image_file_catalog_job(
             user: CurrentUser,
             db: Session = Depends(get_db),
-            stage_e_json_files: List[UploadFile] = File(...),
-            filepic_json_files: Optional[List[UploadFile]] = File(None),
+            stage_ta_json_files: List[UploadFile] = File(...),
+            filepic_json_files: List[UploadFile] = File(...),
+            tablepic_json_files: List[UploadFile] = File(...),
             delay_seconds: str = Form("5"),
             job_name: str = Form(""),
         ) -> RedirectResponse:
-            # Stage F reads optional *_filepic.json beside image-notes JSON; pair filepic uploads by sorted order when counts match.
+            # Stage F builds f_*.json from Table Notes (TA merged: images + tables) plus filepic/tablepic captions.
             name_stripped = (job_name or "").strip()
             if not name_stripped:
                 raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
@@ -1918,20 +1919,19 @@ def create_app() -> FastAPI:
 
             tmp = tempfile.mkdtemp(prefix="imgfcat_upload_")
             try:
-                se_paths: List[str] = []
-                for uf in stage_e_json_files:
+                ta_paths: List[str] = []
+                for uf in stage_ta_json_files:
                     if not uf.filename:
                         continue
-                    dest = os.path.join(tmp, "se", os.path.basename(uf.filename))
+                    dest = os.path.join(tmp, "ta", os.path.basename(uf.filename))
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
                     content = await uf.read()
                     with open(dest, "wb") as f:
                         f.write(content)
-                    se_paths.append(dest)
+                    ta_paths.append(dest)
 
                 fp_paths: List[str] = []
-                pic_inputs = filepic_json_files if filepic_json_files else []
-                for uf in pic_inputs:
+                for uf in filepic_json_files:
                     if not uf.filename:
                         continue
                     dest = os.path.join(tmp, "fp", os.path.basename(uf.filename))
@@ -1941,14 +1941,30 @@ def create_app() -> FastAPI:
                         f.write(content)
                     fp_paths.append(dest)
 
-                se_sorted = _sorted_nonempty_paths(se_paths)
+                tp_paths: List[str] = []
+                for uf in tablepic_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, "tp", os.path.basename(uf.filename))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    tp_paths.append(dest)
+
+                ta_sorted = _sorted_nonempty_paths(ta_paths)
                 fp_sorted = _sorted_nonempty_paths(fp_paths)
-                if not se_sorted:
-                    raise HTTPException(400, "Upload at least one Image notes (Stage E) JSON.")
-                if fp_sorted and len(fp_sorted) != len(se_sorted):
+                tp_sorted = _sorted_nonempty_paths(tp_paths)
+                if not ta_sorted:
+                    raise HTTPException(400, "Upload at least one Table notes (Stage TA) JSON.")
+                if not fp_sorted or not tp_sorted:
+                    raise HTTPException(400, "Upload matching filepic and tablepic JSON files for each chapter.")
+                n_ta, n_fp, n_tp = len(ta_sorted), len(fp_sorted), len(tp_sorted)
+                if n_ta != n_fp or n_ta != n_tp:
                     raise HTTPException(
                         400,
-                        f"If filepic JSON files are uploaded, count ({len(fp_sorted)}) must match Image notes (Stage E) JSON count ({len(se_sorted)}).",
+                        f"File counts must match: Table notes ({n_ta}), filepic ({n_fp}), tablepic ({n_tp}). "
+                        "Sort order is by filename within each group.",
                     )
 
                 try:
@@ -1956,13 +1972,34 @@ def create_app() -> FastAPI:
                 except ValueError:
                     delay_val = 5.0
 
-                cfg = {
-                    "display_name": name_stripped,
-                    "delay_seconds": delay_val,
-                }
+                pair_media: dict = {}
                 job_id = str(uuid.uuid4())
                 root = job_root(job_id)
                 os.makedirs(root, exist_ok=True)
+
+                for pair_index, (ta_p, fp_p, tp_p) in enumerate(zip(ta_sorted, fp_sorted, tp_sorted)):
+                    ensure_dirs(job_id, pair_index)
+                    tan = os.path.basename(ta_p)
+                    fpn = os.path.basename(fp_p)
+                    tpn = os.path.basename(tp_p)
+                    rel_ta = f"pair_{pair_index}/inputs/{tan}"
+                    rel_fp = f"pair_{pair_index}/inputs/{fpn}"
+                    rel_tp = f"pair_{pair_index}/inputs/{tpn}"
+                    shutil.copy2(ta_p, os.path.join(root, rel_ta.replace("/", os.sep)))
+                    shutil.copy2(fp_p, os.path.join(root, rel_fp.replace("/", os.sep)))
+                    shutil.copy2(tp_p, os.path.join(root, rel_tp.replace("/", os.sep)))
+                    pair_media[str(pair_index)] = {
+                        "filepic_relpath": rel_fp,
+                        "tablepic_relpath": rel_tp,
+                        "filepic_basename": fpn,
+                        "tablepic_basename": tpn,
+                    }
+
+                cfg = {
+                    "display_name": name_stripped,
+                    "delay_seconds": delay_val,
+                    "pair_media": pair_media,
+                }
 
                 job = Job(
                     id=job_id,
@@ -1974,34 +2011,27 @@ def create_app() -> FastAPI:
                 db.add(job)
                 db.flush()
 
-                for pair_index, se_p in enumerate(se_sorted):
-                    ensure_dirs(job_id, pair_index)
-                    sen = os.path.basename(se_p)
-                    rel_se = f"pair_{pair_index}/inputs/{sen}"
-                    shutil.copy2(se_p, os.path.join(root, rel_se.replace("/", os.sep)))
-
-                    rel_fp: Optional[str] = None
-                    wfn = ""
-                    if fp_sorted:
-                        fp_p = fp_sorted[pair_index]
-                        wfn = os.path.basename(fp_p)
-                        rel_fp = f"pair_{pair_index}/inputs/{wfn}"
-                        shutil.copy2(fp_p, os.path.join(root, rel_fp.replace("/", os.sep)))
-
+                for pair_index, (ta_p, fp_p, tp_p) in enumerate(zip(ta_sorted, fp_sorted, tp_sorted)):
+                    tan = os.path.basename(ta_p)
+                    rel_ta = f"pair_{pair_index}/inputs/{tan}"
                     db.add(
                         JobPair(
                             job_id=job_id,
                             pair_index=pair_index,
-                            stage_j_filename=sen,
-                            word_filename=wfn,
-                            stage_j_relpath=rel_se,
-                            word_relpath=rel_fp,
+                            stage_j_filename=tan,
+                            word_filename="",
+                            stage_j_relpath=rel_ta,
+                            word_relpath=None,
                             output_relpath=f"pair_{pair_index}/output",
                         )
                     )
-                    register_input_artifact(db, job_id, pair_index, root, rel_se, "upload_stage_e_json")
-                    if rel_fp:
-                        register_input_artifact(db, job_id, pair_index, root, rel_fp, "upload_filepic_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_ta, "upload_stage_ta_json")
+                    register_input_artifact(
+                        db, job_id, pair_index, root, pair_media[str(pair_index)]["filepic_relpath"], "upload_filepic_json"
+                    )
+                    register_input_artifact(
+                        db, job_id, pair_index, root, pair_media[str(pair_index)]["tablepic_relpath"], "upload_tablepic_json"
+                    )
 
                 db.commit()
             finally:

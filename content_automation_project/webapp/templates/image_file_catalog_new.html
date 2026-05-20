@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted"><strong>Image file catalog (Stage F)</strong> builds <code>f_*.json</code> from <strong>Image notes</strong> output — <strong>Stage E</strong> JSON (and optional filepic JSON). This step <strong>generates</strong> the catalog; it does not only list files.</p>
+<p class="muted"><strong>Image file catalog (Stage F)</strong> builds <code>f_*.json</code> from <strong>Table notes</strong> output (<code>ta*.json</code>) — this merged file includes both <strong>images</strong> and <strong>tables</strong>. Upload matching <strong>filepic</strong> and <strong>tablepic</strong> JSON for captions.</p>
 
 <form method="post" action="/jobs/image-file-catalog" enctype="multipart/form-data">
   <div class="card">
@@ -21,14 +21,19 @@
     <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Ch.3 image catalog" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Image notes JSON (Stage E)</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">Required — JSON from an <strong>Image notes</strong> job.</p>
-    <input type="file" name="stage_e_json_files" multiple accept=".json,application/json" required/>
+    <h2 style="margin-top:0;font-size:1rem;">Table notes JSON (Stage TA merged)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Required — merged JSON from a <strong>Table notes</strong> job (contains image rows + table rows).</p>
+    <input type="file" name="stage_ta_json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;font-size:1rem;">Filepic JSON (optional)</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">If provided, upload the same number of files as image-notes JSON; sorted by filename, each filepic is stored beside its paired Stage E file for captions. Leave empty to rely on Stage E / metadata only.</p>
-    <input type="file" name="filepic_json_files" multiple accept=".json,application/json"/>
+    <h2 style="margin-top:0;font-size:1rem;">Filepic JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Required — image captions (<code>*_filepic.json</code>). Upload the same number of files as Table notes JSON; sorted by filename.</p>
+    <input type="file" name="filepic_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Tablepic JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Required — table captions (<code>*_tablepic.json</code>). Upload the same number of files as Table notes JSON; sorted by filename.</p>
+    <input type="file" name="tablepic_json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Delay between pairs</h2>

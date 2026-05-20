@@ -12,6 +12,7 @@ import threading
 import csv
 import io
 import json
+from typing import Optional, List, Dict, Any
 from json_to_csv_converter import (
     convert_json_file_to_csv,
     convert_json_file_to_csv_text,
@@ -23,11 +24,14 @@ def _json_to_csv_conversion_mode(json_file_path: str) -> Optional[str]:
     base = os.path.basename(json_file_path or "").lower()
     if base.endswith(".json") and base.startswith("o"):
         return "chapter_summary"
+    if base.endswith(".json") and base.startswith("ac"):
+        return "flashcard"
+    if base.endswith(".json") and base.startswith("b"):
+        return "test_bank_2"
     return None
 import glob
 import time
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 
 from api_layer import APIConfig, APIKeyManager, GeminiAPIClient
 from unified_api_client import UnifiedAPIClient
@@ -6648,7 +6652,7 @@ class ContentAutomationGUI:
         
         ctk.CTkLabel(
             stage_e_frame,
-            text="Each JSON file should be a Stage E JSON file with first_image_point_id in metadata.",
+            text="Each JSON file should be a Table notes (TA merged) or Stage E JSON with first_image_point_id in metadata. For TA, also place matching *_filepic.json and *_tablepic.json beside each file.",
             font=ctk.CTkFont(size=10),
             text_color="gray",
         ).pack(anchor="w", padx=15, pady=(0, 10))

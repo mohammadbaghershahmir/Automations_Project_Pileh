@@ -1186,7 +1186,7 @@ def run_chapter_summary_step1_job(job_id: str, pair_indices: Optional[List[int]]
 
 
 def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
-    """Stage F: image notes (Stage E) JSON → catalog JSON f_*.json under pair output (optional filepic JSON beside Stage E in inputs)."""
+    """Stage F: Table notes (TA merged) + filepic + tablepic → catalog JSON f_*.json."""
     from stage_f_processor import StageFProcessor
 
     db = SessionLocal()
@@ -1203,7 +1203,12 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
         if not job.started_at:
             job.started_at = datetime.utcnow()
         db.commit()
-        append_log(db, job_id, "Image File Catalog runner started (image notes / Stage E JSON → f_*.json per pair).", None)
+        append_log(
+            db,
+            job_id,
+            "Image File Catalog runner started (Table notes / TA merged + filepic + tablepic → f_*.json per pair).",
+            None,
+        )
 
         pairs = _load_pairs(db, job_id, pair_indices)
         if job.cancel_requested:
@@ -1219,17 +1224,23 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
                 _finalize_step1_cancelled(db, job_id, pairs)
                 return
 
-            if not pair.stage_j_relpath:
+            pm = (cfg.get("pair_media") or {}).get(str(pair.pair_index), {})
+            rel_fp = (pm.get("filepic_relpath") or "").strip()
+            rel_tp = (pm.get("tablepic_relpath") or "").strip()
+
+            if not pair.stage_j_relpath or not rel_fp or not rel_tp:
                 pair.step1_status = "failed"
-                pair.step1_error = "No image notes (Stage E) JSON input"
+                pair.step1_error = "Missing Table notes JSON, filepic, or tablepic path"
                 db.commit()
-                append_log(db, job_id, f"pair {pair.pair_index}: skipped (no image notes / Stage E JSON)", pair.pair_index)
+                append_log(db, job_id, f"pair {pair.pair_index}: skipped (incomplete pair)", pair.pair_index)
                 continue
 
-            abs_stage_e = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
-            if not os.path.isfile(abs_stage_e):
+            abs_notes = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            abs_filepic = os.path.join(base, rel_fp.replace("/", os.sep))
+            abs_tablepic = os.path.join(base, rel_tp.replace("/", os.sep))
+            if not os.path.isfile(abs_notes) or not os.path.isfile(abs_filepic) or not os.path.isfile(abs_tablepic):
                 pair.step1_status = "failed"
-                pair.step1_error = "Image notes (Stage E) JSON missing on disk"
+                pair.step1_error = "Table notes, filepic, or tablepic JSON missing on disk"
                 db.commit()
                 continue
 
@@ -1253,9 +1264,11 @@ def run_image_file_catalog_step1_job(job_id: str, pair_indices: Optional[List[in
                 append_log(db, job_id, f"--- Image File Catalog (Stage F) start pair {pair.pair_index} ---", pair.pair_index)
                 try:
                     result = processor.process_stage_f(
-                        stage_e_path=abs_stage_e,
+                        stage_e_path=abs_notes,
                         output_dir=out_dir,
                         progress_callback=progress,
+                        filepic_json_path=abs_filepic,
+                        tablepic_json_path=abs_tablepic,
                     )
                 except JobCancelled:
                     _finalize_step1_cancelled(db, job_id, pairs)
