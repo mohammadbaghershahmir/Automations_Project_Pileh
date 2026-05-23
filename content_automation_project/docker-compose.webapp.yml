@@ -38,6 +38,8 @@ services:
       JOBS_ROOT: /data/jobs
     volumes:
       - ./data:/data
+      # Mount app source so API picks up code changes without rebuilding the image.
+      - .:/app
     depends_on:
       - redis
 
@@ -56,5 +58,7 @@ services:
       JOBS_ROOT: /data/jobs
     volumes:
       - ./data:/data
+      # Mount app source so the worker runs current code (JSON→Word, etc.) without rebuild.
+      - .:/app
     depends_on:
       - redis

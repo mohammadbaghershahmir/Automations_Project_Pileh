@@ -5,7 +5,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted">Upload <strong>Lesson_file_*.json</strong> from a completed <strong>Document Processing</strong> job (must contain a top-level <code>points</code> array). Each file becomes one pair; run the job to download <code>.docx</code> files with Word headings: chapter (H1), subchapter (H2), topic (H3), subtopic (H4), subsubtopic (H5), and point text as body paragraphs.</p>
+<p class="muted">Upload lesson JSON with chapter hierarchy rows: <strong>Document Processing</strong> output (<code>Lesson_file_*.json</code> with top-level <code>points</code>) or related outputs such as <strong>image notes (filepic)</strong> / table notes (<code>data</code> array, body in <code>caption</code> or <code>points</code>). Each file becomes one pair; run the job to download <code>.docx</code> with headings H1–H5 and body paragraphs.</p>
 
 <form method="post" action="/jobs/document-processing/json-to-word" enctype="multipart/form-data">
   <div class="card">
@@ -15,7 +15,7 @@
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Lesson JSON files</h2>
-    <p class="muted" style="margin-top:0;font-size:13px;">Document Processing output (<code>Lesson_file_*.json</code> with <code>points</code>)</p>
+    <p class="muted" style="margin-top:0;font-size:13px;"><code>Lesson_file_*.json</code> with <code>points</code> or <code>data</code> (e.g. filepic / table notes)</p>
     <input type="file" name="json_files" multiple accept=".json,application/json" required/>
     <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
   </div>

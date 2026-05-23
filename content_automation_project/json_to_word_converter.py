@@ -1,8 +1,9 @@
 """
-JSON → Word conversion for Document Processing output (Lesson_file_*.json).
+JSON → Word conversion for lesson-style JSON (Document Processing and related outputs).
 
+Accepts top-level ``points`` (Document Processing) or ``data`` (e.g. filepic, table notes).
 Maps chapter → Heading 1, subchapter → H2, topic → H3, subtopic → H4, subsubtopic → H5.
-Point body text is written as normal paragraphs.
+Body text from ``points``/``Points``, or ``caption`` (+ optional ``point_text`` prefix).
 """
 
 from __future__ import annotations
@@ -41,30 +42,50 @@ def _row_field(row: Dict[str, Any], *names: str) -> str:
     return ""
 
 
+def _extract_rows_array(data: Dict[str, Any]) -> Tuple[List[Any], str]:
+    """Return (rows, source_key) from top-level points or data."""
+    points = data.get("points")
+    if points is not None:
+        return points, "points"
+    rows = data.get("data")
+    if rows is not None:
+        return rows, "data"
+    return None, ""  # type: ignore[return-value]
+
+
 def validate_document_processing_json(data: Any) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
-    Validate Document Processing final JSON and return the points list.
+    Validate lesson JSON and return the row list.
 
-    Requires top-level ``points`` (non-empty list of dicts).
-    Returns (points, metadata) where metadata may be None.
+    Requires top-level ``points`` (Document Processing) or ``data`` (filepic, table notes, etc.).
+    Returns (rows, metadata) where metadata may be None.
     """
     if not isinstance(data, dict):
-        raise DocumentProcessingJsonError("JSON root must be an object with a 'points' array.")
-
-    points = data.get("points")
-    if points is None:
         raise DocumentProcessingJsonError(
-            "Missing top-level 'points' array. Upload Lesson_file_*.json from Document Processing."
+            "JSON root must be an object with a 'points' or 'data' array."
         )
-    if not isinstance(points, list):
-        raise DocumentProcessingJsonError("'points' must be a JSON array.")
-    if not points:
-        raise DocumentProcessingJsonError("'points' array is empty.")
+
+    raw_rows, source_key = _extract_rows_array(data)
+    if raw_rows is None:
+        stage = ""
+        meta = data.get("metadata")
+        if isinstance(meta, dict):
+            stage = str(meta.get("stage") or "").strip()
+        hint = f" (metadata.stage={stage!r})" if stage else ""
+        raise DocumentProcessingJsonError(
+            "Missing top-level 'points' or 'data' array. "
+            "Use Document Processing output (points) or lesson JSON with chapter/subchapter/topic rows "
+            f"(data){hint}."
+        )
+    if not isinstance(raw_rows, list):
+        raise DocumentProcessingJsonError(f"'{source_key}' must be a JSON array.")
+    if not raw_rows:
+        raise DocumentProcessingJsonError(f"'{source_key}' array is empty.")
 
     normalized: List[Dict[str, Any]] = []
-    for i, item in enumerate(points):
+    for i, item in enumerate(raw_rows):
         if not isinstance(item, dict):
-            raise DocumentProcessingJsonError(f"points[{i}] must be an object.")
+            raise DocumentProcessingJsonError(f"{source_key}[{i}] must be an object.")
         normalized.append(item)
 
     meta = data.get("metadata")
@@ -78,6 +99,18 @@ def validate_document_processing_json(data: Any) -> Tuple[List[Dict[str, Any]], 
             )
 
     return normalized, metadata
+
+
+def _row_body(row: Dict[str, Any]) -> str:
+    """Lesson point text, or image/table note caption (optional point_text label)."""
+    body = _row_field(row, "points", "Points")
+    if body:
+        return body
+    caption = _row_field(row, "caption")
+    point_text = _row_field(row, "point_text")
+    if caption and point_text:
+        return f"{point_text}\n{caption}"
+    return caption or point_text
 
 
 def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bool:
@@ -104,7 +137,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
                 for reset_field in field_names[idx + 1 :]:
                     last[reset_field] = ""
 
-        body = _row_field(row, "points", "Points")
+        body = _row_body(row)
         if not body:
             continue
         doc.add_paragraph(body)

@@ -255,7 +255,7 @@
   <p class="muted" style="margin-top:0;">Uses your uploaded Test Bank&nbsp;1 combined JSON plus the same Table notes (Stage J) JSON and Word files → refined tests. Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'document_processing_json_to_word' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Convert to Word</h2>
-  <p class="muted" style="margin-top:0;">Converts each <code>Lesson_file_*.json</code> (<code>points</code> array) to <code>.docx</code> with headings: chapter (H1), subchapter (H2), topic (H3), subtopic (H4), subsubtopic (H5). No LLM — runs in the <strong>background worker</strong>.</p>
+  <p class="muted" style="margin-top:0;">Converts lesson JSON (<code>points</code> or <code>data</code> rows) to <code>.docx</code> with headings: chapter (H1), subchapter (H2), topic (H3), subtopic (H4), subsubtopic (H5). Body from <code>points</code> or <code>caption</code>. No LLM — runs in the <strong>background worker</strong>.</p>
   {% elif job.type in ['chapter_summary_json_to_csv', 'image_catalog_json_to_csv', 'test_bank_2_json_to_csv', 'flashcard_json_to_csv'] %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Convert to CSV</h2>
   <p class="muted" style="margin-top:0;">Converts uploaded JSON to CSV per pair. No LLM — runs in the <strong>background worker</strong>.</p>
