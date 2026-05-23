@@ -1459,3 +1459,142 @@ def run_json_to_csv_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
     finally:
         db.close()
 
+
+def run_json_to_word_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    """Convert Document Processing JSON (points array) to Word (.docx). No LLM."""
+    import json as _json
+
+    from json_to_word_converter import (
+        DocumentProcessingJsonError,
+        convert_points_to_docx,
+        validate_document_processing_json,
+    )
+    from webapp.json_to_word_jobs import JSON_TO_WORD_JOB_LABELS
+
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            logger.error("Job not found: %s", job_id)
+            return
+
+        jt = (job.type or "").strip()
+        stage_label = JSON_TO_WORD_JOB_LABELS.get(jt, "JSON to Word")
+
+        job.status = "running"
+        if not job.started_at:
+            job.started_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, f"{stage_label} runner started.", None)
+
+        pairs = _load_pairs(db, job_id, pair_indices)
+        if job.cancel_requested:
+            _finalize_step1_cancelled(db, job_id, pairs)
+            return
+
+        base = job_root(job_id)
+
+        for pair in pairs:
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+            if not pair.stage_j_relpath:
+                pair.step1_status = "failed"
+                pair.step1_error = "No JSON input"
+                db.commit()
+                continue
+
+            abs_json = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
+            if not os.path.isfile(abs_json):
+                pair.step1_status = "failed"
+                pair.step1_error = "JSON file missing on disk"
+                db.commit()
+                continue
+
+            pair.step1_status = "running"
+            pair.step1_error = None
+            db.commit()
+
+            out_dir = pair_output(job_id, pair.pair_index)
+            os.makedirs(out_dir, exist_ok=True)
+
+            json_basename = os.path.basename(abs_json)
+            stem = os.path.splitext(json_basename)[0]
+            docx_name = f"{stem}.docx"
+            docx_path = os.path.join(out_dir, docx_name)
+
+            try:
+                append_log(
+                    db,
+                    job_id,
+                    f"--- {stage_label} start pair {pair.pair_index}: {json_basename} ---",
+                    pair.pair_index,
+                )
+                with open(abs_json, "r", encoding="utf-8") as jf:
+                    data = _json.load(jf)
+                try:
+                    points, _meta = validate_document_processing_json(data)
+                except DocumentProcessingJsonError as e:
+                    pair.step1_status = "failed"
+                    pair.step1_error = str(e)
+                    append_log(db, job_id, f"pair {pair.pair_index}: {e}", pair.pair_index)
+                    db.commit()
+                    continue
+
+                ok = convert_points_to_docx(points, docx_path)
+                if ok and os.path.isfile(docx_path):
+                    pair.step1_status = "succeeded"
+                    rel_out = os.path.relpath(out_dir, base).replace("\\", "/")
+                    register_artifacts_under(db, job_id, pair.pair_index, base, rel_out)
+                    append_log(
+                        db,
+                        job_id,
+                        f"pair {pair.pair_index}: {json_basename} → {docx_name}",
+                        pair.pair_index,
+                    )
+                else:
+                    pair.step1_status = "failed"
+                    pair.step1_error = "Conversion failed or produced no content"
+                    append_log(db, job_id, f"pair {pair.pair_index}: conversion failed", pair.pair_index)
+            except Exception as e:
+                logger.exception("JSON to Word error")
+                pair.step1_status = "failed"
+                pair.step1_error = str(e)
+                append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+
+            db.commit()
+
+            if _scalar_cancel_requested(db, job_id):
+                _finalize_step1_cancelled(db, job_id, pairs)
+                return
+
+        any_failed = any(p.step1_status == "failed" for p in pairs)
+        if any_failed:
+            job.status = "failed"
+            job.error_summary = "One or more pairs failed"
+        else:
+            job.status = "succeeded"
+            job.error_summary = None
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        append_log(db, job_id, f"--- {stage_label} job finished ---", None)
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if job:
+            notify_step1_finished(db, job, pairs)
+    except Exception as e:
+        logger.exception("run_json_to_word_step1_job")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_summary = str(e)
+                job.finished_at = datetime.utcnow()
+                db.commit()
+                crash_label = JSON_TO_WORD_JOB_LABELS.get((job.type or "").strip(), "JSON to Word")
+                notify_job_crash(db, job, crash_label, str(e))
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+

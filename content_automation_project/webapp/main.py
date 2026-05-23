@@ -227,6 +227,7 @@ JOB_STAGE_LABELS = {
     "image_catalog_json_to_csv": "Image Catalog → CSV",
     "test_bank_2_json_to_csv": "Test Bank 2 → CSV",
     "flashcard_json_to_csv": "Flashcard → CSV",
+    "document_processing_json_to_word": "Document Processing → Word",
     "stage_l": "Chapter Summary",
     # Book Changes Detection — Stage X
     "book_changes": "Book Changes Detection",
@@ -561,6 +562,21 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "ocr_extraction", "prompt"),
+            },
+        )
+
+    @app.get("/document-processing/json-to-word/new", response_class=HTMLResponse)
+    def document_processing_json_to_word_new(
+        request: Request,
+        user: CurrentUser,
+    ) -> Any:
+        return templates.TemplateResponse(
+            request,
+            "json_to_word_new.html",
+            {
+                "user": user,
+                "is_admin": is_admin_user(user),
+                "multipart_ok": HAS_MULTIPART,
             },
         )
 
@@ -2141,6 +2157,88 @@ def create_app() -> FastAPI:
                 delimiter,
             )
 
+        async def _create_json_to_word_stage_job(
+            user: CurrentUser,
+            db: Session,
+            json_files: List[UploadFile],
+            job_name: str,
+        ) -> RedirectResponse:
+            from webapp.json_to_word_jobs import JSON_TO_WORD_JOB_TYPES
+
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            jt = "document_processing_json_to_word"
+            if jt not in JSON_TO_WORD_JOB_TYPES:
+                raise HTTPException(400, f"Unknown JSON to Word job type: {jt}")
+
+            tmp = tempfile.mkdtemp(prefix="jsontoword_upload_")
+            try:
+                json_paths: List[str] = []
+                for uf in json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    json_paths.append(dest)
+
+                sorted_json = _sorted_nonempty_paths(json_paths)
+                if not sorted_json:
+                    raise HTTPException(400, "Upload at least one JSON file.")
+
+                cfg = {"display_name": name_stripped}
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type=jt,
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, jp in enumerate(sorted_json):
+                    ensure_dirs(job_id, pair_index)
+                    jn = os.path.basename(jp)
+                    rel_j = f"pair_{pair_index}/inputs/{jn}"
+                    shutil.copy2(jp, os.path.join(root, rel_j.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=jn,
+                            word_filename="",
+                            stage_j_relpath=rel_j,
+                            word_relpath=None,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_j, "upload_json")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/document-processing/json-to-word")
+        async def create_document_processing_json_to_word_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            json_files: List[UploadFile] = File(...),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            return await _create_json_to_word_stage_job(user, db, json_files, job_name)
+
     else:
 
         @app.post("/jobs/test-bank")
@@ -2202,6 +2300,10 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/json-to-csv")
         def create_json_to_csv_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/document-processing/json-to-word")
+        def create_document_processing_json_to_word_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)

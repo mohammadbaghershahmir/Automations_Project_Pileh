@@ -34,6 +34,7 @@ SINGLE_STAGE_JOB_TYPES = frozenset(
         "image_catalog_json_to_csv",
         "test_bank_2_json_to_csv",
         "flashcard_json_to_csv",
+        "document_processing_json_to_word",
         "test_bank_1",
         "test_bank_2",
     }

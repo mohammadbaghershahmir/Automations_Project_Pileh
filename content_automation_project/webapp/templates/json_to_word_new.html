@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Document Processing → Word{% endblock %}
+{% block content %}
+<h1>Document Processing → Word</h1>
+{% if multipart_ok is defined and not multipart_ok %}
+<p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
+{% endif %}
+<p class="muted">Upload <strong>Lesson_file_*.json</strong> from a completed <strong>Document Processing</strong> job (must contain a top-level <code>points</code> array). Each file becomes one pair; run the job to download <code>.docx</code> files with Word headings: chapter (H1), subchapter (H2), topic (H3), subtopic (H4), subsubtopic (H5), and point text as body paragraphs.</p>
+
+<form method="post" action="/jobs/document-processing/json-to-word" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
+    <label for="job_name" class="muted" style="font-size:13px;">Name <span style="color:#f87171;">*</span></label>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Ch.3 lesson Word export" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Lesson JSON files</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Document Processing output (<code>Lesson_file_*.json</code> with <code>points</code>)</p>
+    <input type="file" name="json_files" multiple accept=".json,application/json" required/>
+    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+  </div>
+</form>
+{% endblock %}
