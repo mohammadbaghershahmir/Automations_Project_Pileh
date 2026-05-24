@@ -5,7 +5,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted">Upload <strong>Table Notes Generation</strong> output: <code>ta{book}{chapter}_*.json</code> (top-level <code>data</code> array), e.g. <code>ta105003_Lesson_file_OCR Extraction_0 (6).json</code> from a completed Table Notes job. Word structure: chapter (H1), subchapter (H2), topic (H3), <strong>subtopic (italic)</strong>, subsubtopic (H4), then each row’s <code>points</code> text as a normal paragraph.</p>
+<p class="muted">Upload <strong>Table Notes Generation</strong> output: <code>ta{book}{chapter}_*.json</code> (top-level <code>data</code> array), e.g. <code>ta105003_Lesson_file_OCR Extraction_0 (6).json</code>. Word headings: subchapter (H1), topic (H2), subtopic (H3), subsubtopic (H4); <code>chapter</code> is omitted. Each row’s <code>points</code> text is a normal paragraph.</p>
 
 <form method="post" action="/jobs/table-notes/json-to-word" enctype="multipart/form-data">
   <div class="card">

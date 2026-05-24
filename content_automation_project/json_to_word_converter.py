@@ -1,7 +1,7 @@
 """
 JSON → Word conversion for Table Notes Generation output (ta*.json).
 
-Maps chapter → H1, subchapter → H2, topic → H3, subtopic → italic paragraph, subsubtopic → H4.
+Headings only (no chapter, no italic): subchapter H1, topic H2, subtopic H3, subsubtopic H4.
 Body from each row's ``points`` field.
 """
 
@@ -15,17 +15,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# field_name, "heading" + level, or "italic"
-HierarchySpec = Tuple[str, str, int]
-HIERARCHY_SPEC: List[HierarchySpec] = [
-    ("chapter", "heading", 1),
-    ("subchapter", "heading", 2),
-    ("topic", "heading", 3),
-    ("subtopic", "italic", 0),
-    ("subsubtopic", "heading", 4),
+# field_name → Word heading level (1–4)
+HIERARCHY_HEADINGS: List[Tuple[str, int]] = [
+    ("subchapter", 1),
+    ("topic", 2),
+    ("subtopic", 3),
+    ("subsubtopic", 4),
 ]
 
-HIERARCHY_FIELD_NAMES = [s[0] for s in HIERARCHY_SPEC]
+HIERARCHY_FIELD_NAMES = [name for name, _ in HIERARCHY_HEADINGS]
 
 _TA_FILENAME_RE = re.compile(r"^ta\d{6}_.+\.json$", re.IGNORECASE)
 
@@ -134,12 +132,6 @@ def _row_body(row: Dict[str, Any]) -> str:
     return _row_field(row, "points", "Points")
 
 
-def _add_italic_paragraph(doc: Any, text: str) -> None:
-    p = doc.add_paragraph()
-    run = p.add_run(text)
-    run.italic = True
-
-
 def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bool:
     """Build a .docx from Table Notes ``data`` rows."""
     try:
@@ -153,14 +145,11 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
     paragraphs_added = 0
 
     for row in points:
-        for field, kind, level in HIERARCHY_SPEC:
+        for field, level in HIERARCHY_HEADINGS:
             value = _row_field(row, field)
             if not value or value == last[field]:
                 continue
-            if kind == "heading":
-                doc.add_heading(value, level=level)
-            else:
-                _add_italic_paragraph(doc, value)
+            doc.add_heading(value, level=level)
             last[field] = value
             idx = HIERARCHY_FIELD_NAMES.index(field)
             for reset_field in HIERARCHY_FIELD_NAMES[idx + 1 :]:

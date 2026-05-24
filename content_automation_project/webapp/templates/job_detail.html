@@ -255,7 +255,7 @@
   <p class="muted" style="margin-top:0;">Uses your uploaded Test Bank&nbsp;1 combined JSON plus the same Table notes (Stage J) JSON and Word files → refined tests. Runs in the <strong>background worker</strong>.</p>
   {% elif job.type in ['table_notes_json_to_word', 'document_processing_json_to_word'] %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Convert to Word</h2>
-  <p class="muted" style="margin-top:0;">Converts Table Notes <code>ta*.json</code> (<code>data</code> rows) to <code>.docx</code>: chapter (H1), subchapter (H2), topic (H3), <strong>subtopic (italic)</strong>, subsubtopic (H4), then each row’s <code>points</code> text. No LLM — runs in the <strong>background worker</strong>.</p>
+  <p class="muted" style="margin-top:0;">Converts Table Notes <code>ta*.json</code> (<code>data</code> rows) to <code>.docx</code>: subchapter (H1), topic (H2), subtopic (H3), subsubtopic (H4), then each row’s <code>points</code> text. <code>chapter</code> is not written as a heading. No LLM — runs in the <strong>background worker</strong>.</p>
   {% elif job.type in ['chapter_summary_json_to_csv', 'image_catalog_json_to_csv', 'test_bank_2_json_to_csv', 'flashcard_json_to_csv'] %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Convert to CSV</h2>
   <p class="muted" style="margin-top:0;">Converts uploaded JSON to CSV per pair. No LLM — runs in the <strong>background worker</strong>.</p>
