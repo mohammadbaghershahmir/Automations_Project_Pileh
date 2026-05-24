@@ -132,6 +132,21 @@ def _row_body(row: Dict[str, Any]) -> str:
     return _row_field(row, "points", "Points")
 
 
+def _disable_heading_italic_styles(doc: Any) -> None:
+    """Word's built-in Heading 4 (and sometimes others) use italic; breaks Persian text."""
+    for level in range(1, 5):
+        try:
+            doc.styles[f"Heading {level}"].font.italic = False
+        except KeyError:
+            pass
+
+
+def _add_heading_no_italic(doc: Any, text: str, level: int) -> None:
+    paragraph = doc.add_heading(text, level=level)
+    for run in paragraph.runs:
+        run.italic = False
+
+
 def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bool:
     """Build a .docx from Table Notes ``data`` rows."""
     try:
@@ -141,6 +156,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
         return False
 
     doc = Document()
+    _disable_heading_italic_styles(doc)
     last: Dict[str, str] = {name: "" for name in HIERARCHY_FIELD_NAMES}
     paragraphs_added = 0
 
@@ -149,7 +165,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
             value = _row_field(row, field)
             if not value or value == last[field]:
                 continue
-            doc.add_heading(value, level=level)
+            _add_heading_no_italic(doc, value, level)
             last[field] = value
             idx = HIERARCHY_FIELD_NAMES.index(field)
             for reset_field in HIERARCHY_FIELD_NAMES[idx + 1 :]:
