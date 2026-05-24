@@ -15,6 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# Must support Arabic/Persian; Heading 4 default theme fonts often render as □□□.
+DOCX_FONT_NAME = "Arial"
+
 HIERARCHY_FIELDS = (
     ("chapter", 1),
     ("subchapter", 2),
@@ -101,6 +104,100 @@ def validate_document_processing_json(data: Any) -> Tuple[List[Dict[str, Any]], 
     return normalized, metadata
 
 
+def _has_arabic_script(text: str) -> bool:
+    for ch in text:
+        o = ord(ch)
+        if (
+            0x0600 <= o <= 0x06FF
+            or 0x0750 <= o <= 0x077F
+            or 0x08A0 <= o <= 0x08FF
+            or 0xFB50 <= o <= 0xFDFF
+            or 0xFE70 <= o <= 0xFEFF
+        ):
+            return True
+    return False
+
+
+def _apply_run_font(run: Any, font_name: str = DOCX_FONT_NAME) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    run.font.name = font_name
+    r_pr = run._element.get_or_add_rPr()
+    existing = r_pr.find(qn("w:rFonts"))
+    if existing is not None:
+        r_pr.remove(existing)
+    r_fonts = OxmlElement("w:rFonts")
+    r_fonts.set(qn("w:ascii"), font_name)
+    r_fonts.set(qn("w:hAnsi"), font_name)
+    r_fonts.set(qn("w:cs"), font_name)
+    r_fonts.set(qn("w:eastAsia"), font_name)
+    r_pr.insert(0, r_fonts)
+
+
+def _apply_paragraph_bidi(paragraph: Any, rtl: bool) -> None:
+    if not rtl:
+        return
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    p_pr = paragraph._element.get_or_add_pPr()
+    if p_pr.find(qn("w:bidi")) is None:
+        p_pr.append(OxmlElement("w:bidi"))
+    jc = p_pr.find(qn("w:jc"))
+    if jc is None:
+        jc = OxmlElement("w:jc")
+        p_pr.append(jc)
+    jc.set(qn("w:val"), "right")
+
+
+def _style_paragraph(paragraph: Any, font_name: str = DOCX_FONT_NAME) -> None:
+    text = paragraph.text or ""
+    rtl = _has_arabic_script(text)
+    _apply_paragraph_bidi(paragraph, rtl)
+    for run in paragraph.runs:
+        _apply_run_font(run, font_name)
+
+
+def _configure_document_fonts(doc: Any, font_name: str = DOCX_FONT_NAME) -> None:
+    """Heading 4 (and some themes) use Latin-only fonts — set Arial on Normal + Heading 1–5."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    def _style_font(style: Any) -> None:
+        style.font.name = font_name
+        r_pr = style.element.rPr
+        if r_pr is None:
+            return
+        existing = r_pr.find(qn("w:rFonts"))
+        if existing is not None:
+            r_pr.remove(existing)
+        r_fonts = OxmlElement("w:rFonts")
+        r_fonts.set(qn("w:ascii"), font_name)
+        r_fonts.set(qn("w:hAnsi"), font_name)
+        r_fonts.set(qn("w:cs"), font_name)
+        r_fonts.set(qn("w:eastAsia"), font_name)
+        r_pr.insert(0, r_fonts)
+
+    _style_font(doc.styles["Normal"])
+    for level in range(1, 10):
+        name = f"Heading {level}"
+        try:
+            _style_font(doc.styles[name])
+        except KeyError:
+            break
+
+
+def _add_heading_styled(doc: Any, text: str, level: int) -> None:
+    paragraph = doc.add_heading(text, level=level)
+    _style_paragraph(paragraph)
+
+
+def _add_body_paragraph(doc: Any, text: str) -> None:
+    paragraph = doc.add_paragraph(text)
+    _style_paragraph(paragraph)
+
+
 def _row_body(row: Dict[str, Any]) -> str:
     """Lesson point text, or image/table note caption (optional point_text label)."""
     body = _row_field(row, "points", "Points")
@@ -122,6 +219,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
         return False
 
     doc = Document()
+    _configure_document_fonts(doc)
     last: Dict[str, str] = {field: "" for field, _ in HIERARCHY_FIELDS}
     paragraphs_added = 0
 
@@ -131,7 +229,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
         for field, level in HIERARCHY_FIELDS:
             value = _row_field(row, field)
             if value and value != last[field]:
-                doc.add_heading(value, level=level)
+                _add_heading_styled(doc, value, level)
                 last[field] = value
                 idx = field_names.index(field)
                 for reset_field in field_names[idx + 1 :]:
@@ -140,7 +238,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
         body = _row_body(row)
         if not body:
             continue
-        doc.add_paragraph(body)
+        _add_body_paragraph(doc, body)
         paragraphs_added += 1
 
     if paragraphs_added == 0:
