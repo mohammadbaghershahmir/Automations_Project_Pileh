@@ -1465,9 +1465,9 @@ def run_json_to_word_step1_job(job_id: str, pair_indices: Optional[List[int]] = 
     import json as _json
 
     from json_to_word_converter import (
-        DocumentProcessingJsonError,
+        TableNotesJsonError,
         convert_points_to_docx,
-        validate_document_processing_json,
+        validate_table_notes_json,
     )
     from webapp.json_to_word_jobs import JSON_TO_WORD_JOB_LABELS
 
@@ -1534,8 +1534,10 @@ def run_json_to_word_step1_job(job_id: str, pair_indices: Optional[List[int]] = 
                 with open(abs_json, "r", encoding="utf-8") as jf:
                     data = _json.load(jf)
                 try:
-                    points, _meta = validate_document_processing_json(data)
-                except DocumentProcessingJsonError as e:
+                    points, _meta = validate_table_notes_json(
+                        data, source_filename=json_basename
+                    )
+                except TableNotesJsonError as e:
                     pair.step1_status = "failed"
                     pair.step1_error = str(e)
                     append_log(db, job_id, f"pair {pair.pair_index}: {e}", pair.pair_index)

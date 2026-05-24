@@ -227,7 +227,8 @@ JOB_STAGE_LABELS = {
     "image_catalog_json_to_csv": "Image Catalog → CSV",
     "test_bank_2_json_to_csv": "Test Bank 2 → CSV",
     "flashcard_json_to_csv": "Flashcard → CSV",
-    "document_processing_json_to_word": "Document Processing → Word",
+    "table_notes_json_to_word": "Table Notes → Word",
+    "document_processing_json_to_word": "Table Notes → Word",
     "stage_l": "Chapter Summary",
     # Book Changes Detection — Stage X
     "book_changes": "Book Changes Detection",
@@ -565,8 +566,8 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.get("/document-processing/json-to-word/new", response_class=HTMLResponse)
-    def document_processing_json_to_word_new(
+    @app.get("/table-notes/json-to-word/new", response_class=HTMLResponse)
+    def table_notes_json_to_word_new(
         request: Request,
         user: CurrentUser,
     ) -> Any:
@@ -579,6 +580,10 @@ def create_app() -> FastAPI:
                 "multipart_ok": HAS_MULTIPART,
             },
         )
+
+    @app.get("/document-processing/json-to-word/new", response_class=HTMLResponse)
+    def document_processing_json_to_word_new_redirect(user: CurrentUser) -> RedirectResponse:
+        return RedirectResponse("/table-notes/json-to-word/new", status_code=302)
 
     @app.get("/document-processing/new", response_class=HTMLResponse)
     def document_processing_new(
@@ -2171,7 +2176,7 @@ def create_app() -> FastAPI:
             if len(name_stripped) > 200:
                 raise HTTPException(400, "Job name must be at most 200 characters.")
 
-            jt = "document_processing_json_to_word"
+            jt = "table_notes_json_to_word"
             if jt not in JSON_TO_WORD_JOB_TYPES:
                 raise HTTPException(400, f"Unknown JSON to Word job type: {jt}")
 
@@ -2229,6 +2234,15 @@ def create_app() -> FastAPI:
                 shutil.rmtree(tmp, ignore_errors=True)
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
+        @app.post("/jobs/table-notes/json-to-word")
+        async def create_table_notes_json_to_word_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            json_files: List[UploadFile] = File(...),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            return await _create_json_to_word_stage_job(user, db, json_files, job_name)
 
         @app.post("/jobs/document-processing/json-to-word")
         async def create_document_processing_json_to_word_job(
@@ -2300,6 +2314,10 @@ def create_app() -> FastAPI:
 
         @app.post("/jobs/json-to-csv")
         def create_json_to_csv_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
+        @app.post("/jobs/table-notes/json-to-word")
+        def create_table_notes_json_to_word_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
         @app.post("/jobs/document-processing/json-to-word")
