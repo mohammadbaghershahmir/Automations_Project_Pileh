@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Must support Arabic/Persian; Heading 4 default theme fonts often render as □□□.
-DOCX_FONT_NAME = "Arial"
+# Persian/Arabic complex-script language tag (Word picks theme bidi font, no hardcoded run font).
+BIDI_LANG = "fa-IR"
 
 HIERARCHY_FIELDS = (
     ("chapter", 1),
@@ -118,21 +118,33 @@ def _has_arabic_script(text: str) -> bool:
     return False
 
 
-def _apply_run_font(run: Any, font_name: str = DOCX_FONT_NAME) -> None:
+def _strip_run_direct_font(run: Any) -> None:
+    """Remove per-run font so Word uses the paragraph style / document theme."""
+    from docx.oxml.ns import qn
+
+    run.font.name = None
+    r_pr = run._element.rPr
+    if r_pr is None:
+        return
+    r_fonts = r_pr.find(qn("w:rFonts"))
+    if r_fonts is not None:
+        r_pr.remove(r_fonts)
+
+
+def _apply_run_bidi_lang(run: Any, use_bidi: bool) -> None:
+    """Mark run as Persian/Arabic for correct shaping; do not set a fixed font name."""
+    if not use_bidi:
+        return
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    run.font.name = font_name
     r_pr = run._element.get_or_add_rPr()
-    existing = r_pr.find(qn("w:rFonts"))
-    if existing is not None:
-        r_pr.remove(existing)
-    r_fonts = OxmlElement("w:rFonts")
-    r_fonts.set(qn("w:ascii"), font_name)
-    r_fonts.set(qn("w:hAnsi"), font_name)
-    r_fonts.set(qn("w:cs"), font_name)
-    r_fonts.set(qn("w:eastAsia"), font_name)
-    r_pr.insert(0, r_fonts)
+    lang = r_pr.find(qn("w:lang"))
+    if lang is None:
+        lang = OxmlElement("w:lang")
+        r_pr.append(lang)
+    lang.set(qn("w:bidi"), BIDI_LANG)
+    lang.set(qn("w:cs"), BIDI_LANG)
 
 
 def _apply_paragraph_bidi(paragraph: Any, rtl: bool) -> None:
@@ -151,41 +163,65 @@ def _apply_paragraph_bidi(paragraph: Any, rtl: bool) -> None:
     jc.set(qn("w:val"), "right")
 
 
-def _style_paragraph(paragraph: Any, font_name: str = DOCX_FONT_NAME) -> None:
+def _style_paragraph(paragraph: Any) -> None:
     text = paragraph.text or ""
     rtl = _has_arabic_script(text)
     _apply_paragraph_bidi(paragraph, rtl)
     for run in paragraph.runs:
-        _apply_run_font(run, font_name)
+        _strip_run_direct_font(run)
+        _apply_run_bidi_lang(run, rtl)
 
 
-def _configure_document_fonts(doc: Any, font_name: str = DOCX_FONT_NAME) -> None:
-    """Heading 4 (and some themes) use Latin-only fonts — set Arial on Normal + Heading 1–5."""
+def _ensure_style_bidi_lang(style: Any) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    def _style_font(style: Any) -> None:
-        style.font.name = font_name
-        r_pr = style.element.rPr
-        if r_pr is None:
-            return
-        existing = r_pr.find(qn("w:rFonts"))
-        if existing is not None:
-            r_pr.remove(existing)
-        r_fonts = OxmlElement("w:rFonts")
-        r_fonts.set(qn("w:ascii"), font_name)
-        r_fonts.set(qn("w:hAnsi"), font_name)
-        r_fonts.set(qn("w:cs"), font_name)
-        r_fonts.set(qn("w:eastAsia"), font_name)
-        r_pr.insert(0, r_fonts)
+    r_pr = style.element.get_or_add_rPr()
+    lang = r_pr.find(qn("w:lang"))
+    if lang is None:
+        lang = OxmlElement("w:lang")
+        r_pr.append(lang)
+    lang.set(qn("w:bidi"), BIDI_LANG)
+    lang.set(qn("w:cs"), BIDI_LANG)
 
-    _style_font(doc.styles["Normal"])
+
+def _configure_heading_styles_like_normal(doc: Any) -> None:
+    """
+    Align Heading 1–5 with Normal at style level (rFonts + lang).
+
+    Fixes Heading 4 theme fonts that lack Arabic glyphs without locking runs to Arial.
+    """
+    from copy import deepcopy
+
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    normal = doc.styles["Normal"]
+    normal_r_pr = normal.element.rPr
+    normal_r_fonts = normal_r_pr.find(qn("w:rFonts")) if normal_r_pr is not None else None
+    normal_lang = normal_r_pr.find(qn("w:lang")) if normal_r_pr is not None else None
+
+    _ensure_style_bidi_lang(normal)
+
     for level in range(1, 10):
-        name = f"Heading {level}"
         try:
-            _style_font(doc.styles[name])
+            heading = doc.styles[f"Heading {level}"]
         except KeyError:
             break
+        r_pr = heading.element.get_or_add_rPr()
+        for tag in (qn("w:rFonts"), qn("w:lang")):
+            existing = r_pr.find(tag)
+            if existing is not None:
+                r_pr.remove(existing)
+        if normal_r_fonts is not None:
+            r_pr.insert(0, deepcopy(normal_r_fonts))
+        if normal_lang is not None:
+            r_pr.append(deepcopy(normal_lang))
+        else:
+            lang = OxmlElement("w:lang")
+            lang.set(qn("w:bidi"), BIDI_LANG)
+            lang.set(qn("w:cs"), BIDI_LANG)
+            r_pr.append(lang)
 
 
 def _add_heading_styled(doc: Any, text: str, level: int) -> None:
@@ -219,7 +255,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
         return False
 
     doc = Document()
-    _configure_document_fonts(doc)
+    _configure_heading_styles_like_normal(doc)
     last: Dict[str, str] = {field: "" for field, _ in HIERARCHY_FIELDS}
     paragraphs_added = 0
 
