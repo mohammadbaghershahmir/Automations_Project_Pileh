@@ -1030,6 +1030,9 @@ class MultiPartPostProcessor:
         start_point_index: int = 1,
         pointid_mapping_txt: Optional[str] = None,
         progress_callback: Optional[Any] = None,
+        unit_hooks: Optional[Any] = None,
+        assign_pointids: bool = True,
+        plan_only: bool = False,
     ) -> Optional[str]:
         """
         Process Document Processing stage using OCR Extraction JSON as input.
@@ -1431,6 +1434,22 @@ class MultiPartPostProcessor:
         if not process_list:
             self.logger.error("No paragraphs/topics found in OCR JSON")
             return None
+
+        self._docproc_plan = {
+            "ocr_json_path": ocr_json_path,
+            "user_prompt": user_prompt,
+            "model_name": model_name,
+            "book_id": book_id,
+            "chapter_id": chapter_id,
+            "start_point_index": start_point_index,
+            "pointid_mapping_txt": pointid_mapping_txt,
+            "process_list": process_list,
+            "is_ocr_extraction_paragraph": is_ocr_extraction_paragraph,
+            "subchapter_full_items": subchapter_full_items,
+            "subchapter_has_paragraphs": subchapter_has_paragraphs,
+            "chapter_name_from_input": chapter_name_from_input,
+            "chapters_info": chapters_info,
+        }
         
         total_items = len(process_list)
         item_label = "topics" if is_ocr_extraction_paragraph else "paragraphs"
@@ -1478,6 +1497,9 @@ class MultiPartPostProcessor:
         if base_name.endswith("_final_output"):
             base_name = base_name[:-13]
         
+        if plan_only:
+            return None
+
         # Initialize output JSON file immediately (incremental writing)
         if not book_id:
             book_id = 1
@@ -1522,6 +1544,7 @@ class MultiPartPostProcessor:
         all_responses = []
         response_paragraph_info = []  # List of { chapter, subchapter, paragraph } per response
         
+        prompt_seq_counter = 0
         for paragraph_idx, item in enumerate(process_list, 1):
             if is_ocr_extraction_paragraph:
                 chapter_name_for_paragraph, subchapter_name, topic_info = item
@@ -1577,6 +1600,15 @@ class MultiPartPostProcessor:
             
             if progress_callback:
                 progress_callback(f"Processing {paragraph_idx}/{total_items}: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
+
+            if unit_hooks:
+                unit_hooks.before_unit(
+                    paragraph_idx,
+                    chapter_name_for_paragraph,
+                    subchapter_name,
+                    paragraph_name,
+                    prompt_seq_counter + 1,
+                )
             
             json_size = len(paragraph_json_text.encode('utf-8'))
             self.logger.info(f"  JSON payload size: {json_size:,} bytes ({json_size/1024:.2f} KB)")
@@ -1595,6 +1627,7 @@ class MultiPartPostProcessor:
                     system_prompt=paragraph_prompt,
                     model_name=model_name,
                 )
+                prompt_seq_counter += 1
                 if response_text and response_text.strip():
                     break
                 if attempt < max_attempts:
@@ -1653,9 +1686,13 @@ class MultiPartPostProcessor:
                         next_free_idx = int(current_meta.get("next_free_index") or current_meta.get("start_point_index") or 1)
                         
                         # Assign PointId to new points
-                        for point in new_points:
-                            point["PointId"] = f"{book_id:03d}{chapter_id:03d}{next_free_idx:04d}"
-                            next_free_idx += 1
+                        if assign_pointids:
+                            for point in new_points:
+                                point["PointId"] = f"{book_id:03d}{chapter_id:03d}{next_free_idx:04d}"
+                                next_free_idx += 1
+                        else:
+                            for point in new_points:
+                                point.pop("PointId", None)
                         
                         # Add new points to existing points array
                         if "points" not in current_data:
@@ -1705,8 +1742,27 @@ class MultiPartPostProcessor:
                     json.dump(current_data, f, ensure_ascii=False, indent=2)
                 
                 self.logger.info(f"  ✓ Added {len(new_points) if blocks else 0} points and raw response for paragraph '{paragraph_name}' to JSON file immediately")
+                if unit_hooks and new_points:
+                    unit_hooks.after_unit(
+                        paragraph_idx,
+                        chapter_name_for_paragraph,
+                        subchapter_name,
+                        paragraph_name,
+                        list(new_points),
+                        prompt_seq_counter,
+                    )
             except Exception as e:
                 self.logger.error(f"Failed to convert and write response for paragraph '{paragraph_name}' to file: {e}", exc_info=True)
+                if unit_hooks:
+                    unit_hooks.after_unit(
+                        paragraph_idx,
+                        chapter_name_for_paragraph,
+                        subchapter_name,
+                        paragraph_name,
+                        [],
+                        prompt_seq_counter,
+                        status="failed",
+                    )
                 # Continue processing other paragraphs
             
             self.logger.info(f"  ✓ Paragraph '{paragraph_name}' completed")
@@ -1754,9 +1810,117 @@ class MultiPartPostProcessor:
             self.logger.info(f"✓ Document Processing finalized: {len(final_points)} points from {topics_processed}/{total_topics} topics")
             if progress_callback:
                 progress_callback(f"✓ Document Processing completed. {len(final_points)} points generated from {topics_processed} responses.")
+            if unit_hooks and hasattr(unit_hooks, "job_id"):
+                from webapp.job_files import job_root as _jr
+
+                try:
+                    rel_out = os.path.relpath(output_path, _jr(unit_hooks.job_id)).replace("\\", "/")
+                except ValueError:
+                    rel_out = os.path.basename(output_path)
+                unit_hooks.set_output_relpath(rel_out)
         except Exception as e:
             self.logger.error(f"Failed to finalize output file: {e}", exc_info=True)
             return None
         
         return output_path
+
+    def regenerate_document_processing_unit(
+        self,
+        ocr_json_path: str,
+        user_prompt: str,
+        model_name: str,
+        unit_index: int,
+        chapter: str,
+        subchapter: str,
+        topic: str,
+        book_id: Optional[int] = None,
+        chapter_id: Optional[int] = None,
+        start_point_index: int = 1,
+        pointid_mapping_txt: Optional[str] = None,
+        progress_callback: Optional[Any] = None,
+        assign_pointids: bool = False,
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """Re-run a single topic/paragraph unit; returns (new_points, prompt_seq)."""
+        plan = getattr(self, "_docproc_plan", None)
+        if not plan or plan.get("ocr_json_path") != ocr_json_path:
+            self.process_document_processing_from_ocr_json(
+                ocr_json_path=ocr_json_path,
+                user_prompt=user_prompt,
+                model_name=model_name,
+                book_id=book_id,
+                chapter_id=chapter_id,
+                start_point_index=start_point_index,
+                pointid_mapping_txt=pointid_mapping_txt,
+                progress_callback=progress_callback,
+                assign_pointids=False,
+                unit_hooks=None,
+                plan_only=True,
+            )
+            plan = getattr(self, "_docproc_plan", None)
+        if not plan:
+            raise RuntimeError("Could not build document processing plan")
+        process_list = plan["process_list"]
+        is_ocr_extraction_paragraph = plan["is_ocr_extraction_paragraph"]
+        subchapter_full_items = plan["subchapter_full_items"]
+        subchapter_has_paragraphs = plan["subchapter_has_paragraphs"]
+        if unit_index < 1 or unit_index > len(process_list):
+            raise ValueError(f"unit_index {unit_index} out of range 1..{len(process_list)}")
+        item = process_list[unit_index - 1]
+        if is_ocr_extraction_paragraph:
+            chapter_name_for_paragraph, subchapter_name, topic_info = item
+            paragraph_name = topic_info["topic"]
+            input_json = topic_info["input_json"]
+            paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
+            paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
+            paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
+            paragraph_json_text = json.dumps(input_json, ensure_ascii=False, indent=2)
+        else:
+            chapter_name_for_paragraph, subchapter_name, paragraph_data = item
+            paragraph_name = paragraph_data.get("paragraph", "") or paragraph_data.get("Paragraph") or paragraph_data.get("topic", "") or paragraph_data.get("Topic", "")
+            paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
+            paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
+            paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
+            full_subchapter_items = subchapter_full_items.get(subchapter_name, []) or [paragraph_data]
+            paragraph_json = {
+                "subchapter": subchapter_name,
+                "chapter": chapter_name_for_paragraph,
+                "paragraphs": full_subchapter_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
+                "topics": full_subchapter_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None,
+            }
+            paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
+            paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
+        if progress_callback:
+            progress_callback(f"Regenerating unit {unit_index}: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
+        response_text = None
+        prompt_seq = 0
+        for attempt in range(1, 4):
+            response_text = self.api_client.process_text(
+                text=paragraph_json_text,
+                system_prompt=paragraph_prompt,
+                model_name=model_name,
+            )
+            prompt_seq += 1
+            if response_text and response_text.strip():
+                break
+        from third_stage_converter import ThirdStageConverter
+
+        converter = ThirdStageConverter()
+        blocks = self._extract_json_blocks_from_text(response_text or "")
+        new_points: List[Dict[str, Any]] = []
+        for block in blocks:
+            try:
+                flat_rows = converter._flatten_to_points(block)
+                for row in flat_rows:
+                    row["chapter"] = chapter_name_for_paragraph
+                    row["subchapter"] = subchapter_name
+                    row["topic"] = paragraph_name
+                    new_points.append(row)
+            except Exception as e:
+                self.logger.warning(f"Regenerate flatten failed: {e}")
+        if assign_pointids and book_id and chapter_id:
+            idx = start_point_index
+            for point in new_points:
+                point["PointId"] = f"{int(book_id):03d}{int(chapter_id):03d}{idx:04d}"
+                idx += 1
+        return new_points, prompt_seq
 

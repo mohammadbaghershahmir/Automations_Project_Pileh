@@ -46,6 +46,13 @@ class PromptCapturingUnifiedClient:
         self._pipeline_step = pipeline_step
         self._seq = 0
         self._seq_lock = threading.Lock()
+        self._current_unit_index: Optional[int] = None
+        self._current_unit_label: Optional[str] = None
+
+    def set_current_unit(self, unit_index: Optional[int], unit_label: Optional[str] = None) -> None:
+        with self._seq_lock:
+            self._current_unit_index = unit_index
+            self._current_unit_label = unit_label
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
@@ -54,6 +61,8 @@ class PromptCapturingUnifiedClient:
         with self._seq_lock:
             self._seq += 1
             seq = self._seq
+            unit_index = self._current_unit_index
+            unit_label = self._current_unit_label
         text = kwargs.get("text")
         if text is None and args:
             text = args[0]
@@ -71,6 +80,8 @@ class PromptCapturingUnifiedClient:
             f"job_type: {self._job_type}\n"
             f"pipeline_step: {self._pipeline_step}\n"
             f"call_sequence: {seq:04d}\n"
+            f"unit_index: {unit_index!r}\n"
+            f"unit_label: {unit_label!r}\n"
             f"model_name (argument): {model_name!r}\n"
             f"temperature: {temperature!r}\n"
             f"max_tokens: {max_tokens!r}\n"
@@ -89,7 +100,12 @@ class PromptCapturingUnifiedClient:
             os.makedirs(prompts_dir, exist_ok=True)
             jt = _safe_filename_part(self._job_type)
             ps = _safe_filename_part(self._pipeline_step)
-            fn = f"{seq:04d}_{ps}_{jt}.txt"
+            unit_part = ""
+            if unit_index is not None:
+                unit_part = f"_u{int(unit_index):03d}"
+                if unit_label:
+                    unit_part += f"_{_safe_filename_part(unit_label)[:40]}"
+            fn = f"{seq:04d}{unit_part}_{ps}_{jt}.txt"
             abs_path = os.path.join(prompts_dir, fn)
             with open(abs_path, "w", encoding="utf-8") as f:
                 f.write(full_dump)

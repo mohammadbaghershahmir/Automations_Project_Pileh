@@ -166,6 +166,36 @@ def enqueue_task(name: str, job_id: str, pair_indices: Optional[List[int]]) -> N
     threading.Thread(target=_run, daemon=True).start()
 
 
+def enqueue_unit_repair(name: str, job_id: str, pair_index: int, unit_index: Optional[int] = None) -> None:
+    try:
+        from webapp.celery_tasks import regenerate_unit_task, renumber_pair_task
+    except ImportError:
+        regenerate_unit_task = None
+        renumber_pair_task = None
+
+    if tasks_use_celery_queue() and regenerate_unit_task and renumber_pair_task:
+        if name == "regenerate" and unit_index is not None:
+            regenerate_unit_task.delay(job_id, pair_index, unit_index)
+        elif name == "renumber":
+            renumber_pair_task.delay(job_id, pair_index)
+        else:
+            raise ValueError(name)
+        return
+
+    import threading
+    from webapp.unit_repair.tasks import run_regenerate_unit_task, run_renumber_pair_task
+
+    def _run() -> None:
+        if name == "regenerate" and unit_index is not None:
+            run_regenerate_unit_task(job_id, pair_index, unit_index)
+        elif name == "renumber":
+            run_renumber_pair_task(job_id, pair_index)
+        else:
+            raise ValueError(name)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def queued_task_log_suffix() -> str:
     if tasks_use_celery_queue():
         return (
@@ -2394,6 +2424,10 @@ def create_app() -> FastAPI:
         stage_label = job_stage_label(job)
         cfg_dict = json.loads(job.config_json or "{}")
         prompt_editor_rows = build_prompt_editor_rows(db, jt, cfg_dict)
+        from webapp.unit_repair.registry import job_supports_unit_repair, renumber_scheme_for_job
+
+        supports_unit_repair = job_supports_unit_repair(jt)
+        renumber_scheme = renumber_scheme_for_job(jt)
         return templates.TemplateResponse(
             request,
             "job_detail.html",
@@ -2417,6 +2451,8 @@ def create_app() -> FastAPI:
                 "stage_label": stage_label,
                 "prompt_editor_rows": prompt_editor_rows,
                 "job_type_has_editable_prompts": job_type_has_editable_prompts(jt),
+                "supports_unit_repair": supports_unit_repair,
+                "renumber_scheme": renumber_scheme,
             },
         )
 
@@ -2676,6 +2712,99 @@ def create_app() -> FastAPI:
         )
         db.commit()
         return {"ok": True, "job_id": job_id}
+
+    class RenumberBody(BaseModel):
+        confirm: bool = False
+
+    @app.get("/jobs/{job_id}/pairs/{pair_index}/units")
+    def get_job_pair_units(
+        job_id: str,
+        pair_index: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        jt = (job.type or "").strip()
+        from webapp.unit_repair.registry import job_supports_unit_repair
+        from webapp.unit_repair.service import get_units_payload
+        from webapp.unit_repair.tasks import pair_repair_busy
+
+        if not job_supports_unit_repair(jt):
+            return {"supported": False, "units": [], "renumber": {}}
+        try:
+            payload = get_units_payload(job_id, pair_index, jt)
+        except Exception:
+            payload = {
+                "units": [],
+                "renumber": {"scheme": None, "ids_provisional": False},
+                "supports_renumber": False,
+            }
+        payload["supported"] = True
+        payload["pair_repair_busy"] = pair_repair_busy(job_id, pair_index)
+        payload["job_status"] = job.status
+        return payload
+
+    @app.post("/jobs/{job_id}/pairs/{pair_index}/units/{unit_index}/regenerate")
+    def post_regenerate_unit(
+        job_id: str,
+        pair_index: int,
+        unit_index: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if job.status == "running":
+            raise HTTPException(409, "Job is still running")
+        from webapp.unit_repair.registry import job_supports_unit_repair
+        from webapp.unit_repair.tasks import pair_repair_busy
+
+        if not job_supports_unit_repair((job.type or "").strip()):
+            raise HTTPException(400, "This job type does not support unit regenerate")
+        if pair_repair_busy(job_id, pair_index):
+            raise HTTPException(409, "Unit repair already in progress for this pair")
+        try:
+            enqueue_unit_repair("regenerate", job_id, pair_index, unit_index)
+        except Exception as e:
+            raise HTTPException(503, str(e)) from e
+        append_log(db, job_id, f"Queued regenerate for unit {unit_index} (pair {pair_index}).", pair_index)
+        return {"ok": True, "job_id": job_id, "pair_index": pair_index, "unit_index": unit_index}
+
+    @app.post("/jobs/{job_id}/pairs/{pair_index}/renumber")
+    def post_renumber_pair(
+        job_id: str,
+        pair_index: int,
+        body: RenumberBody,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if not body.confirm:
+            raise HTTPException(400, "confirm must be true")
+        if job.status == "running":
+            raise HTTPException(409, "Job is still running")
+        from webapp.unit_repair.registry import supports_renumber
+        from webapp.unit_repair.tasks import pair_repair_busy
+
+        jt = (job.type or "").strip()
+        if not supports_renumber(jt):
+            raise HTTPException(400, "This job type does not support renumber")
+        if pair_repair_busy(job_id, pair_index):
+            raise HTTPException(409, "Unit repair already in progress for this pair")
+        try:
+            enqueue_unit_repair("renumber", job_id, pair_index)
+        except Exception as e:
+            raise HTTPException(503, str(e)) from e
+        append_log(db, job_id, f"Queued renumber for pair {pair_index}.", pair_index)
+        return {"ok": True, "job_id": job_id, "pair_index": pair_index}
 
     @app.get("/jobs/{job_id}/poll")
     def poll_job(

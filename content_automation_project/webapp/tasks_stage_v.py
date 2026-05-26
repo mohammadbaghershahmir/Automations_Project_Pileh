@@ -417,9 +417,21 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             try:
                 append_log(db, job_id, f"--- Step 2 start pair {pair_index} ---", pair_index)
-                processor.api_client = wrap_prompt_capture(
-                    client, db, job_id, pair.pair_index, jt, "step2"
-                )
+                cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step2")
+                processor.api_client = cap
+                unit_hooks = None
+                try:
+                    ctx_probe = processor._build_stage_v_processing_context(
+                        abs_j, abs_w, out_dir, progress
+                    )
+                    if ctx_probe:
+                        from webapp.unit_repair.testbank import TestBankStep2UnitHooks
+
+                        unit_hooks = TestBankStep2UnitHooks(
+                            job_id, pair.pair_index, jt, ctx_probe.book_id, ctx_probe.chapter_id
+                        )
+                except Exception:
+                    unit_hooks = None
                 try:
                     result = processor.process_stage_v_step2(
                         stage_j_path=abs_j,
@@ -434,6 +446,8 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
                         progress_callback=progress,
                         delete_step1_combined_after_success=False,
                         cancel_check=cancel_check,
+                        unit_hooks=unit_hooks,
+                        keep_unit_artifacts=bool(unit_hooks),
                     )
                 except (JobCancelled, OpenRouterRequestAborted):
                     stop_flush.set()
@@ -639,9 +653,21 @@ def run_test_bank_step2_only_job(job_id: str, pair_indices: Optional[List[int]] 
 
             try:
                 append_log(db, job_id, f"--- Test Bank 2 start pair {pair_index} ---", pair_index)
-                processor.api_client = wrap_prompt_capture(
-                    client, db, job_id, pair.pair_index, jt, "step2"
-                )
+                cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step2")
+                processor.api_client = cap
+                unit_hooks = None
+                try:
+                    ctx_probe = processor._build_stage_v_processing_context(
+                        abs_j, abs_w, out_dir, progress
+                    )
+                    if ctx_probe:
+                        from webapp.unit_repair.testbank import TestBankStep2UnitHooks
+
+                        unit_hooks = TestBankStep2UnitHooks(
+                            job_id, pair.pair_index, jt, ctx_probe.book_id, ctx_probe.chapter_id
+                        )
+                except Exception:
+                    unit_hooks = None
                 try:
                     result = processor.process_stage_v_step2(
                         stage_j_path=abs_j,
@@ -656,6 +682,8 @@ def run_test_bank_step2_only_job(job_id: str, pair_indices: Optional[List[int]] 
                         progress_callback=progress,
                         delete_step1_combined_after_success=False,
                         cancel_check=cancel_check,
+                        unit_hooks=unit_hooks,
+                        keep_unit_artifacts=bool(unit_hooks),
                     )
                 except (JobCancelled, OpenRouterRequestAborted):
                     stop_flush.set()

@@ -309,6 +309,38 @@
       {% endfor %}
     </tbody>
   </table>
+
+  {% if supports_unit_repair and is_job_owner %}
+  <div id="unit-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+    <h3 style="margin:0 0 8px;font-size:0.95rem;">LLM units — Regenerate &amp; Renumber</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:13px;">Each row is one API request (topic or subchapter). After you fix a bad unit, click <strong>Regenerate</strong>. When the file looks correct, confirm below and run <strong>Renumber</strong> to fix sequential IDs.</p>
+    <p id="unit-repair-provisional" class="muted" style="display:none;margin:0 0 10px;font-size:13px;color:#fbbf24;">IDs may be out of sequence — run Renumber after review.</p>
+    <label style="font-size:13px;display:block;margin-bottom:8px;">Pair:
+      <select id="unit-repair-pair" style="margin-left:6px;padding:4px 8px;border-radius:6px;">
+        {% for p in pairs %}
+        <option value="{{ p.pair_index }}">{{ p.pair_index }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead>
+        <tr><th>#</th><th>Unit</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody id="unit-repair-tbody">
+        <tr><td colspan="4" class="muted">Loading units…</td></tr>
+      </tbody>
+    </table>
+    {% if renumber_scheme %}
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <input type="checkbox" id="unit-repair-confirm"/>
+      <span>I reviewed the output file — ready to renumber {% if renumber_scheme == 'qid' %}QIds{% else %}PointIds{% endif %}.</span>
+    </label>
+    <button type="button" id="btn-renumber" class="btn-cta secondary" disabled>Renumber {% if renumber_scheme == 'qid' %}QIds{% else %}PointIds{% endif %}</button>
+    {% else %}
+    <p class="muted" style="font-size:13px;">Renumber is not used for this job type (regenerate only).</p>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 {% if show_step2_section %}
@@ -512,6 +544,7 @@
   const jobType = "{{ job.type }}";
   const testBank = jobType === "test_bank";
   const singleStage = {{ single_stage_job | tojson }};
+  const supportsUnitRepair = {{ supports_unit_repair | tojson }};
   const STEP1_ROLES = {{ step1_poll_roles_json | safe }};
   const STEP2_ROLES = {{ step2_poll_roles_json | safe }};
   let afterSeq = 0;
@@ -748,6 +781,114 @@
   }
   poll();
   setInterval(poll, 3000);
+
+  if (supportsUnitRepair) {
+    var unitPairSel = document.getElementById("unit-repair-pair");
+    var unitTbody = document.getElementById("unit-repair-tbody");
+    var unitProv = document.getElementById("unit-repair-provisional");
+    var unitConfirm = document.getElementById("unit-repair-confirm");
+    var btnRenumber = document.getElementById("btn-renumber");
+
+    function renderUnits(data) {
+      if (!unitTbody) return;
+      var units = data.units || [];
+      var busy = data.pair_repair_busy;
+      var jobRunning = data.job_status === "running" || data.job_status === "queued";
+      if (unitProv) {
+        unitProv.style.display = (data.renumber && data.renumber.ids_provisional) ? "block" : "none";
+      }
+      if (!units.length) {
+        unitTbody.innerHTML = "<tr><td colspan=\"4\" class=\"muted\">No units yet — run processing first.</td></tr>";
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < units.length; i++) {
+        var u = units[i];
+        var idx = u.unit_index;
+        var dis = busy || jobRunning ? " disabled" : "";
+        html += "<tr><td>" + idx + "</td><td style=\"font-size:12px;\">" + (u.label || "") + "</td><td>" + (u.status || "") + "</td>";
+        html += "<td><button type=\"button\" class=\"btn-regen-unit secondary\" data-unit=\"" + idx + "\"" + dis + ">Regenerate</button></td></tr>";
+      }
+      unitTbody.innerHTML = html;
+      unitTbody.querySelectorAll(".btn-regen-unit").forEach(function (btn) {
+        btn.onclick = async function () {
+          if (btn.disabled) return;
+          var pi = unitPairSel ? parseInt(unitPairSel.value, 10) : 0;
+          var ui = parseInt(btn.getAttribute("data-unit"), 10);
+          if (!window.confirm("Regenerate unit " + ui + "? This queues one LLM call.")) return;
+          btn.disabled = true;
+          try {
+            var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/units/" + ui + "/regenerate", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            var t = await r.text();
+            if (!r.ok) {
+              window.alert("Regenerate failed: " + t.slice(0, 300));
+              btn.disabled = false;
+              return;
+            }
+            addBanner("info", "Regenerate queued for unit " + ui + ".");
+            loadUnits();
+          } catch (e) {
+            window.alert("Network error: " + e);
+            btn.disabled = false;
+          }
+        };
+      });
+    }
+
+    async function loadUnits() {
+      if (!unitPairSel) return;
+      var pi = parseInt(unitPairSel.value, 10);
+      try {
+        var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/units", { credentials: "same-origin" });
+        if (!r.ok) return;
+        var data = await r.json();
+        renderUnits(data);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    if (unitPairSel) {
+      unitPairSel.addEventListener("change", loadUnits);
+      loadUnits();
+      setInterval(loadUnits, 5000);
+    }
+
+    if (unitConfirm && btnRenumber) {
+      unitConfirm.addEventListener("change", function () {
+        btnRenumber.disabled = !unitConfirm.checked;
+      });
+      btnRenumber.onclick = async function () {
+        if (!unitConfirm.checked) return;
+        var pi = unitPairSel ? parseInt(unitPairSel.value, 10) : 0;
+        if (!window.confirm("Renumber all sequential IDs for pair " + pi + "?")) return;
+        btnRenumber.disabled = true;
+        try {
+          var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/renumber", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ confirm: true }),
+          });
+          var t = await r.text();
+          if (!r.ok) {
+            window.alert("Renumber failed: " + t.slice(0, 300));
+            btnRenumber.disabled = !unitConfirm.checked;
+            return;
+          }
+          addBanner("ok", "Renumber queued — refresh artifacts when the log shows completion.");
+          loadUnits();
+        } catch (e) {
+          window.alert("Network error: " + e);
+        }
+        btnRenumber.disabled = !unitConfirm.checked;
+      };
+    }
+  }
 })();
 </script>
 {% endblock %}

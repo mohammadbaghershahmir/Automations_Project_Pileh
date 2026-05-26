@@ -370,9 +370,11 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
             pair.step1_error = None
             db.commit()
 
-            post = MultiPartPostProcessor(
-                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
-            )
+            cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            from webapp.unit_repair.docproc import hooks_for_pair
+
+            unit_hooks = hooks_for_pair(db, job_id, pair.pair_index, jt, cfg, cap)
+            post = MultiPartPostProcessor(cap)
 
             file_pointid_txt: Optional[str] = None
             if all_pointids and i < len(all_pointids):
@@ -406,6 +408,8 @@ def run_document_processing_step1_job(job_id: str, pair_indices: Optional[List[i
                     start_point_index=start_point_index,
                     pointid_mapping_txt=file_pointid_txt,
                     progress_callback=progress,
+                    unit_hooks=unit_hooks,
+                    assign_pointids=True,
                 )
             except JobCancelled:
                 if file_pointid_txt and os.path.isfile(file_pointid_txt):

@@ -1544,7 +1544,91 @@ class MultiPartProcessor:
         filename = f"OCR Extraction Paragraph_{sanitized_pdf_name}.json"
         return filename
 
+    def regenerate_ocr_extraction_subchapter(
+        self,
+        pdf_path: str,
+        topic_file_path: str,
+        base_prompt: str,
+        model_name: str,
+        subchapter_index: int,
+        output_json_path: str,
+        temperature: float = 0.7,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> bool:
+        """Re-run one subchapter (1-based index) and replace it in the existing OCR output JSON."""
+        with open(topic_file_path, "r", encoding="utf-8") as f:
+            topic_data = json.load(f)
+        topics_list = topic_data.get("data") or []
+        if subchapter_index < 1 or subchapter_index > len(topics_list):
+            self.logger.error("subchapter_index %s out of range", subchapter_index)
+            return False
+        subchapter_item = topics_list[subchapter_index - 1]
+        subchapter_name = subchapter_item.get("Subchapter", "")
+        topics = subchapter_item.get("Topics", []) or []
 
+        if not os.path.isfile(output_json_path):
+            self.logger.error("OCR output file not found: %s", output_json_path)
+            return False
 
+        if hasattr(self.api_client, "set_stage"):
+            self.api_client.set_stage("ocr_extraction")
+        if not self.api_client.initialize_text_client(model_name):
+            return False
+
+        from pdf_processor import PDFProcessor
+
+        pdf_proc = PDFProcessor()
+        extracted_pdf_text = pdf_proc.extract_text(pdf_path)
+        subchapter_prompt = base_prompt.replace("{SUBCHAPTER_NAME}", subchapter_name)
+        topics_str = ", ".join(topics) if topics else ""
+        subchapter_prompt = subchapter_prompt.replace("{TOPIC_NAME}", topics_str)
+        subchapter_prompt += (
+            "\n\nCRITICAL EXTRACTION RULES:\n"
+            "- Extract body text verbatim from the source pages.\n"
+            "- DO NOT translate, paraphrase, rewrite, summarize, or normalize language.\n"
+        )
+        if progress_callback:
+            progress_callback(f"Regenerating OCR subchapter: {subchapter_name}")
+        response_text = self.api_client.process_text(
+            text=extracted_pdf_text or "",
+            system_prompt=subchapter_prompt,
+            model_name=model_name,
+            temperature=temperature,
+        )
+        if not response_text:
+            return False
+        subchapter_json = self.base_processor.extract_json_from_response_google(response_text)
+        if not subchapter_json:
+            subchapter_json = self.base_processor.load_txt_as_json_from_text_google(response_text)
+        if not subchapter_json:
+            subchapter_json = self._extract_json_from_persian_text(response_text)
+        extracted_subchapter = self._get_subchapter_from_json(subchapter_json, subchapter_name)
+        if not extracted_subchapter:
+            extracted_subchapter = (
+                subchapter_json if isinstance(subchapter_json, dict) else {"subchapter": subchapter_name, "data": subchapter_json}
+            )
+
+        with open(output_json_path, "r", encoding="utf-8") as f:
+            current_data = json.load(f)
+        chapters = current_data.get("chapters") or []
+        if not chapters:
+            return False
+        subs = chapters[0].get("subchapters") or []
+        replaced = False
+        for i, s in enumerate(subs):
+            if isinstance(s, dict) and (s.get("subchapter") or "").strip() == subchapter_name.strip():
+                subs[i] = extracted_subchapter
+                replaced = True
+                break
+        if not replaced and subchapter_index - 1 < len(subs):
+            subs[subchapter_index - 1] = extracted_subchapter
+            replaced = True
+        elif not replaced:
+            subs.append(extracted_subchapter)
+        chapters[0]["subchapters"] = subs
+        current_data["metadata"]["total_subchapters"] = len(subs)
+        with open(output_json_path, "w", encoding="utf-8") as f:
+            json.dump(current_data, f, ensure_ascii=False, indent=2)
+        return True
 
 

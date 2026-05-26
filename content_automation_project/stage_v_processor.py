@@ -268,6 +268,8 @@ class StageVProcessor(BaseStageProcessor):
         progress_callback: Optional[Callable[[str], None]],
         delete_step1_combined_after_success: bool,
         cancel_check: Optional[Callable[[], bool]] = None,
+        unit_hooks: Optional[Any] = None,
+        keep_unit_artifacts: bool = False,
     ) -> Optional[str]:
         """Run Step 2 batches, merge QIds, save final b*.json; optionally remove step1 combined file."""
         stage_j_path = ctx.stage_j_path
@@ -343,6 +345,12 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.error("No valid Step 2 tasks found")
             return None
 
+        if unit_hooks and hasattr(unit_hooks, "seed_topics"):
+            try:
+                unit_hooks.seed_topics(topics_list)
+            except Exception as e:
+                self.logger.warning("Failed to seed unit manifest: %s", e)
+
         pending_tasks = list(step2_tasks)
         for pass_idx in range(1, self.STEP2_TOPIC_RETRY_PASSES + 1):
             if not pending_tasks:
@@ -415,6 +423,15 @@ class StageVProcessor(BaseStageProcessor):
                             topic_step2_output, num_questions = future.result()
                             if topic_step2_output:
                                 step2_topic_outputs[topic_idx] = (chapter_name, subchapter_name, topic_name, topic_step2_output)
+                                if unit_hooks and hasattr(unit_hooks, "on_topic_done"):
+                                    unit_hooks.on_topic_done(
+                                        topic_idx,
+                                        chapter_name,
+                                        subchapter_name,
+                                        topic_name,
+                                        topic_step2_output,
+                                        topic_idx,
+                                    )
                                 _progress(f"Step 2 completed for Topic '{topic_name}': {topic_step2_output}")
                                 self.logger.info(
                                     f"  ✓ Step 2 completed for Topic '{topic_name}' in pass {pass_idx}, batch {batch_idx} "
@@ -497,11 +514,12 @@ class StageVProcessor(BaseStageProcessor):
                         f"  Added {len(topic_records)} questions from Topic '{topic_name}' "
                         f"(Chapter: '{chapter_name}', Subchapter: '{subchapter_name}', topic_idx={topic_idx})"
                     )
-            try:
-                if os.path.exists(topic_step2_path):
-                    os.remove(topic_step2_path)
-            except Exception:
-                pass
+            if not keep_unit_artifacts:
+                try:
+                    if os.path.exists(topic_step2_path):
+                        os.remove(topic_step2_path)
+                except Exception:
+                    pass
 
         before_global_dedup = len(step2_combined_data)
         step2_combined_data = self._dedup_stage_v_rows(step2_combined_data)
@@ -571,6 +589,14 @@ class StageVProcessor(BaseStageProcessor):
         success = self.save_json_file(step2_combined_data, output_path, output_metadata, "V")
         if success:
             _progress(f"Final output saved to: {output_path}")
+            if unit_hooks and hasattr(unit_hooks, "set_final_output"):
+                try:
+                    from webapp.job_files import job_root as _jr
+
+                    rel = os.path.relpath(output_path, _jr(unit_hooks.job_id)).replace("\\", "/")
+                    unit_hooks.set_final_output(rel)
+                except Exception:
+                    pass
             return output_path
         self.logger.error("Failed to save final output")
         return None
@@ -638,6 +664,8 @@ class StageVProcessor(BaseStageProcessor):
         progress_callback: Optional[Callable[[str], None]] = None,
         delete_step1_combined_after_success: bool = True,
         cancel_check: Optional[Callable[[], bool]] = None,
+        unit_hooks: Optional[Any] = None,
+        keep_unit_artifacts: bool = False,
     ) -> Optional[str]:
         """
         Run Step 2 + final merge using an existing Step 1 combined JSON.
@@ -668,6 +696,8 @@ class StageVProcessor(BaseStageProcessor):
             progress_callback,
             delete_step1_combined_after_success,
             cancel_check=cancel_check,
+            unit_hooks=unit_hooks,
+            keep_unit_artifacts=keep_unit_artifacts,
         )
 
     def process_stage_v(
