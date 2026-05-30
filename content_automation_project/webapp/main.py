@@ -2742,9 +2742,59 @@ def create_app() -> FastAPI:
                 "renumber": {"scheme": None, "ids_provisional": False},
                 "supports_renumber": False,
             }
+        for u in payload.get("units") or []:
+            ui = u.get("unit_index")
+            if ui is not None:
+                u["preview_url"] = f"/jobs/{job_id}/pairs/{pair_index}/units/{ui}/preview"
+            rel = (u.get("artifact_relpath") or "").strip()
+            if rel:
+                art = (
+                    db.query(Artifact)
+                    .filter(Artifact.job_id == job_id, Artifact.rel_path == rel)
+                    .one_or_none()
+                )
+                if art:
+                    u["artifact_id"] = art.id
         payload["supported"] = True
         payload["pair_repair_busy"] = pair_repair_busy(job_id, pair_index)
         payload["job_status"] = job.status
+        return payload
+
+    @app.get("/jobs/{job_id}/pairs/{pair_index}/units/{unit_index}/preview")
+    def get_job_pair_unit_preview(
+        job_id: str,
+        pair_index: int,
+        unit_index: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        jt = (job.type or "").strip()
+        from webapp.unit_repair.registry import job_supports_unit_repair
+        from webapp.unit_repair.preview import get_unit_preview_payload
+
+        if not job_supports_unit_repair(jt):
+            raise HTTPException(400, "This job type does not support unit preview")
+        try:
+            payload = get_unit_preview_payload(job_id, pair_index, unit_index, jt)
+        except ValueError as e:
+            raise HTTPException(404, str(e)) from e
+        except FileNotFoundError as e:
+            raise HTTPException(404, str(e)) from e
+        for sec in payload.get("sections") or []:
+            rel = (sec.get("rel_path") or "").strip()
+            if not rel:
+                continue
+            art = (
+                db.query(Artifact)
+                .filter(Artifact.job_id == job_id, Artifact.rel_path == rel)
+                .one_or_none()
+            )
+            if art:
+                sec["artifact_id"] = art.id
         return payload
 
     @app.post("/jobs/{job_id}/pairs/{pair_index}/units/{unit_index}/regenerate")

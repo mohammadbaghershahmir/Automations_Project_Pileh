@@ -313,7 +313,7 @@
   {% if supports_unit_repair and is_job_owner %}
   <div id="unit-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
     <h3 style="margin:0 0 8px;font-size:0.95rem;">LLM units — Regenerate &amp; Renumber</h3>
-    <p class="muted" style="margin:0 0 12px;font-size:13px;">Each row is one API request (topic or subchapter). After you fix a bad unit, click <strong>Regenerate</strong>. When the file looks correct, confirm below and run <strong>Renumber</strong> to fix sequential IDs.</p>
+    <p class="muted" style="margin:0 0 12px;font-size:13px;">Each row is one API request (topic or subchapter). Use <strong>Preview</strong> to inspect output before you <strong>Regenerate</strong> a bad unit. When the file looks correct, confirm below and run <strong>Renumber</strong> to fix sequential IDs.</p>
     <p id="unit-repair-provisional" class="muted" style="display:none;margin:0 0 10px;font-size:13px;color:#fbbf24;">IDs may be out of sequence — run Renumber after review.</p>
     <label style="font-size:13px;display:block;margin-bottom:8px;">Pair:
       <select id="unit-repair-pair" style="margin-left:6px;padding:4px 8px;border-radius:6px;">
@@ -324,7 +324,7 @@
     </label>
     <table style="width:100%;margin-bottom:14px;">
       <thead>
-        <tr><th>#</th><th>Unit</th><th>Status</th><th></th></tr>
+        <tr><th>#</th><th>Unit</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody id="unit-repair-tbody">
         <tr><td colspan="4" class="muted">Loading units…</td></tr>
@@ -431,6 +431,29 @@
     <pre id="admin-error-body" class="log" style="max-height:260px;margin:0 0 12px;"></pre>
     <div style="display:flex;justify-content:flex-end;gap:8px;">
       <button type="button" id="admin-error-close" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="unit-preview-modal" style="display:none;position:fixed;inset:0;z-index:121;background:rgba(0,0,0,0.65);">
+  <div role="dialog" aria-modal="true" aria-labelledby="unit-preview-title" style="max-width:920px;margin:4vh auto 0;background:var(--card);border:1px solid var(--border-strong);border-radius:10px;padding:18px 18px 14px;box-shadow:var(--panel-shadow);max-height:92vh;display:flex;flex-direction:column;">
+    <h3 id="unit-preview-title" style="margin:0 0 6px;font-size:1rem;">Unit preview</h3>
+    <p id="unit-preview-meta" class="muted" style="margin:0 0 12px;font-size:13px;"></p>
+    <div id="unit-preview-sections" style="overflow:auto;flex:1;min-height:120px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+      <button type="button" id="unit-preview-close" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="unit-regen-modal" style="display:none;position:fixed;inset:0;z-index:122;background:rgba(0,0,0,0.65);">
+  <div role="dialog" aria-modal="true" aria-labelledby="unit-regen-title" style="max-width:520px;margin:12vh auto 0;background:var(--card);border:1px solid var(--border-strong);border-radius:10px;padding:18px 18px 14px;box-shadow:var(--panel-shadow);">
+    <h3 id="unit-regen-title" style="margin:0 0 10px;font-size:1rem;">Regenerate this unit?</h3>
+    <p class="muted" style="margin:0 0 8px;font-size:13px;">Unit <strong id="unit-regen-index"></strong>: <span id="unit-regen-label"></span></p>
+    <p style="margin:0 0 14px;font-size:13px;">This queues one new LLM call for this unit only. Existing output for this unit will be replaced when the job finishes.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button type="button" id="unit-regen-cancel" class="secondary">Cancel</button>
+      <button type="button" id="unit-regen-confirm" class="btn-cta">Regenerate</button>
     </div>
   </div>
 </div>
@@ -788,6 +811,157 @@
     var unitProv = document.getElementById("unit-repair-provisional");
     var unitConfirm = document.getElementById("unit-repair-confirm");
     var btnRenumber = document.getElementById("btn-renumber");
+    var previewModal = document.getElementById("unit-preview-modal");
+    var previewMeta = document.getElementById("unit-preview-meta");
+    var previewSections = document.getElementById("unit-preview-sections");
+    var previewClose = document.getElementById("unit-preview-close");
+    var regenModal = document.getElementById("unit-regen-modal");
+    var regenIndexEl = document.getElementById("unit-regen-index");
+    var regenLabelEl = document.getElementById("unit-regen-label");
+    var regenCancel = document.getElementById("unit-regen-cancel");
+    var regenConfirm = document.getElementById("unit-regen-confirm");
+    var pendingRegen = null;
+
+    function closePreviewModal() {
+      if (previewModal) previewModal.style.display = "none";
+    }
+    function closeRegenModal() {
+      if (regenModal) regenModal.style.display = "none";
+      pendingRegen = null;
+    }
+    if (previewClose) previewClose.onclick = closePreviewModal;
+    if (previewModal) {
+      previewModal.addEventListener("click", function (ev) {
+        if (ev.target === previewModal) closePreviewModal();
+      });
+    }
+    if (regenCancel) regenCancel.onclick = closeRegenModal;
+    if (regenModal) {
+      regenModal.addEventListener("click", function (ev) {
+        if (ev.target === regenModal) closeRegenModal();
+      });
+    }
+
+    function showUnitPreview(data) {
+      if (!previewModal || !previewSections) return;
+      var title = "Unit " + data.unit_index;
+      if (data.label) title += " — " + data.label;
+      document.getElementById("unit-preview-title").textContent = title;
+      if (previewMeta) {
+        previewMeta.textContent = "Status: " + (data.status || "unknown");
+      }
+      previewSections.innerHTML = "";
+      var sections = data.sections || [];
+      for (var s = 0; s < sections.length; s++) {
+        var sec = sections[s];
+        var wrap = document.createElement("div");
+        wrap.style.marginBottom = "14px";
+        var head = document.createElement("div");
+        head.style.display = "flex";
+        head.style.justifyContent = "space-between";
+        head.style.alignItems = "baseline";
+        head.style.gap = "8px";
+        head.style.marginBottom = "6px";
+        var h = document.createElement("strong");
+        h.style.fontSize = "13px";
+        h.textContent = sec.title || ("Section " + (s + 1));
+        head.appendChild(h);
+        if (sec.artifact_id) {
+          var link = document.createElement("a");
+          link.href = "/artifacts/" + sec.artifact_id + "/preview?offset=0&limit=524288";
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.style.fontSize = "12px";
+          link.textContent = "Open full preview";
+          head.appendChild(link);
+        } else if (sec.rel_path) {
+          var pathEl = document.createElement("span");
+          pathEl.className = "muted";
+          pathEl.style.fontSize = "11px";
+          pathEl.style.wordBreak = "break-all";
+          pathEl.textContent = sec.rel_path;
+          head.appendChild(pathEl);
+        }
+        wrap.appendChild(head);
+        var pre = document.createElement("pre");
+        pre.className = "log";
+        pre.style.maxHeight = "320px";
+        pre.style.margin = "0";
+        pre.textContent = sec.content || "";
+        wrap.appendChild(pre);
+        previewSections.appendChild(wrap);
+      }
+      previewModal.style.display = "block";
+    }
+
+    async function openUnitPreview(pi, ui, btn) {
+      if (!previewModal) return;
+      var prevLabel = btn ? btn.textContent : "";
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Loading…";
+      }
+      document.getElementById("unit-preview-title").textContent = "Unit " + ui;
+      if (previewMeta) previewMeta.textContent = "Loading preview…";
+      if (previewSections) previewSections.innerHTML = "";
+      previewModal.style.display = "block";
+      try {
+        var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/units/" + ui + "/preview", {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        var t = await r.text();
+        if (!r.ok) {
+          closePreviewModal();
+          window.alert("Preview failed: " + t.slice(0, 300));
+          return;
+        }
+        showUnitPreview(JSON.parse(t));
+      } catch (e) {
+        closePreviewModal();
+        window.alert("Network error: " + e);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || "Preview";
+        }
+      }
+    }
+
+    function openRegenModal(pi, ui, label, btn) {
+      pendingRegen = { pi: pi, ui: ui, btn: btn, label: label || "" };
+      if (regenIndexEl) regenIndexEl.textContent = String(ui);
+      if (regenLabelEl) regenLabelEl.textContent = label || "(no label)";
+      if (regenModal) regenModal.style.display = "block";
+    }
+
+    async function confirmRegenerate() {
+      if (!pendingRegen) return;
+      var pi = pendingRegen.pi;
+      var ui = pendingRegen.ui;
+      var btn = pendingRegen.btn;
+      closeRegenModal();
+      if (btn) btn.disabled = true;
+      try {
+        var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/units/" + ui + "/regenerate", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        var t = await r.text();
+        if (!r.ok) {
+          window.alert("Regenerate failed: " + t.slice(0, 300));
+          if (btn) btn.disabled = false;
+          return;
+        }
+        addBanner("info", "Regenerate queued for unit " + ui + ".");
+        loadUnits();
+      } catch (e) {
+        window.alert("Network error: " + e);
+        if (btn) btn.disabled = false;
+      }
+    }
+    if (regenConfirm) regenConfirm.onclick = confirmRegenerate;
 
     function renderUnits(data) {
       if (!unitTbody) return;
@@ -807,34 +981,26 @@
         var idx = u.unit_index;
         var dis = busy || jobRunning ? " disabled" : "";
         html += "<tr><td>" + idx + "</td><td style=\"font-size:12px;\">" + (u.label || "") + "</td><td>" + (u.status || "") + "</td>";
-        html += "<td><button type=\"button\" class=\"btn-regen-unit secondary\" data-unit=\"" + idx + "\"" + dis + ">Regenerate</button></td></tr>";
+        html += "<td style=\"white-space:nowrap;\">";
+        html += "<button type=\"button\" class=\"btn-preview-unit secondary\" data-unit=\"" + idx + "\">Preview</button> ";
+        html += "<button type=\"button\" class=\"btn-regen-unit secondary\" data-unit=\"" + idx + "\"" + dis + ">Regenerate</button>";
+        html += "</td></tr>";
       }
       unitTbody.innerHTML = html;
-      unitTbody.querySelectorAll(".btn-regen-unit").forEach(function (btn) {
-        btn.onclick = async function () {
-          if (btn.disabled) return;
-          var pi = unitPairSel ? parseInt(unitPairSel.value, 10) : 0;
+      var pi = unitPairSel ? parseInt(unitPairSel.value, 10) : 0;
+      unitTbody.querySelectorAll(".btn-preview-unit").forEach(function (btn) {
+        btn.onclick = function () {
           var ui = parseInt(btn.getAttribute("data-unit"), 10);
-          if (!window.confirm("Regenerate unit " + ui + "? This queues one LLM call.")) return;
-          btn.disabled = true;
-          try {
-            var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/units/" + ui + "/regenerate", {
-              method: "POST",
-              credentials: "same-origin",
-              headers: { Accept: "application/json" },
-            });
-            var t = await r.text();
-            if (!r.ok) {
-              window.alert("Regenerate failed: " + t.slice(0, 300));
-              btn.disabled = false;
-              return;
-            }
-            addBanner("info", "Regenerate queued for unit " + ui + ".");
-            loadUnits();
-          } catch (e) {
-            window.alert("Network error: " + e);
-            btn.disabled = false;
-          }
+          openUnitPreview(pi, ui, btn);
+        };
+      });
+      unitTbody.querySelectorAll(".btn-regen-unit").forEach(function (btn) {
+        btn.onclick = function () {
+          if (btn.disabled) return;
+          var ui = parseInt(btn.getAttribute("data-unit"), 10);
+          var row = btn.closest("tr");
+          var label = row && row.cells[1] ? row.cells[1].textContent : "";
+          openRegenModal(pi, ui, label, btn);
         };
       });
     }
