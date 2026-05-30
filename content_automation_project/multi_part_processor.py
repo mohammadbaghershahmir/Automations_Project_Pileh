@@ -391,6 +391,7 @@ class MultiPartProcessor:
         temperature: float = 0.7,
         progress_callback: Optional[Callable[[str], None]] = None,
         output_dir: Optional[str] = None,
+        unit_hooks: Optional[Any] = None,
     ) -> Optional[str]:
         """
         Process OCR Extraction: For each Subchapter, send PDF + prompt (with topics list) to model.
@@ -562,6 +563,12 @@ class MultiPartProcessor:
         except Exception as e:
             self.logger.error(f"Failed to initialize output file: {e}")
             return None
+
+        if unit_hooks and hasattr(unit_hooks, "set_output_relpath") and hasattr(unit_hooks, "job_id"):
+            from webapp.job_files import job_root as _job_root
+
+            rel_out = os.path.relpath(str(final_json_path), _job_root(unit_hooks.job_id)).replace("\\", "/")
+            unit_hooks.set_output_relpath(rel_out)
         
         # Process each Subchapter - اضافه کردن هر response بلافاصله به فایل JSON
         total_subchapters = len(topics_list)
@@ -583,6 +590,15 @@ class MultiPartProcessor:
             num_topics = len(topics) if topics else 0
             if progress_callback:
                 progress_callback(f"Processing Subchapter {subchapter_idx}/{total_subchapters}: {subchapter_name} ({num_topics} topics)")
+
+            if unit_hooks:
+                unit_hooks.before_unit(
+                    subchapter_idx,
+                    chapter_name or "",
+                    subchapter_name,
+                    subchapter_name,
+                    subchapter_idx,
+                )
             
             # Replace {SUBCHAPTER_NAME} in prompt
             subchapter_prompt = base_prompt.replace("{SUBCHAPTER_NAME}", subchapter_name)
@@ -640,6 +656,16 @@ class MultiPartProcessor:
                 
                 if not response_text:
                     self.logger.warning(f"No response for subchapter: {subchapter_name}")
+                    if unit_hooks:
+                        unit_hooks.after_unit(
+                            subchapter_idx,
+                            chapter_name or "",
+                            subchapter_name,
+                            subchapter_name,
+                            [],
+                            subchapter_idx,
+                            status="failed",
+                        )
                     continue
                 
                 self.logger.info(f"Received response for subchapter '{subchapter_name}' ({len(response_text)} characters)")
@@ -728,14 +754,52 @@ class MultiPartProcessor:
                                 json.dump(current_data, f, ensure_ascii=False, indent=2)
                             
                             self.logger.info(f"✓ Added subchapter '{subchapter_name}' to JSON file immediately")
+                            if unit_hooks:
+                                pts = (
+                                    extracted_subchapter.get("topics")
+                                    if isinstance(extracted_subchapter, dict)
+                                    and isinstance(extracted_subchapter.get("topics"), list)
+                                    else [extracted_subchapter]
+                                    if isinstance(extracted_subchapter, dict)
+                                    else []
+                                )
+                                unit_hooks.after_unit(
+                                    subchapter_idx,
+                                    chapter_name or "",
+                                    subchapter_name,
+                                    subchapter_name,
+                                    pts,
+                                    subchapter_idx,
+                                    status="succeeded",
+                                )
                         else:
                             self.logger.warning(f"Unexpected JSON structure in output file")
                     except Exception as e:
                         self.logger.error(f"Failed to write subchapter '{subchapter_name}' to file: {e}", exc_info=True)
+                        if unit_hooks:
+                            unit_hooks.after_unit(
+                                subchapter_idx,
+                                chapter_name or "",
+                                subchapter_name,
+                                subchapter_name,
+                                [],
+                                subchapter_idx,
+                                status="failed",
+                            )
                         # Continue processing other subchapters
                         
                 except Exception as e:
                     self.logger.error(f"Error processing subchapter '{subchapter_name}': {str(e)}")
+                    if unit_hooks:
+                        unit_hooks.after_unit(
+                            subchapter_idx,
+                            chapter_name or "",
+                            subchapter_name,
+                            subchapter_name,
+                            [],
+                            subchapter_idx,
+                            status="failed",
+                        )
                     # Create fallback subchapter
                     extracted_subchapter = {
                         "subchapter": subchapter_name,

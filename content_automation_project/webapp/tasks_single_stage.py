@@ -231,10 +231,20 @@ def run_ocr_extraction_step1_job(job_id: str, pair_indices: Optional[List[int]] 
 
             out_dir = pair_output(job_id, pair.pair_index)
             os.makedirs(out_dir, exist_ok=True)
-            mproc = MultiPartProcessor(
-                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1"),
-                output_dir=None,
-            )
+            cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            from webapp.unit_repair.ocr_extraction import hooks_for_pair, subchapter_units_from_topic
+
+            unit_hooks = hooks_for_pair(db, job_id, pair.pair_index, jt, cfg, cap)
+            try:
+                with open(abs_topic, "r", encoding="utf-8") as tf:
+                    topic_items = json.load(tf).get("data") or []
+            except (OSError, json.JSONDecodeError):
+                topic_items = []
+            units = subchapter_units_from_topic(topic_items)
+            if units:
+                unit_hooks.seed_units(units)
+
+            mproc = MultiPartProcessor(cap, output_dir=None)
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -251,6 +261,7 @@ def run_ocr_extraction_step1_job(job_id: str, pair_indices: Optional[List[int]] 
                         model_name=model_name,
                         progress_callback=progress,
                         output_dir=out_dir,
+                        unit_hooks=unit_hooks,
                     )
                 except JobCancelled:
                     _finalize_step1_cancelled(db, job_id, pairs)
