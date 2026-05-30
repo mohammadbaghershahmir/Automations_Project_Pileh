@@ -190,6 +190,10 @@ def _try_build_manifest(db: Session, job_id: str, pair_index: int, job_type: str
             from webapp.unit_repair import table_notes as tbl
 
             return tbl.ensure_manifest(db, job_id, pair_index, cfg)
+        if jt == "image_notes":
+            from webapp.unit_repair import image_notes as img
+
+            return img.ensure_manifest(db, job_id, pair_index, cfg)
         if jt == "document_processing":
             from webapp.unit_repair import docproc
 

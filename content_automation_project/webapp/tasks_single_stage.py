@@ -537,9 +537,17 @@ def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             pair.step1_error = None
             db.commit()
 
-            processor = StageEProcessor(
-                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
-            )
+            cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            from webapp.unit_repair.image_notes import hooks_for_pair, topic_unit_map, topic_units_from_points
+
+            unit_hooks = hooks_for_pair(db, job_id, pair.pair_index, jt, cfg, cap)
+            processor = StageEProcessor(cap)
+            stage4_data = processor.load_json_file(abs_stage4)
+            stage4_points = processor.get_data_from_json(stage4_data) if stage4_data else []
+            units = topic_units_from_points(stage4_points or [])
+            if units:
+                unit_hooks.seed_units(units)
+            tmap = topic_unit_map(units)
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -556,6 +564,8 @@ def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                         model_name=model_name,
                         output_dir=None,
                         progress_callback=progress,
+                        unit_hooks=unit_hooks,
+                        topic_unit_map=tmap,
                     )
                 except JobCancelled:
                     _finalize_step1_cancelled(db, job_id, pairs)
