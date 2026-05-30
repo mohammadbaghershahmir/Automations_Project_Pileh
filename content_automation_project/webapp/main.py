@@ -358,6 +358,10 @@ class InboxMarkReadBody(BaseModel):
     mark_all: bool = False
 
 
+class RenumberBody(BaseModel):
+    confirm: bool = False
+
+
 def _iso_utc(dt: Optional[datetime]) -> Optional[str]:
     if dt is None:
         return None
@@ -2717,9 +2721,6 @@ def create_app() -> FastAPI:
         db.commit()
         return {"ok": True, "job_id": job_id}
 
-    class RenumberBody(BaseModel):
-        confirm: bool = False
-
     @app.get("/jobs/{job_id}/pairs/{pair_index}/units")
     def get_job_pair_units(
         job_id: str,
@@ -2833,7 +2834,7 @@ def create_app() -> FastAPI:
     def post_renumber_pair(
         job_id: str,
         pair_index: int,
-        renumber_body: RenumberBody,
+        payload: RenumberBody,
         user: CurrentUser,
         db: Session = Depends(get_db),
     ) -> dict:
@@ -2841,7 +2842,7 @@ def create_app() -> FastAPI:
         if not job:
             raise HTTPException(404)
         require_job_owner(job, user)
-        if not renumber_body.confirm:
+        if not payload.confirm:
             raise HTTPException(400, "confirm must be true")
         if job.status == "running":
             raise HTTPException(409, "Job is still running")
