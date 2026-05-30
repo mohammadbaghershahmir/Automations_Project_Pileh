@@ -166,6 +166,14 @@ def ensure_manifest(db: Session, job_id: str, pair_index: int, cfg: Dict[str, An
     return built
 
 
+def _tablepic_path(stage_e_path: str) -> str:
+    base_dir = os.path.dirname(stage_e_path)
+    base_name, _ = os.path.splitext(os.path.basename(stage_e_path))
+    if base_name.startswith("e") and len(base_name) > 1 and base_name[1:4].isdigit():
+        base_name = base_name[1:]
+    return os.path.join(base_dir, f"{base_name}_tablepic.json")
+
+
 def regenerate_unit(
     db: Session,
     job_id: str,
@@ -177,6 +185,7 @@ def regenerate_unit(
     from stage_ta_processor import StageTAProcessor
     from webapp.models import JobPair
     from webapp.system_prompt_defaults import resolve_prompt_for_job
+    from webapp.unit_repair.pic_sidecar import apply_regenerate_to_merged_files
 
     pair = db.query(JobPair).filter(JobPair.job_id == job_id, JobPair.pair_index == pair_index).one()
     base = job_root(job_id)
@@ -224,23 +233,20 @@ def regenerate_unit(
     if err:
         raise RuntimeError(err)
 
-    doc, all_rows = _load_ta_file(out_path)
-    stage_e_ids = {
-        (p.get("PointId") or "").strip()
-        for p in e_points
-        if isinstance(p, dict) and (p.get("PointId") or "").strip()
-    }
-    kept = [
-        r
-        for r in all_rows
-        if isinstance(r, dict)
-        and (
-            (r.get("topic") or "").strip() != topic_name
-            or (r.get("PointId") or "").strip() in stage_e_ids
-        )
-    ]
-    kept.extend(rows)
-    _save_ta_file(out_path, doc, kept)
+    tablepic_path = _tablepic_path(abs_e)
+    apply_regenerate_to_merged_files(
+        processor,
+        source_points=e_points,
+        pic_path=tablepic_path,
+        main_path=out_path,
+        topic_name=topic_name,
+        new_pic_rows=rows,
+        pic_stage_label="tablepic",
+        notes_count_key="table_notes_count",
+        source_count_key="stage_e_total_points",
+        first_note_id_key="first_table_point_id",
+        pic_meta_prefix="tablepic",
+    )
 
     rel = os.path.relpath(out_path, base).replace("\\", "/")
     manifest = ensure_manifest(db, job_id, pair_index, cfg)

@@ -131,6 +131,12 @@ def ensure_manifest(db: Session, job_id: str, pair_index: int, cfg: Dict[str, An
     return built
 
 
+def _filepic_path(stage4_path: str) -> str:
+    base_dir = os.path.dirname(stage4_path)
+    base_name = os.path.splitext(os.path.basename(stage4_path))[0]
+    return os.path.join(base_dir, f"{base_name}_filepic.json")
+
+
 def regenerate_unit(
     db: Session,
     job_id: str,
@@ -142,6 +148,7 @@ def regenerate_unit(
     from stage_e_processor import StageEProcessor
     from webapp.models import JobPair
     from webapp.system_prompt_defaults import resolve_prompt_for_job
+    from webapp.unit_repair.pic_sidecar import apply_regenerate_to_merged_files
 
     pair = db.query(JobPair).filter(JobPair.job_id == job_id, JobPair.pair_index == pair_index).one()
     base = job_root(job_id)
@@ -187,23 +194,20 @@ def regenerate_unit(
     if err:
         raise RuntimeError(err)
 
-    doc, all_rows = _load_e_file(out_path)
-    stage4_ids = {
-        (p.get("PointId") or "").strip()
-        for p in stage4_points
-        if isinstance(p, dict) and (p.get("PointId") or "").strip()
-    }
-    kept = [
-        r
-        for r in all_rows
-        if isinstance(r, dict)
-        and (
-            (r.get("topic") or "").strip() != topic_name
-            or (r.get("PointId") or "").strip() in stage4_ids
-        )
-    ]
-    kept.extend(rows)
-    _save_e_file(out_path, doc, kept)
+    filepic_path = _filepic_path(abs_stage4)
+    apply_regenerate_to_merged_files(
+        processor,
+        source_points=stage4_points,
+        pic_path=filepic_path,
+        main_path=out_path,
+        topic_name=topic_name,
+        new_pic_rows=rows,
+        pic_stage_label="filepic",
+        notes_count_key="image_notes_count",
+        source_count_key="stage4_total_points",
+        first_note_id_key="first_image_point_id",
+        pic_meta_prefix="filepic",
+    )
 
     rel = os.path.relpath(out_path, base).replace("\\", "/")
     manifest = ensure_manifest(db, job_id, pair_index, cfg)
