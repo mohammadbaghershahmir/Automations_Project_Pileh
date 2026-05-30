@@ -2740,7 +2740,7 @@ def create_app() -> FastAPI:
         if not job_supports_unit_repair(jt):
             return {"supported": False, "units": [], "renumber": {}}
         try:
-            payload = get_units_payload(job_id, pair_index, jt)
+            payload = get_units_payload(job_id, pair_index, jt, db=db)
         except Exception:
             payload = {
                 "units": [],

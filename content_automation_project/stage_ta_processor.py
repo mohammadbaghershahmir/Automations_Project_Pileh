@@ -364,6 +364,8 @@ class StageTAProcessor(BaseStageProcessor):
         output_path: str,
         part_num: int,
         _progress: Callable[[str], None],
+        unit_hooks: Optional[Any] = None,
+        topic_unit_map: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Run table-note topic calls in bounded parallel batches; preserve topic order in merged rows."""
         n_topics = len(topic_groups)
@@ -390,6 +392,17 @@ class StageTAProcessor(BaseStageProcessor):
                 future_to_idx: Dict[Any, int] = {}
                 for rel_i, (topic_name, pts) in enumerate(batch):
                     tidx = start + rel_i
+                    unit_info = (topic_unit_map or {}).get(topic_name)
+                    if unit_hooks and unit_info:
+                        ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
+                        sub = unit_info.get("subchapter") or persian_subchapter_name
+                        unit_hooks.before_unit(
+                            int(unit_info["unit_index"]),
+                            str(ch or ""),
+                            str(sub or ""),
+                            topic_name,
+                            int(unit_info["unit_index"]),
+                        )
                     fut = executor.submit(
                         self._run_stage_ta_single_topic,
                         tidx,
@@ -428,6 +441,20 @@ class StageTAProcessor(BaseStageProcessor):
                         continue
                     results_by_idx[ti] = (tn, rows, err)
                     pts = topic_groups[ti][1]
+                    unit_info = (topic_unit_map or {}).get(tn)
+                    if unit_hooks and unit_info:
+                        ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
+                        sub = unit_info.get("subchapter") or persian_subchapter_name
+                        status = "failed" if err else ("skipped" if not rows and not err else "succeeded")
+                        unit_hooks.after_unit(
+                            int(unit_info["unit_index"]),
+                            str(ch or ""),
+                            str(sub or ""),
+                            tn,
+                            rows,
+                            int(unit_info["unit_index"]),
+                            status=status,
+                        )
                     tt_count = len(self._tables_for_topic(subchapter_tables, tn))
                     if err:
                         topic_errors.append(err)
@@ -455,7 +482,9 @@ class StageTAProcessor(BaseStageProcessor):
         prompt: str,
         model_name: str,
         output_dir: Optional[str] = None,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[Callable[[str], None]] = None,
+        unit_hooks: Optional[Any] = None,
+        topic_unit_map: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Optional[str]:
         """
         Process Stage TA: Generate table notes and merge with Stage E.
@@ -559,6 +588,12 @@ class StageTAProcessor(BaseStageProcessor):
         # Format: ta{book}{chapter}_{base_name}.json (e.g., ta105003_Lesson_file_1_1.json)
         output_filename = f"ta{book_id:03d}{chapter_id:03d}_{base_name}.json"
         output_path = os.path.join(base_dir, output_filename)
+
+        if unit_hooks and hasattr(unit_hooks, "set_output_relpath") and hasattr(unit_hooks, "job_id"):
+            from webapp.job_files import job_root as _job_root
+
+            rel_out = os.path.relpath(output_path, _job_root(unit_hooks.job_id)).replace("\\", "/")
+            unit_hooks.set_output_relpath(rel_out)
         
         # Initialize output JSON file immediately (incremental writing)
         _progress("Initializing output JSON file...")
@@ -652,6 +687,8 @@ class StageTAProcessor(BaseStageProcessor):
                 output_path=output_path,
                 part_num=part_num,
                 _progress=_progress,
+                unit_hooks=unit_hooks,
+                topic_unit_map=topic_unit_map,
             )
 
             if not subchapter_tablepic_records:

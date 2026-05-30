@@ -135,17 +135,29 @@ def run_renumber_pair(db: Session, job_id: str, pair_index: int) -> int:
             abs_s1 = __import__("os").path.join(base, step1_rel.replace("/", __import__("os").sep))
             n = testbank.renumber_pair(db, job_id, pair_index, cfg, abs_j, abs_w, abs_s1, jt)
         elif jt in ("image_notes", "table_notes"):
-            from webapp.unit_repair import image_notes as img_rep
+            if jt == "table_notes":
+                from webapp.unit_repair import table_notes as tbl_rep
 
-            n = img_rep.renumber_pair(db, job_id, pair_index, cfg)
+                n = tbl_rep.renumber_pair(db, job_id, pair_index, cfg)
+            else:
+                from webapp.unit_repair import image_notes as img_rep
+
+                n = img_rep.renumber_pair(db, job_id, pair_index, cfg)
         else:
             raise ValueError(f"No renumber adapter for {jt}")
         append_log(db, job_id, f"Renumber finished: {n} row(s) for pair {pair_index}.", pair_index)
         return n
 
 
-def get_units_payload(job_id: str, pair_index: int, job_type: str) -> Dict[str, Any]:
+def get_units_payload(
+    job_id: str,
+    pair_index: int,
+    job_type: str,
+    db: Optional[Session] = None,
+) -> Dict[str, Any]:
     m = load_manifest(job_id, pair_index)
+    if (not m or not m.get("units")) and db is not None:
+        m = _try_build_manifest(db, job_id, pair_index, job_type)
     scheme = renumber_scheme_for_job(job_type)
     if not m:
         return {
@@ -165,6 +177,29 @@ def get_units_payload(job_id: str, pair_index: int, job_type: str) -> Dict[str, 
         "output_relpath": m.get("output_relpath"),
         "supports_renumber": bool(scheme),
     }
+
+
+def _try_build_manifest(db: Session, job_id: str, pair_index: int, job_type: str) -> Optional[Dict[str, Any]]:
+    job = db.query(Job).filter(Job.id == job_id).one_or_none()
+    if not job:
+        return None
+    cfg = _cfg(job)
+    jt = (job_type or "").strip()
+    try:
+        if jt == "table_notes":
+            from webapp.unit_repair import table_notes as tbl
+
+            return tbl.ensure_manifest(db, job_id, pair_index, cfg)
+        if jt == "document_processing":
+            from webapp.unit_repair import docproc
+
+            return docproc.ensure_manifest(job_id, pair_index, cfg)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        logger.exception("Could not build unit manifest for job=%s pair=%s", job_id, pair_index)
+        return None
+    return None
 
 
 def _pipeline_step(job_type: str) -> str:

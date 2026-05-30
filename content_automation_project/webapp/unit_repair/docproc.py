@@ -128,6 +128,23 @@ class DocumentProcessingUnitHooks:
         self.output_relpath = m["output_relpath"]
         save_manifest(self.job_id, self.pair_index, m)
 
+    def seed_units(self, units: List[Dict[str, Any]]) -> None:
+        """Pre-register expected units (e.g. from Stage E topics) before LLM calls run."""
+        m = self._ensure_manifest()
+        for u in units:
+            upsert_unit(
+                m,
+                {
+                    "unit_index": u["unit_index"],
+                    "label": u.get("label") or "",
+                    "chapter": u.get("chapter") or "",
+                    "subchapter": u.get("subchapter") or "",
+                    "topic": u.get("topic") or "",
+                    "status": u.get("status") or "pending",
+                },
+            )
+        save_manifest(self.job_id, self.pair_index, m)
+
 
 def hooks_for_pair(
     db: Session,

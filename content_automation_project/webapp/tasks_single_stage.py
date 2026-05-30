@@ -668,9 +668,17 @@ def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             pair.step1_error = None
             db.commit()
 
-            processor = StageTAProcessor(
-                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
-            )
+            cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            from webapp.unit_repair.table_notes import hooks_for_pair, topic_unit_map, topic_units_from_points
+
+            unit_hooks = hooks_for_pair(db, job_id, pair.pair_index, jt, cfg, cap)
+            processor = StageTAProcessor(cap)
+            stage_e_data = processor.load_json_file(abs_stage_e)
+            e_points = processor.get_data_from_json(stage_e_data) if stage_e_data else []
+            units = topic_units_from_points(e_points or [])
+            if units:
+                unit_hooks.seed_units(units)
+            tmap = topic_unit_map(units)
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -687,6 +695,8 @@ def run_table_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                         model_name=model_name,
                         output_dir=None,
                         progress_callback=progress,
+                        unit_hooks=unit_hooks,
+                        topic_unit_map=tmap,
                     )
                 except JobCancelled:
                     _finalize_step1_cancelled(db, job_id, pairs)
