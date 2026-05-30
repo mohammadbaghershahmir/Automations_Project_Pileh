@@ -115,11 +115,15 @@ async def _read_upload_bytes(u: Any) -> bytes:
     return bytes(r)
 
 
+def user_can_edit_job(job: Job, user: CurrentUser) -> bool:
+    return job.created_by_id == user.id or is_admin_user(user)
+
+
 def require_job_owner(job: Job, user: CurrentUser) -> None:
-    if job.created_by_id != user.id:
+    if not user_can_edit_job(job, user):
         raise HTTPException(
             status_code=403,
-            detail="Only the user who created this job can change pairing, run steps, or cancel.",
+            detail="Only the job creator or an admin can change pairing, run steps, regenerate units, or cancel.",
         )
 
 
@@ -2391,7 +2395,7 @@ def create_app() -> FastAPI:
         show_step2_section = (not single_stage) and (jt != "test_bank_1")
         creator = job.created_by_user
         creator_label = creator.email if creator else "Unknown"
-        is_job_owner = job.created_by_id == user.id
+        is_job_owner = user_can_edit_job(job, user)
         if single_stage:
             if jt == "test_bank_2":
                 step1_poll_roles_json = json.dumps(
@@ -2829,7 +2833,7 @@ def create_app() -> FastAPI:
     def post_renumber_pair(
         job_id: str,
         pair_index: int,
-        body: RenumberBody,
+        renumber_body: RenumberBody,
         user: CurrentUser,
         db: Session = Depends(get_db),
     ) -> dict:
@@ -2837,7 +2841,7 @@ def create_app() -> FastAPI:
         if not job:
             raise HTTPException(404)
         require_job_owner(job, user)
-        if not body.confirm:
+        if not renumber_body.confirm:
             raise HTTPException(400, "confirm must be true")
         if job.status == "running":
             raise HTTPException(409, "Job is still running")
