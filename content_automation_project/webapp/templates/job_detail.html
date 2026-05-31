@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Job {{ job.id[:8] }}{% endblock %}
+{% block head %}
+{% if is_voice_class %}
+<style>
+  .voice-wave-wrap { display:flex; flex-direction:column; gap:6px; min-width:260px; max-width:440px; }
+  .voice-wave-canvas { width:100%; height:52px; border-radius:6px; background:var(--input-bg); border:1px solid var(--border); display:block; cursor:pointer; }
+  .voice-wave-canvas.is-silent { border-color:#f87171; background:#1c0f0f; }
+  .voice-wave-meta { font-size:11px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .voice-wave-badge { color:#f87171; font-weight:600; font-size:11px; }
+  .voice-wave-wrap audio { width:100%; height:32px; }
+</style>
+{% endif %}
+{% endblock %}
 {% block sidebar_extra %}
 <span class="nav-label">Open job</span>
 <span class="muted" style="display:block;padding:4px 12px 0;font-size:11px;word-break:break-all;line-height:1.35;">{{ job.id[:10] }}…</span>
@@ -349,7 +361,7 @@
   {% if is_voice_class and is_job_owner %}
   <div id="voice-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
     <h3 style="margin:0 0 8px;font-size:0.95rem;">Voice segments — Regenerate &amp; merge</h3>
-    <p class="muted" style="margin:0 0 12px;font-size:13px;">After Step&nbsp;2, regenerate individual TTS segments or re-merge the final MP3 from existing WAV files (intro + segments + outro).</p>
+    <p class="muted" style="margin:0 0 12px;font-size:13px;">After Step&nbsp;2, preview each segment waveform (flat line = silent/empty TTS), play audio, regenerate bad segments, or re-merge the final MP3.</p>
     <label style="font-size:13px;display:block;margin-bottom:8px;">Pair:
       <select id="voice-repair-pair" style="margin-left:6px;padding:4px 8px;border-radius:6px;">
         {% for p in pairs %}
@@ -359,7 +371,7 @@
     </label>
     <table style="width:100%;margin-bottom:14px;">
       <thead>
-        <tr><th>Segment</th><th>Paragraphs</th><th>Est. sec</th><th>WAV</th><th></th></tr>
+        <tr><th>Segment</th><th>Paragraphs</th><th>Est. sec</th><th style="min-width:280px;">Audio preview</th><th></th></tr>
       </thead>
       <tbody id="voice-repair-tbody">
         <tr><td colspan="5" class="muted">Load segments after Step 1…</td></tr>
@@ -1125,6 +1137,77 @@
     var voiceTbody = document.getElementById("voice-repair-tbody");
     var btnMergeVoice = document.getElementById("btn-merge-voice");
 
+    function drawVoiceWaveform(canvas, peaks, isSilent) {
+      if (!canvas || !peaks || !peaks.length) return;
+      var w = canvas.clientWidth || 280;
+      var h = canvas.clientHeight || 52;
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      var ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      var mid = h / 2;
+      var barW = w / peaks.length;
+      var color = isSilent ? "#ef4444" : "#38bdf8";
+      peaks.forEach(function (p, i) {
+        var amp = isSilent ? Math.min(p, 0.06) : Math.max(0.04, p);
+        var bh = amp * (h * 0.88);
+        ctx.fillStyle = color;
+        ctx.fillRect(i * barW + 0.5, mid - bh / 2, Math.max(1, barW - 1), bh);
+      });
+      canvas.classList.toggle("is-silent", !!isSilent);
+    }
+
+    function buildVoicePreviewCell(s) {
+      if (!s.has_wav || !s.artifact_id) {
+        return "<span class=\"muted\">not generated</span>";
+      }
+      var silentBadge = s.is_silent
+        ? "<span class=\"voice-wave-badge\">Silent / empty</span>"
+        : "";
+      var dur = s.duration_seconds != null ? s.duration_seconds + "s actual" : "";
+      var meta = [dur, silentBadge].filter(Boolean).join(" · ");
+      return (
+        "<div class=\"voice-wave-wrap\" data-artifact=\"" + s.artifact_id + "\">" +
+        "<canvas class=\"voice-wave-canvas" + (s.is_silent ? " is-silent" : "") + "\" data-peaks=\"" + encodeURIComponent(JSON.stringify(s.waveform_peaks || [])) + "\" data-silent=\"" + (s.is_silent ? "1" : "0") + "\" title=\"Click to play/pause\"></canvas>" +
+        "<audio controls preload=\"metadata\" src=\"/artifacts/" + s.artifact_id + "/audio\"></audio>" +
+        (meta ? "<div class=\"voice-wave-meta\">" + meta + "</div>" : "") +
+        "</div>"
+      );
+    }
+
+    function wireVoicePreviewPlayers() {
+      if (!voiceTbody) return;
+      voiceTbody.querySelectorAll(".voice-wave-wrap").forEach(function (wrap) {
+        var canvas = wrap.querySelector(".voice-wave-canvas");
+        var audio = wrap.querySelector("audio");
+        if (!canvas) return;
+        var peaks = [];
+        try {
+          peaks = JSON.parse(decodeURIComponent(canvas.getAttribute("data-peaks") || "%5B%5D"));
+        } catch (e) {
+          peaks = [];
+        }
+        var isSilent = canvas.getAttribute("data-silent") === "1";
+        drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent);
+        if (audio) {
+          canvas.onclick = function () {
+            if (audio.paused) audio.play(); else audio.pause();
+          };
+          audio.addEventListener("play", function () {
+            canvas.style.outline = "2px solid var(--accent)";
+          });
+          audio.addEventListener("pause", function () {
+            canvas.style.outline = "";
+          });
+          audio.addEventListener("ended", function () {
+            canvas.style.outline = "";
+          });
+        }
+      });
+    }
+
     function renderVoiceSegments(data) {
       if (!voiceTbody) return;
       voiceTbody.innerHTML = "";
@@ -1140,10 +1223,11 @@
           "<td>" + s.segment_id + "</td>" +
           "<td>" + (s.paragraph_count != null ? s.paragraph_count : "—") + "</td>" +
           "<td>" + (s.estimated_seconds != null ? s.estimated_seconds : "—") + "</td>" +
-          "<td>" + (s.has_wav ? "yes" : "no") + "</td>" +
-          "<td><button type=\"button\" class=\"secondary btn-voice-regen\" data-seg=\"" + s.segment_id + "\" style=\"font-size:11px;padding:4px 8px;\">Regenerate</button> " + dl + "</td>";
+          "<td>" + buildVoicePreviewCell(s) + "</td>" +
+          "<td style=\"white-space:nowrap;\"><button type=\"button\" class=\"secondary btn-voice-regen\" data-seg=\"" + s.segment_id + "\" style=\"font-size:11px;padding:4px 8px;\">Regenerate</button> " + dl + "</td>";
         voiceTbody.appendChild(tr);
       });
+      wireVoicePreviewPlayers();
       voiceTbody.querySelectorAll(".btn-voice-regen").forEach(function (btn) {
         btn.onclick = async function () {
           var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;

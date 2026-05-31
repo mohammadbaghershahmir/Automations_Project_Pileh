@@ -3147,15 +3147,24 @@ def create_app() -> FastAPI:
                 .filter(Artifact.job_id == job_id, Artifact.rel_path == rel_wav)
                 .one_or_none()
             )
+            has_wav = os.path.isfile(abs_wav)
+            preview = None
+            if has_wav:
+                from webapp.audio_merge import analyze_wav_for_preview
+
+                preview = analyze_wav_for_preview(abs_wav)
             out.append(
                 {
                     "segment_id": sid,
                     "paragraph_count": seg.get("paragraph_count"),
                     "estimated_seconds": seg.get("estimated_seconds"),
                     "char_count": seg.get("char_count"),
-                    "has_wav": os.path.isfile(abs_wav),
+                    "has_wav": has_wav,
                     "artifact_id": art.id if art else None,
-                    "rel_path": rel_wav if os.path.isfile(abs_wav) else None,
+                    "rel_path": rel_wav if has_wav else None,
+                    "duration_seconds": preview.get("duration_seconds") if preview else None,
+                    "is_silent": preview.get("is_silent") if preview else None,
+                    "waveform_peaks": preview.get("waveform_peaks") if preview else None,
                 }
             )
         return {
@@ -3353,6 +3362,27 @@ def create_app() -> FastAPI:
         if not os.path.isfile(path):
             raise HTTPException(404, "File missing on disk")
         return FileResponse(path, filename=os.path.basename(path))
+
+    @app.get("/artifacts/{artifact_id}/audio")
+    def stream_artifact_audio(
+        artifact_id: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> FileResponse:
+        art = db.query(Artifact).filter(Artifact.id == artifact_id).one_or_none()
+        if not art:
+            raise HTTPException(404)
+        path = os.path.join(job_root(art.job_id), art.rel_path.replace("/", os.sep))
+        if not os.path.isfile(path):
+            raise HTTPException(404, "File missing on disk")
+        ext = os.path.splitext(path)[1].lower()
+        media = {
+            ".wav": "audio/wav",
+            ".mp3": "audio/mpeg",
+            ".m4a": "audio/mp4",
+            ".ogg": "audio/ogg",
+        }.get(ext, "application/octet-stream")
+        return FileResponse(path, media_type=media)
 
     @app.get("/artifacts/{artifact_id}/preview", response_class=PlainTextResponse)
     def preview_artifact(
