@@ -851,16 +851,24 @@ def create_app() -> FastAPI:
     async def admin_gemini_tts_keys_import(
         user: CurrentUser,
         db: Session = Depends(get_db),
-        csv_file: UploadFile = File(...),
+        import_file: UploadFile = File(...),
     ) -> RedirectResponse:
         require_admin(user)
-        from webapp.gemini_tts_keys_service import import_csv_bytes
+        from webapp.gemini_tts_keys_service import import_keys_bytes
 
-        content = await csv_file.read()
-        fallback = (csv_file.filename or "").replace(".csv", "").replace(" apikey", "").strip()
-        added, skipped, errors = import_csv_bytes(
+        content = await import_file.read()
+        filename = import_file.filename or ""
+        fallback = (
+            filename.replace(".csv", "")
+            .replace(".xlsx", "")
+            .replace(".xlsm", "")
+            .replace(" apikey", "")
+            .strip()
+        )
+        added, skipped, errors = import_keys_bytes(
             db,
             content,
+            filename=filename,
             fallback_account=fallback,
             admin_user_id=user.id,
         )

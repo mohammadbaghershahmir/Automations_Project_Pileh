@@ -25,11 +25,11 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;font-size:1rem;">Bulk import CSV</h2>
-  <p class="muted" style="margin-top:0;font-size:13px;">Format: <code>row;account;project;api_key</code> (semicolon or comma). Empty account uses filename.</p>
+  <h2 style="margin-top:0;font-size:1rem;">Bulk import CSV / XLSX</h2>
+  <p class="muted" style="margin-top:0;font-size:13px;">Columns: <code>account</code>, <code>project</code>, <code>api_key</code> (CSV may use <code>;</code> or <code>,</code>). Empty account uses filename.</p>
   <form method="post" action="/admin/gemini-tts-keys/import" enctype="multipart/form-data">
-    <input type="file" name="csv_file" accept=".csv,text/csv" required/>
-    <button type="submit" class="btn-cta secondary" style="margin-top:12px;">Import CSV</button>
+    <input type="file" name="import_file" accept=".csv,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required/>
+    <button type="submit" class="btn-cta secondary" style="margin-top:12px;">Import file</button>
   </form>
 </div>
 
@@ -60,7 +60,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="muted">No keys yet — import your CSV files or add manually.</td></tr>
+      <tr><td colspan="8" class="muted">No keys yet — import a CSV/XLSX file or add manually.</td></tr>
       {% endfor %}
     </tbody>
   </table>

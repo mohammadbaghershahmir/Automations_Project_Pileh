@@ -1,11 +1,10 @@
-"""Admin CRUD and CSV import for Gemini TTS API keys."""
+"""Admin CRUD and CSV/XLSX import for Gemini TTS API keys."""
 
 from __future__ import annotations
 
 import csv
 import io
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -90,41 +89,129 @@ def _detect_delimiter(sample: str) -> str:
     return ","
 
 
+def _cell_str(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _extract_key_from_row(row: Dict[str, Any], fallback_account: str) -> Optional[Dict[str, str]]:
+    norm = {
+        str(k).strip().lower(): _cell_str(v)
+        for k, v in row.items()
+        if k is not None and str(k).strip()
+    }
+    api_key = norm.get("api_key") or norm.get("api key") or ""
+    if not api_key:
+        return None
+    account = norm.get("account") or fallback_account.strip() or "imported"
+    project = norm.get("project") or ""
+    return {"account_name": account, "project_name": project, "api_key": api_key}
+
+
 def parse_csv_keys(content: bytes, fallback_account: str = "") -> List[Dict[str, str]]:
     text = content.decode("utf-8-sig", errors="replace")
     delim = _detect_delimiter(text[:1024])
     reader = csv.DictReader(io.StringIO(text), delimiter=delim)
     rows: List[Dict[str, str]] = []
     for row in reader:
-        api_key = (
-            row.get("api_key")
-            or row.get("API_KEY")
-            or row.get("Api_Key")
-            or ""
-        ).strip()
-        if not api_key:
-            continue
-        account = (row.get("account") or row.get("Account") or "").strip()
-        if not account:
-            account = fallback_account.strip() or "imported"
-        project = (row.get("project") or row.get("Project") or "").strip()
-        rows.append({"account_name": account, "project_name": project, "api_key": api_key})
+        item = _extract_key_from_row(row, fallback_account)
+        if item:
+            rows.append(item)
     return rows
+
+
+def parse_xlsx_keys(content: bytes, fallback_account: str = "") -> List[Dict[str, str]]:
+    try:
+        import openpyxl
+    except ImportError as e:
+        raise RuntimeError("openpyxl is required for XLSX import") from e
+
+    wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    try:
+        ws = wb.active
+        row_iter = ws.iter_rows(values_only=True)
+        header = next(row_iter, None)
+        if not header:
+            return []
+
+        headers = [_cell_str(h).lower() for h in header]
+        rows: List[Dict[str, str]] = []
+        for values in row_iter:
+            if not values or all(v is None or _cell_str(v) == "" for v in values):
+                continue
+            row_dict = {
+                headers[i]: values[i] if i < len(values) else None
+                for i in range(len(headers))
+                if headers[i]
+            }
+            item = _extract_key_from_row(row_dict, fallback_account)
+            if item:
+                rows.append(item)
+        return rows
+    finally:
+        wb.close()
+
+
+def _is_xlsx_content(content: bytes, filename: str = "") -> bool:
+    fn = (filename or "").lower()
+    if fn.endswith((".xlsx", ".xlsm")):
+        return True
+    return content[:2] == b"PK"
+
+
+def _parse_keys(content: bytes, *, filename: str = "", fallback_account: str = "") -> Tuple[List[Dict[str, str]], str]:
+    if _is_xlsx_content(content, filename):
+        return parse_xlsx_keys(content, fallback_account=fallback_account), "spreadsheet"
+    return parse_csv_keys(content, fallback_account=fallback_account), "CSV"
+
+
+def import_keys_bytes(
+    db: Session,
+    content: bytes,
+    *,
+    filename: str = "",
+    fallback_account: str = "",
+    admin_user_id: Optional[int] = None,
+) -> Tuple[int, int, List[str]]:
+    """
+    Import keys from CSV or XLSX bytes. Returns (added, skipped_duplicates, errors).
+    """
+    try:
+        parsed, kind = _parse_keys(content, filename=filename, fallback_account=fallback_account)
+    except Exception as e:
+        return 0, 0, [str(e)]
+
+    if not parsed:
+        return 0, 0, [f"No valid api_key rows found in {kind}"]
+
+    return _import_parsed_keys(db, parsed, admin_user_id=admin_user_id)
 
 
 def import_csv_bytes(
     db: Session,
     content: bytes,
     *,
+    filename: str = "",
     fallback_account: str = "",
     admin_user_id: Optional[int] = None,
 ) -> Tuple[int, int, List[str]]:
-    """
-    Import keys from CSV bytes. Returns (added, skipped_duplicates, errors).
-    """
-    parsed = parse_csv_keys(content, fallback_account=fallback_account)
-    if not parsed:
-        return 0, 0, ["No valid api_key rows found in CSV"]
+    """Backward-compatible alias for import_keys_bytes."""
+    return import_keys_bytes(
+        db,
+        content,
+        filename=filename,
+        fallback_account=fallback_account,
+        admin_user_id=admin_user_id,
+    )
+
+
+def _import_parsed_keys(
+    db: Session,
+    parsed: List[Dict[str, str]],
+    *,
+    admin_user_id: Optional[int] = None,
+) -> Tuple[int, int, List[str]]:
 
     existing = _existing_key_set(db)
     added = 0
@@ -160,7 +247,7 @@ def import_csv_bytes(
 
 
 def seed_gemini_tts_keys_from_dir(db: Session, directory: str) -> int:
-    """Import all *.csv from directory if DB table is empty. Returns count added."""
+    """Import all *.csv / *.xlsx from directory if DB table is empty. Returns count added."""
     import os
 
     if db.query(GeminiTtsApiKey).count() > 0:
@@ -170,13 +257,19 @@ def seed_gemini_tts_keys_from_dir(db: Session, directory: str) -> int:
 
     total = 0
     for name in sorted(os.listdir(directory)):
-        if not name.lower().endswith(".csv"):
+        lower = name.lower()
+        if not (lower.endswith(".csv") or lower.endswith(".xlsx") or lower.endswith(".xlsm")):
             continue
         path = os.path.join(directory, name)
         fallback = os.path.splitext(name)[0].replace(" apikey", "").replace(" freetier", "").strip()
         try:
             with open(path, "rb") as f:
-                added, _, _ = import_csv_bytes(db, f.read(), fallback_account=fallback)
+                added, _, _ = import_keys_bytes(
+                    db,
+                    f.read(),
+                    filename=name,
+                    fallback_account=fallback,
+                )
             total += added
         except Exception as e:
             logger.warning("Failed to seed keys from %s: %s", path, e)
