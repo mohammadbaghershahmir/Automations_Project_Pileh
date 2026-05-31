@@ -89,7 +89,7 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
         if not job.started_at:
             job.started_at = datetime.utcnow()
         db.commit()
-        append_log(db, job_id, "Voice Class Step 1 started (OpenRouter script generation).", None)
+        append_log(db, job_id, "Voice Class Step 1 started (OpenRouter script, one LLM call per topic).", None)
 
         pairs = _load_pairs(db, job_id, pair_indices)
         if job.cancel_requested:
@@ -144,6 +144,7 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                     output_dir=out_dir,
                     max_segment_seconds=max_seg,
                     chars_per_second=cps,
+                    delay_seconds=delay_seconds,
                     progress_callback=progress,
                     cancel_check=cancel_check,
                 )

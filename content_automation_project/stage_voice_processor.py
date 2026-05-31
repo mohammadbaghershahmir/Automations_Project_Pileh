@@ -7,7 +7,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from api_layer import APIConfig, GeminiAPIClient
 from base_stage_processor import BaseStageProcessor
@@ -110,6 +111,74 @@ class StageVoiceProcessor(BaseStageProcessor):
             )
         return out
 
+    @staticmethod
+    def _topic_key(chapter: Any, subchapter: Any, topic: Any) -> Tuple[str, str, str]:
+        ch = str(chapter or "").strip()
+        sub = str(subchapter or "").strip()
+        top = str(topic or "").strip() or "(بدون مبحث)"
+        return ch, sub, top
+
+    def _group_lesson_context_by_topic(
+        self, lesson_rows: List[Dict[str, Any]]
+    ) -> List[Tuple[str, str, str, List[Dict[str, Any]]]]:
+        """Stable first-seen grouping by chapter + subchapter + topic."""
+        order: List[Tuple[str, str, str]] = []
+        buckets: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
+        for row in lesson_rows:
+            key = self._topic_key(row.get("chapter"), row.get("subchapter"), row.get("topic"))
+            if key not in buckets:
+                order.append(key)
+                buckets[key] = []
+            buckets[key].append(row)
+        return [(k[0], k[1], k[2], buckets[k]) for k in order]
+
+    def _build_topic_script_prompt(
+        self,
+        prompt: str,
+        chapter: str,
+        subchapter: str,
+        topic: str,
+        topic_rows: List[Dict[str, Any]],
+        topic_index: int,
+        total_topics: int,
+    ) -> str:
+        scope = (
+            f"\n\n[مبحث {topic_index}/{total_topics}: «{topic}» — "
+            f"زیرفصل «{subchapter}» — فصل «{chapter}». "
+            f"فقط از نکات همین مبحث در JSON زیر اسکریپت بنویس.]\n"
+        )
+        return f"""{prompt}{scope}
+
+Tagged lesson JSON for THIS TOPIC ONLY (Imp 1 and 2 points only):
+{json.dumps(topic_rows, ensure_ascii=False, indent=2)}
+
+Return ONLY valid JSON with this structure:
+{{
+  "paragraphs": [
+    {{
+      "paragraph_id": 1,
+      "chapter": "...",
+      "subchapter": "...",
+      "topic": "...",
+      "text": "..."
+    }}
+  ]
+}}
+Each paragraph must be a self-contained spoken block in Farsi (complete sentences).
+Use paragraph_id starting at 1 within this topic response."""
+
+    def _parse_script_paragraphs_from_response(self, response: str) -> List[Dict[str, Any]]:
+        parsed = self.extract_json_from_response(response)
+        if parsed is None:
+            return []
+        if isinstance(parsed, dict):
+            raw_paragraphs = parsed.get("paragraphs") or parsed.get("data")
+        elif isinstance(parsed, list):
+            raw_paragraphs = parsed
+        else:
+            raw_paragraphs = []
+        return self._normalize_paragraphs(raw_paragraphs)
+
     def _normalize_paragraphs(self, raw_paragraphs: Any) -> List[Dict[str, Any]]:
         if not isinstance(raw_paragraphs, list):
             return []
@@ -149,6 +218,7 @@ class StageVoiceProcessor(BaseStageProcessor):
         *,
         max_segment_seconds: float = 60.0,
         chars_per_second: float = 13.0,
+        delay_seconds: float = 0.0,
         progress_callback: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Optional[str]:
@@ -179,61 +249,81 @@ class StageVoiceProcessor(BaseStageProcessor):
             self.logger.error("No PointId in tagged JSON")
             return None
         book_id, chapter_id = self.extract_book_chapter_from_pointid(str(first_pid))
-        chapter_name = records[0].get("chapter") or records[0].get("Chapter") or ""
+        metadata_chapter_name = records[0].get("chapter") or records[0].get("Chapter") or ""
 
         lesson_context = self._build_lesson_context(records)
-        _progress(f"Built lesson context: {len(lesson_context)} Imp 1–2 rows")
-
-        full_prompt = f"""{prompt}
-
-Tagged lesson JSON (Imp 1 and 2 points only):
-{json.dumps(lesson_context, ensure_ascii=False, indent=2)}
-
-Return ONLY valid JSON with this structure:
-{{
-  "paragraphs": [
-    {{
-      "paragraph_id": 1,
-      "chapter": "...",
-      "subchapter": "...",
-      "topic": "...",
-      "text": "..."
-    }}
-  ]
-}}
-Each paragraph must be a self-contained spoken block in Farsi (complete sentences)."""
-
-        _progress(f"Calling OpenRouter ({model_name}) for voice script...")
-        response = self.api_client.process_text(
-            text=full_prompt,
-            model_name=model_name,
-            temperature=0.7,
-            max_tokens=APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS,
-            cancel_check=cancel_check,
+        topic_groups = self._group_lesson_context_by_topic(lesson_context)
+        if not topic_groups:
+            self.logger.error("No Imp 1–2 rows to process")
+            return None
+        _progress(
+            f"Built lesson context: {len(lesson_context)} Imp 1–2 rows "
+            f"across {len(topic_groups)} topic(s)"
         )
-        if not response:
-            self.logger.error("Empty response from OpenRouter")
-            return None
 
-        parsed = self.extract_json_from_response(response)
-        if parsed is None:
-            self.logger.error("Could not parse script JSON from LLM response")
-            return None
+        paragraphs: List[Dict[str, Any]] = []
+        next_paragraph_id = 1
+        total_topics = len(topic_groups)
 
-        if isinstance(parsed, dict):
-            raw_paragraphs = parsed.get("paragraphs") or parsed.get("data")
-        elif isinstance(parsed, list):
-            raw_paragraphs = parsed
-        else:
-            raw_paragraphs = []
+        for topic_index, (chapter_name, subchapter_name, topic_name, topic_rows) in enumerate(
+            topic_groups, start=1
+        ):
+            if cancel_check and cancel_check():
+                return None
 
-        paragraphs = self._normalize_paragraphs(raw_paragraphs)
+            label = f"«{topic_name}» ({len(topic_rows)} row(s))"
+            _progress(
+                f"Topic {topic_index}/{total_topics}: {label} — "
+                f"calling OpenRouter ({model_name})..."
+            )
+
+            full_prompt = self._build_topic_script_prompt(
+                prompt,
+                chapter_name,
+                subchapter_name,
+                topic_name,
+                topic_rows,
+                topic_index,
+                total_topics,
+            )
+            response = self.api_client.process_text(
+                text=full_prompt,
+                model_name=model_name,
+                temperature=0.7,
+                max_tokens=APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS,
+                cancel_check=cancel_check,
+            )
+            if not response:
+                self.logger.error("Empty response for topic %s", topic_name)
+                return None
+
+            topic_paragraphs = self._parse_script_paragraphs_from_response(response)
+            if not topic_paragraphs:
+                self.logger.error("No usable paragraphs for topic %s", topic_name)
+                _progress(f"ERROR: Topic {topic_index}/{total_topics} {label} returned no paragraphs")
+                return None
+
+            for p in topic_paragraphs:
+                p["paragraph_id"] = next_paragraph_id
+                p["chapter"] = (p.get("chapter") or chapter_name or "").strip()
+                p["subchapter"] = (p.get("subchapter") or subchapter_name or "").strip()
+                p["topic"] = (p.get("topic") or topic_name or "").strip()
+                p["estimated_seconds"] = (
+                    round(p["char_count"] / chars_per_second, 2) if chars_per_second else 0.0
+                )
+                next_paragraph_id += 1
+            paragraphs.extend(topic_paragraphs)
+            _progress(
+                f"Topic {topic_index}/{total_topics} {label}: "
+                f"{len(topic_paragraphs)} paragraph(s)"
+            )
+
+            if topic_index < total_topics and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
         if not paragraphs:
             self.logger.error("LLM returned no usable paragraphs")
             return None
-
-        for p in paragraphs:
-            p["estimated_seconds"] = round(p["char_count"] / chars_per_second, 2) if chars_per_second else 0.0
 
         segments = self.pack_segments(
             paragraphs,
@@ -250,10 +340,12 @@ Each paragraph must be a self-contained spoken block in Farsi (complete sentence
             "metadata": {
                 "book_id": book_id,
                 "chapter_id": chapter_id,
-                "chapter_name": chapter_name,
+                "chapter_name": metadata_chapter_name,
                 "source_tagged_json": os.path.basename(tagged_json_path),
                 "total_paragraphs": len(paragraphs),
                 "total_segments": len(segments),
+                "total_topics": len(topic_groups),
+                "script_mode": "topic_by_topic",
                 "max_segment_seconds": max_segment_seconds,
                 "chars_per_second": chars_per_second,
             },
