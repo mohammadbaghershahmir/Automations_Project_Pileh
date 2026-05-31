@@ -3,6 +3,7 @@ import logging
 import os
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from webapp.auth_utils import hash_password
@@ -77,39 +78,43 @@ def sync_admin_password_from_env(db: Session) -> None:
     )
 
 
-def bootstrap_admins(db: Session) -> None:
-    """Create admin users from env if table is empty."""
-    if db.query(User).first() is not None:
-        return
-
+def _admin_pairs_to_bootstrap(db: Session) -> list[tuple[str, str]]:
     pairs = _admin_pairs_from_env()
-    if not pairs:
+    if pairs:
+        return pairs
+    if db.query(User).first() is None:
         logger.warning(
             "No admin users configured (set ADMIN_EMAIL_1 / ADMIN_PASSWORD_1 or ADMIN_BOOTSTRAP). "
             "Creating default admin@localhost / changeme — CHANGE IMMEDIATELY."
         )
-        pairs = [("admin@localhost", "changeme")]
-
-    for email_n, password_n in pairs:
-        db.add(User(email=email_n, password_hash=hash_password(password_n)))
-        logger.info("Bootstrapped admin user: %s", email_n)
-    db.commit()
+        return [("admin@localhost", "changeme")]
+    return []
 
 
-def ensure_missing_env_admins(db: Session) -> None:
-    """Create any ADMIN_EMAIL_* / ADMIN_BOOTSTRAP accounts that are in env but not yet in the DB.
-
-    Initial bootstrap only runs when the users table is empty, so admins 2/3 (or new emails in
-    ADMIN_BOOTSTRAP) would otherwise never be created. Call this on every API startup after
-    bootstrap_admins.
-    """
+def _ensure_admin_users(db: Session, *, log_label: str) -> None:
+    """Create env-configured admin accounts that do not exist yet (idempotent)."""
     added = False
-    for email_n, password_n in _admin_pairs_from_env():
+    for email_n, password_n in _admin_pairs_to_bootstrap(db):
         exists = db.query(User).filter(func.lower(User.email) == email_n).first()
         if exists:
             continue
         db.add(User(email=email_n, password_hash=hash_password(password_n)))
-        logger.info("Added env admin user (was missing in DB): %s", email_n)
+        logger.info("%s admin user: %s", log_label, email_n)
         added = True
-    if added:
+    if not added:
+        return
+    try:
         db.commit()
+    except IntegrityError:
+        db.rollback()
+        logger.info("Admin bootstrap skipped: user(s) already created by another process")
+
+
+def bootstrap_admins(db: Session) -> None:
+    """Ensure admin users from env exist (safe when API and worker start concurrently)."""
+    _ensure_admin_users(db, log_label="Bootstrapped")
+
+
+def ensure_missing_env_admins(db: Session) -> None:
+    """Create any ADMIN_EMAIL_* / ADMIN_BOOTSTRAP accounts that are in env but not yet in the DB."""
+    _ensure_admin_users(db, log_label="Added env")
