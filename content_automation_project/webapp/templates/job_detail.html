@@ -9,6 +9,8 @@
   .voice-wave-meta { font-size:11px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .voice-wave-badge { color:#f87171; font-weight:600; font-size:11px; }
   .voice-wave-wrap audio { width:100%; height:32px; }
+  .voice-final-wrap { max-width:640px; }
+  .voice-final-wrap .voice-wave-canvas { height:72px; }
 </style>
 {% endif %}
 {% endblock %}
@@ -378,6 +380,12 @@
       </tbody>
     </table>
     <button type="button" id="btn-merge-voice" class="btn-cta secondary">Re-merge final MP3</button>
+    <div id="voice-songs-warning" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid #f87171;background:#1c0f0f;color:#fecaca;font-size:13px;"></div>
+    <div id="voice-final-section" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+      <h4 style="margin:0 0 8px;font-size:0.9rem;">Final MP3 (intro + segments + outro)</h4>
+      <p class="muted" style="margin:0 0 10px;font-size:12px;">Full chapter audio after Step&nbsp;2 or Re-merge. Waveform should show intro bump, speech blocks, then outro.</p>
+      <div id="voice-final-player"><p class="muted" style="font-size:13px;">Not built yet — run Step&nbsp;2 or Re-merge.</p></div>
+    </div>
   </div>
   {% endif %}
 
@@ -1177,35 +1185,79 @@
       );
     }
 
+    function wireVoicePreviewWrap(wrap) {
+      if (!wrap) return;
+      var canvas = wrap.querySelector(".voice-wave-canvas");
+      var audio = wrap.querySelector("audio");
+      if (!canvas) return;
+      var peaks = [];
+      try {
+        peaks = JSON.parse(decodeURIComponent(canvas.getAttribute("data-peaks") || "%5B%5D"));
+      } catch (e) {
+        peaks = [];
+      }
+      var isSilent = canvas.getAttribute("data-silent") === "1";
+      drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent);
+      if (audio) {
+        canvas.onclick = function () {
+          if (audio.paused) audio.play(); else audio.pause();
+        };
+        audio.addEventListener("play", function () {
+          canvas.style.outline = "2px solid var(--accent)";
+        });
+        audio.addEventListener("pause", function () {
+          canvas.style.outline = "";
+        });
+        audio.addEventListener("ended", function () {
+          canvas.style.outline = "";
+        });
+      }
+    }
+
     function wireVoicePreviewPlayers() {
       if (!voiceTbody) return;
-      voiceTbody.querySelectorAll(".voice-wave-wrap").forEach(function (wrap) {
-        var canvas = wrap.querySelector(".voice-wave-canvas");
-        var audio = wrap.querySelector("audio");
-        if (!canvas) return;
-        var peaks = [];
-        try {
-          peaks = JSON.parse(decodeURIComponent(canvas.getAttribute("data-peaks") || "%5B%5D"));
-        } catch (e) {
-          peaks = [];
-        }
-        var isSilent = canvas.getAttribute("data-silent") === "1";
-        drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent);
-        if (audio) {
-          canvas.onclick = function () {
-            if (audio.paused) audio.play(); else audio.pause();
-          };
-          audio.addEventListener("play", function () {
-            canvas.style.outline = "2px solid var(--accent)";
-          });
-          audio.addEventListener("pause", function () {
-            canvas.style.outline = "";
-          });
-          audio.addEventListener("ended", function () {
-            canvas.style.outline = "";
-          });
-        }
-      });
+      voiceTbody.querySelectorAll(".voice-wave-wrap").forEach(wireVoicePreviewWrap);
+      var finalWrap = document.querySelector("#voice-final-player .voice-wave-wrap");
+      wireVoicePreviewWrap(finalWrap);
+    }
+
+    function updateVoiceSongsWarning(data) {
+      var el = document.getElementById("voice-songs-warning");
+      if (!el) return;
+      var songs = (data && data.songs) || {};
+      if (songs.intro_ok && songs.outro_ok) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.style.display = "block";
+      el.textContent =
+        "Intro/outro songs missing on the server — merge will fail until both files exist: " +
+        (songs.intro_path || "a_int.mp3") + " and " + (songs.outro_path || "a_out.mp3") +
+        " under " + (songs.songs_dir || "SONGS_DIR") + ". Re-merge after adding them.";
+    }
+
+    function renderVoiceFinal(data) {
+      var host = document.getElementById("voice-final-player");
+      if (!host) return;
+      var fin = data && data.final_mp3;
+      if (!fin || !fin.has_mp3 || !fin.artifact_id) {
+        host.innerHTML = "<p class=\"muted\" style=\"font-size:13px;\">Not built yet — run Step&nbsp;2 or Re-merge.</p>";
+        return;
+      }
+      var silentBadge = fin.is_silent
+        ? "<span class=\"voice-wave-badge\">Silent / empty</span>"
+        : "";
+      var dur = fin.duration_seconds != null ? fin.duration_seconds + "s total" : "";
+      var meta = [escapeHtml(fin.filename || "final_voice.mp3"), dur, silentBadge].filter(Boolean).join(" · ");
+      host.innerHTML =
+        "<div class=\"voice-wave-wrap voice-final-wrap\">" +
+        "<canvas class=\"voice-wave-canvas" + (fin.is_silent ? " is-silent" : "") + "\" data-peaks=\"" + encodeURIComponent(JSON.stringify(fin.waveform_peaks || [])) + "\" data-silent=\"" + (fin.is_silent ? "1" : "0") + "\" title=\"Click to play/pause\"></canvas>" +
+        "<audio controls preload=\"metadata\" src=\"/artifacts/" + fin.artifact_id + "/audio\"></audio>" +
+        "<div class=\"voice-wave-meta\">" + meta +
+        " · <a href=\"/artifacts/" + fin.artifact_id + "/download\">Download</a></div>" +
+        "</div>";
+      wireVoicePreviewPlayers();
     }
 
     function renderVoiceSegments(data) {
@@ -1214,6 +1266,8 @@
       var segs = (data && data.segments) || [];
       if (!segs.length) {
         voiceTbody.innerHTML = "<tr><td colspan=\"5\" class=\"muted\">" + (data && data.script_missing ? "Run Step 1 first." : "No segments.") + "</td></tr>";
+        updateVoiceSongsWarning(data);
+        renderVoiceFinal(data);
         return;
       }
       segs.forEach(function (s) {
@@ -1228,6 +1282,8 @@
         voiceTbody.appendChild(tr);
       });
       wireVoicePreviewPlayers();
+      updateVoiceSongsWarning(data);
+      renderVoiceFinal(data);
       voiceTbody.querySelectorAll(".btn-voice-regen").forEach(function (btn) {
         btn.onclick = async function () {
           var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;
@@ -1290,6 +1346,7 @@
           }
           addBanner("ok", "Re-merge complete — refresh Step 2 artifacts.");
           poll();
+          loadVoiceSegments();
         } catch (e) {
           window.alert(String(e));
         }

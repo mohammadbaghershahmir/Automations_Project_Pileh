@@ -24,6 +24,8 @@ def merge_voice_tracks(
     segment_wav_paths: List[str],
     outro_mp3: Optional[str],
     output_mp3: str,
+    *,
+    require_intro_outro: bool = True,
 ) -> bool:
     """
     Concatenate intro MP3 + segment WAVs + outro MP3 into one MP3 file.
@@ -35,11 +37,21 @@ def merge_voice_tracks(
         logger.error("pydub is not installed")
         return False
 
+    if require_intro_outro:
+        if not intro_mp3 or not os.path.isfile(intro_mp3):
+            logger.error("Intro MP3 not found: %s", intro_mp3)
+            return False
+        if not outro_mp3 or not os.path.isfile(outro_mp3):
+            logger.error("Outro MP3 not found: %s", outro_mp3)
+            return False
+
     combined = None
+    parts: List[str] = []
     try:
         if intro_mp3 and os.path.isfile(intro_mp3):
             intro = _standardize_segment(AudioSegment.from_file(intro_mp3))
             combined = intro
+            parts.append(f"intro ({len(intro) / 1000:.1f}s)")
 
         for path in segment_wav_paths:
             if not path or not os.path.isfile(path):
@@ -47,10 +59,12 @@ def merge_voice_tracks(
                 return False
             seg = _standardize_segment(AudioSegment.from_file(path))
             combined = seg if combined is None else combined + seg
+            parts.append(f"{os.path.basename(path)} ({len(seg) / 1000:.1f}s)")
 
         if outro_mp3 and os.path.isfile(outro_mp3):
             outro = _standardize_segment(AudioSegment.from_file(outro_mp3))
             combined = outro if combined is None else combined + outro
+            parts.append(f"outro ({len(outro) / 1000:.1f}s)")
 
         if combined is None:
             logger.error("No audio content to merge")
@@ -58,7 +72,12 @@ def merge_voice_tracks(
 
         os.makedirs(os.path.dirname(output_mp3) or ".", exist_ok=True)
         combined.export(output_mp3, format="mp3", bitrate="64k")
-        logger.info("Merged voice MP3: %s", output_mp3)
+        logger.info(
+            "Merged voice MP3: %s — parts: %s — total %.1fs",
+            output_mp3,
+            ", ".join(parts),
+            len(combined) / 1000.0,
+        )
         return True
     except Exception as e:
         logger.error("Audio merge failed: %s", e)
@@ -77,20 +96,21 @@ def wav_duration_seconds(wav_path: str) -> Optional[float]:
         return None
 
 
-def analyze_wav_for_preview(wav_path: str, *, bar_count: int = 80) -> Optional[dict]:
+def analyze_audio_for_preview(audio_path: str, *, bar_count: int = 80) -> Optional[dict]:
     """
-    Lightweight WAV analysis for admin preview: duration, silence hint, downsampled peaks.
+    Lightweight audio analysis for admin preview: duration, silence hint, downsampled peaks.
+    Supports WAV, MP3, and other formats pydub/ffmpeg can read.
     """
     try:
         from pydub import AudioSegment
     except ImportError:
         return None
 
-    if not os.path.isfile(wav_path):
+    if not os.path.isfile(audio_path):
         return None
 
     try:
-        audio = AudioSegment.from_file(wav_path)
+        audio = AudioSegment.from_file(audio_path)
         raw = audio.get_array_of_samples()
         if not raw:
             return {
@@ -144,5 +164,10 @@ def analyze_wav_for_preview(wav_path: str, *, bar_count: int = 80) -> Optional[d
             "waveform_peaks": peaks,
         }
     except Exception as e:
-        logger.warning("WAV analysis failed for %s: %s", wav_path, e)
+        logger.warning("Audio analysis failed for %s: %s", audio_path, e)
         return None
+
+
+def analyze_wav_for_preview(wav_path: str, *, bar_count: int = 80) -> Optional[dict]:
+    """Backward-compatible alias."""
+    return analyze_audio_for_preview(wav_path, bar_count=bar_count)

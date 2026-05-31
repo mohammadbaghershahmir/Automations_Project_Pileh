@@ -46,6 +46,8 @@ def normalize_test_bank_provider(value: object, default: str = DEFAULT_TEST_BANK
 
 
 SONGS_DIR = os.environ.get("SONGS_DIR", str(PROJECT_ROOT / "songs"))
+VOICE_CLASS_INTRO_FILENAME = "a_int.mp3"
+VOICE_CLASS_OUTRO_FILENAME = "a_out.mp3"
 GEMINI_TTS_KEYS_SEED_DIR = os.environ.get(
     "GEMINI_TTS_KEYS_SEED_DIR",
     str(PROJECT_ROOT / "data" / "seed" / "gemini_tts_keys"),
@@ -55,3 +57,20 @@ DEFAULT_VOICE_CLASS_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 DEFAULT_VOICE_CLASS_TTS_VOICE = "Kore"
 DEFAULT_VOICE_CLASS_MAX_SEGMENT_SECONDS = 60.0
 DEFAULT_VOICE_CLASS_CHARS_PER_SECOND = 13.0
+
+
+def get_voice_class_song_paths() -> tuple[str, str]:
+    """Absolute paths to intro/outro MP3s under SONGS_DIR."""
+    base = Path(SONGS_DIR).expanduser().resolve()
+    return str(base / VOICE_CLASS_INTRO_FILENAME), str(base / VOICE_CLASS_OUTRO_FILENAME)
+
+
+def voice_class_songs_status() -> dict:
+    intro, outro = get_voice_class_song_paths()
+    return {
+        "songs_dir": str(Path(SONGS_DIR).expanduser().resolve()),
+        "intro_path": intro,
+        "outro_path": outro,
+        "intro_ok": os.path.isfile(intro),
+        "outro_ok": os.path.isfile(outro),
+    }

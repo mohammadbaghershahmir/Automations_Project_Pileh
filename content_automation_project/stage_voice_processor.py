@@ -400,8 +400,17 @@ Each paragraph must be a self-contained spoken block in Farsi (complete sentence
 
         final_name = f"final_voice_{book_id:03d}{chapter_id:03d}.mp3"
         final_path = os.path.join(output_dir, final_name)
-        _progress("Merging intro + segments + outro into MP3...")
+        if not intro_mp3 or not os.path.isfile(intro_mp3):
+            self.logger.error("Intro MP3 missing: %s", intro_mp3)
+            _progress(f"ERROR: Intro song not found at {intro_mp3}")
+            return None
+        if not outro_mp3 or not os.path.isfile(outro_mp3):
+            self.logger.error("Outro MP3 missing: %s", outro_mp3)
+            _progress(f"ERROR: Outro song not found at {outro_mp3}")
+            return None
+        _progress(f"Merging intro ({os.path.basename(intro_mp3)}) + {len(segment_wavs)} segment(s) + outro ({os.path.basename(outro_mp3)})…")
         if not merge_voice_tracks(intro_mp3, segment_wavs, outro_mp3, final_path):
+            _progress("ERROR: Merge failed — check worker log (ffmpeg / pydub / song files).")
             return None
         _progress(f"Saved final MP3: {final_name}")
         return final_path
@@ -432,8 +441,20 @@ Each paragraph must be a self-contained spoken block in Farsi (complete sentence
             segment_wavs.append(wav_path)
         final_name = f"final_voice_{book_id:03d}{chapter_id:03d}.mp3"
         final_path = os.path.join(output_dir, final_name)
+        if not intro_mp3 or not os.path.isfile(intro_mp3):
+            self.logger.error("Intro MP3 missing: %s", intro_mp3)
+            if progress_callback:
+                progress_callback(f"ERROR: Intro song not found at {intro_mp3}")
+            return None
+        if not outro_mp3 or not os.path.isfile(outro_mp3):
+            self.logger.error("Outro MP3 missing: %s", outro_mp3)
+            if progress_callback:
+                progress_callback(f"ERROR: Outro song not found at {outro_mp3}")
+            return None
         if progress_callback:
-            progress_callback("Re-merging intro + segments + outro...")
+            progress_callback(
+                f"Re-merging intro ({os.path.basename(intro_mp3)}) + {len(segment_wavs)} segment(s) + outro ({os.path.basename(outro_mp3)})…"
+            )
         if not merge_voice_tracks(intro_mp3, segment_wavs, outro_mp3, final_path):
             return None
         return final_path

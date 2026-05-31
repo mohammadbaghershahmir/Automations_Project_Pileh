@@ -18,7 +18,8 @@ from webapp.config import (
     DEFAULT_VOICE_CLASS_TTS_MODEL,
     DEFAULT_VOICE_CLASS_TTS_VOICE,
     PROJECT_ROOT,
-    SONGS_DIR,
+    get_voice_class_song_paths,
+    voice_class_songs_status,
     normalize_test_bank_model,
 )
 from webapp.database import SessionLocal
@@ -41,13 +42,22 @@ from webapp.tasks_single_stage import _load_pairs
 logger = logging.getLogger(__name__)
 
 
-# Remove unused helper
 def _find_voice_script(base: str, pair_index: int) -> Optional[str]:
     abs_dir = os.path.join(base, f"pair_{pair_index}", "output")
     if not os.path.isdir(abs_dir):
         return None
     for name in sorted(os.listdir(abs_dir)):
         if name.startswith("voice_script_") and name.endswith(".json"):
+            return os.path.join(abs_dir, name)
+    return None
+
+
+def _find_final_voice_mp3(base: str, pair_index: int) -> Optional[str]:
+    abs_dir = os.path.join(base, f"pair_{pair_index}", "output")
+    if not os.path.isdir(abs_dir):
+        return None
+    for name in sorted(os.listdir(abs_dir)):
+        if name.startswith("final_voice_") and name.endswith(".mp3"):
             return os.path.join(abs_dir, name)
     return None
 
@@ -201,8 +211,17 @@ def _run_voice_class_step2_pairs(
     tts_voice = (cfg.get("tts_voice") or DEFAULT_VOICE_CLASS_TTS_VOICE).strip()
     delay_seconds = float(cfg.get("delay_seconds", 5))
 
-    intro = os.path.join(SONGS_DIR, "a_int.mp3")
-    outro = os.path.join(SONGS_DIR, "a_out.mp3")
+    intro, outro = get_voice_class_song_paths()
+    songs = voice_class_songs_status()
+    if not songs["intro_ok"] or not songs["outro_ok"]:
+        append_log(
+            db,
+            job_id,
+            f"WARNING: Intro/outro songs missing under {songs['songs_dir']} "
+            f"(intro_ok={songs['intro_ok']}, outro_ok={songs['outro_ok']}) — merge will fail until "
+            f"{songs['intro_path']} and {songs['outro_path']} exist.",
+            None,
+        )
     base = job_root(job_id)
     cancel_check = _cancel_check_session(job_id)
     key_mgr = GeminiTtsKeyManager(db)
@@ -376,8 +395,7 @@ def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
         if not script_path:
             return
         out_dir = pair_output(job_id, pair_index)
-        intro = os.path.join(SONGS_DIR, "a_int.mp3")
-        outro = os.path.join(SONGS_DIR, "a_out.mp3")
+        intro, outro = get_voice_class_song_paths()
         processor = StageVoiceProcessor(None)
         result = processor.merge_existing_segments(script_path, out_dir, intro, outro)
         if result:

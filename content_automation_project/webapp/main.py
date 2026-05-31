@@ -43,6 +43,8 @@ from webapp.config import (
     PROJECT_ROOT,
     RUN_TASKS_INLINE,
     SONGS_DIR,
+    get_voice_class_song_paths,
+    voice_class_songs_status,
     TEST_BANK_OPENROUTER_MODEL_CHOICES,
     normalize_test_bank_model,
     normalize_test_bank_provider,
@@ -431,6 +433,16 @@ def create_app() -> FastAPI:
             from webapp.gemini_tts_keys_service import seed_gemini_tts_keys_from_dir
 
             seed_gemini_tts_keys_from_dir(db, GEMINI_TTS_KEYS_SEED_DIR)
+            songs = voice_class_songs_status()
+            if not songs["intro_ok"] or not songs["outro_ok"]:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Voice Class intro/outro songs missing under %s (intro_ok=%s, outro_ok=%s)",
+                    songs["songs_dir"],
+                    songs["intro_ok"],
+                    songs["outro_ok"],
+                )
         finally:
             db.close()
 
@@ -3126,12 +3138,19 @@ def create_app() -> FastAPI:
         if (job.type or "").strip() != "voice_class":
             return {"supported": False, "segments": []}
 
-        from webapp.tasks_voice_class import _find_voice_script
+        from webapp.tasks_voice_class import _find_final_voice_mp3, _find_voice_script
+        from webapp.audio_merge import analyze_audio_for_preview
 
         base = job_root(job_id)
         script_path = _find_voice_script(base, pair_index)
         if not script_path:
-            return {"supported": True, "segments": [], "script_missing": True}
+            return {
+                "supported": True,
+                "segments": [],
+                "script_missing": True,
+                "songs": voice_class_songs_status(),
+                "final_mp3": None,
+            }
 
         with open(script_path, encoding="utf-8") as f:
             data = json.load(f)
@@ -3150,9 +3169,7 @@ def create_app() -> FastAPI:
             has_wav = os.path.isfile(abs_wav)
             preview = None
             if has_wav:
-                from webapp.audio_merge import analyze_wav_for_preview
-
-                preview = analyze_wav_for_preview(abs_wav)
+                preview = analyze_audio_for_preview(abs_wav)
             out.append(
                 {
                     "segment_id": sid,
@@ -3167,10 +3184,33 @@ def create_app() -> FastAPI:
                     "waveform_peaks": preview.get("waveform_peaks") if preview else None,
                 }
             )
+
+        final_abs = _find_final_voice_mp3(base, pair_index)
+        final_mp3 = None
+        if final_abs and os.path.isfile(final_abs):
+            rel_mp3 = os.path.relpath(final_abs, base).replace("\\", "/")
+            art_mp3 = (
+                db.query(Artifact)
+                .filter(Artifact.job_id == job_id, Artifact.rel_path == rel_mp3)
+                .one_or_none()
+            )
+            mp3_preview = analyze_audio_for_preview(final_abs, bar_count=120)
+            final_mp3 = {
+                "artifact_id": art_mp3.id if art_mp3 else None,
+                "rel_path": rel_mp3,
+                "filename": os.path.basename(final_abs),
+                "has_mp3": True,
+                "duration_seconds": mp3_preview.get("duration_seconds") if mp3_preview else None,
+                "is_silent": mp3_preview.get("is_silent") if mp3_preview else None,
+                "waveform_peaks": mp3_preview.get("waveform_peaks") if mp3_preview else None,
+            }
+
         return {
             "supported": True,
             "segments": out,
             "metadata": meta,
+            "songs": voice_class_songs_status(),
+            "final_mp3": final_mp3,
         }
 
     @app.post("/jobs/{job_id}/pairs/{pair_index}/voice-segments/{segment_id}/regenerate")
