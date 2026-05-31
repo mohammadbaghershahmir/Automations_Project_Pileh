@@ -58,7 +58,7 @@
 {% set show_stop_s1 = job.status in ('queued', 'running') and not ns.all_s1_ok %}
 {% set show_stop_s2 = job.status in ('queued', 'running') and ns.all_s1_ok and not single_stage_job %}
 
-{% if not single_stage_job %}
+{% if not single_stage_job and job.type in ('test_bank', 'test_bank_1') %}
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Word pairing</h2>
   {% if is_job_owner %}
@@ -66,7 +66,7 @@
   <form method="post" action="/jobs/{{ job.id }}/pairing" enctype="multipart/form-data">
     <table>
       <thead>
-        <tr><th>#</th><th>{% if job.type == 'voice_class' %}Importance &amp; Type (a*.json){% elif job.type in ('test_bank', 'test_bank_1') %}Table notes (Stage J){% else %}Stage J{% endif %}</th><th>Word file</th></tr>
+        <tr><th>#</th><th>{% if job.type in ('test_bank', 'test_bank_1') %}Table notes (Stage J){% else %}Stage J{% endif %}</th><th>Word file</th></tr>
       </thead>
       <tbody>
         {% for p in pairs %}
@@ -112,7 +112,29 @@
   </table>
   {% endif %}
 </div>
-{% else %}
+{% elif job.type == 'voice_class' %}
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;">Inputs</h2>
+  <p class="muted" style="margin-top:0;font-size:13px;">Importance &amp; Type <code>a*.json</code> per pair (chosen at job creation).</p>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Tagged JSON (a*.json)</th></tr>
+    </thead>
+    <tbody>
+      {% for p in pairs %}
+      <tr>
+        <td>{{ p.pair_index }}</td>
+        <td style="font-size:13px;">{{ p.stage_j_filename }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="2" class="muted">No pairs.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if single_stage_job %}
 <div class="card">
   <h2 style="margin-top:0;font-size:1rem;">Inputs</h2>
   <p class="muted" style="margin-top:0;font-size:13px;">Files were chosen when this job was created.</p>
@@ -252,7 +274,7 @@
   <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> + Test Bank&nbsp;1 <code>step1_combined_*.json</code> → <code>o*.json</code> with <strong>chapter_name</strong> and <strong>summary</strong> (one LLM call per pair). Runs in the <strong>background worker</strong>.</p>
   {% elif job.type == 'voice_class' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Generate script</h2>
-  <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> + Word (شناسنامه questions) → <code>voice_script_*.json</code> with paragraphs and ≤1&nbsp;min TTS segments. Review the script, then run Step&nbsp;2.</p>
+  <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> → <code>voice_script_*.json</code> with paragraphs and ≤1&nbsp;min TTS segments. Review the script, then run Step&nbsp;2.</p>
   {% elif job.type == 'image_file_catalog' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
   <p class="muted" style="margin-top:0;">Table notes (TA merged) + filepic + tablepic → catalog JSON (<code>f_*.json</code>) with both images and tables. Runs in the <strong>background worker</strong>.</p>

@@ -83,6 +83,7 @@ from stage_v_pairing import (
     auto_pair_chapter_summary_files,
     auto_pair_flashcard_files,
     auto_pair_stage_v_files,
+    auto_pair_voice_class_files,
 )
 
 try:
@@ -2125,7 +2126,6 @@ def create_app() -> FastAPI:
             user: CurrentUser,
             db: Session = Depends(get_db),
             tagged_json_files: List[UploadFile] = File(...),
-            word_files: List[UploadFile] = File(...),
             prompt_1: str = Form(""),
             tts_instruction: str = Form(""),
             provider_1: str = Form(DEFAULT_TEST_BANK_PROVIDER),
@@ -2155,30 +2155,12 @@ def create_app() -> FastAPI:
                         f.write(content)
                     j_paths.append(dest)
 
-                w_paths: List[str] = []
-                for uf in word_files:
-                    if not uf.filename:
-                        continue
-                    dest = os.path.join(tmp, os.path.basename(uf.filename))
-                    content = await uf.read()
-                    with open(dest, "wb") as f:
-                        f.write(content)
-                    w_paths.append(dest)
-
                 if not j_paths:
                     raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
-                if not w_paths:
-                    raise HTTPException(400, "Upload at least one Word document with Shenasname questions.")
 
-                pairs_spec = auto_pair_stage_v_files(j_paths, w_paths)
+                pairs_spec = auto_pair_voice_class_files(j_paths)
                 if not pairs_spec:
                     raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
-                unpaired = [p for p in pairs_spec if not p.get("word_path")]
-                if unpaired:
-                    raise HTTPException(
-                        400,
-                        f"{len(unpaired)} tagged file(s) could not be matched to a Word document.",
-                    )
 
                 try:
                     delay_val = float(delay_seconds)
@@ -2228,27 +2210,22 @@ def create_app() -> FastAPI:
 
                 for pair_index, p in enumerate(pairs_spec):
                     tagged = p["stage_j_path"]
-                    word = p["word_path"]
                     ensure_dirs(job_id, pair_index)
                     tagged_name = os.path.basename(tagged)
-                    word_name = os.path.basename(word)
                     rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
-                    rel_word = f"pair_{pair_index}/inputs/{word_name}"
                     shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
-                    shutil.copy2(word, os.path.join(root, rel_word.replace("/", os.sep)))
                     db.add(
                         JobPair(
                             job_id=job_id,
                             pair_index=pair_index,
                             stage_j_filename=tagged_name,
-                            word_filename=word_name,
+                            word_filename=None,
                             stage_j_relpath=rel_tagged,
-                            word_relpath=rel_word,
+                            word_relpath=None,
                             output_relpath=f"pair_{pair_index}/output",
                         )
                     )
                     register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
-                    register_input_artifact(db, job_id, pair_index, root, rel_word, "upload_word")
 
                 db.commit()
             finally:

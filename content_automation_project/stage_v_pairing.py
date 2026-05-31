@@ -163,6 +163,19 @@ def auto_pair_stage_v_files(
     return pairs
 
 
+def auto_pair_voice_class_files(tagged_paths: List[str]) -> List[Dict[str, Any]]:
+    """One pair per Importance & Type JSON (a*.json)."""
+    return [
+        {
+            "stage_j_path": tagged_path,
+            "status": "pending",
+            "output_path": None,
+            "error": None,
+        }
+        for tagged_path in tagged_paths
+    ]
+
+
 def extract_book_chapter_from_stage_f_filename_for_h(stage_f_path: str) -> Tuple[Optional[int], Optional[int]]:
     """Extract book and chapter from Image File Catalog JSON (f_e{book}{chapter}.json, f_{book}{chapter}.json)."""
     try:

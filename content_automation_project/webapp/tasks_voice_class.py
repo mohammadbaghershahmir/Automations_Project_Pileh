@@ -95,17 +95,16 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                 _finalize_step1_cancelled(db, job_id, pairs)
                 return
 
-            if not pair.stage_j_relpath or not pair.word_relpath:
+            if not pair.stage_j_relpath:
                 pair.step1_status = "failed"
-                pair.step1_error = "Missing tagged JSON or Word document"
+                pair.step1_error = "Missing tagged JSON (Importance & Type output)"
                 db.commit()
                 continue
 
             abs_tagged = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
-            abs_word = os.path.join(base, pair.word_relpath.replace("/", os.sep))
-            if not os.path.isfile(abs_tagged) or not os.path.isfile(abs_word):
+            if not os.path.isfile(abs_tagged):
                 pair.step1_status = "failed"
-                pair.step1_error = "Input files missing on disk"
+                pair.step1_error = "Tagged JSON file missing on disk"
                 db.commit()
                 continue
 
@@ -130,7 +129,6 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                 append_log(db, job_id, f"--- Voice Class Step 1 pair {pair.pair_index} ---", pair.pair_index)
                 result = processor.process_voice_class_step1(
                     tagged_json_path=abs_tagged,
-                    word_file_path=abs_word,
                     prompt=prompt,
                     model_name=model_name,
                     output_dir=out_dir,

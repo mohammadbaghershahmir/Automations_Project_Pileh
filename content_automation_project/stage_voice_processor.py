@@ -12,7 +12,6 @@ from typing import Any, Callable, Dict, List, Optional
 from api_layer import APIConfig, GeminiAPIClient
 from base_stage_processor import BaseStageProcessor
 from webapp.audio_merge import merge_voice_tracks, wav_duration_seconds
-from word_file_processor import WordFileProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,6 @@ class StageVoiceProcessor(BaseStageProcessor):
     def __init__(self, api_client, gemini_tts_key_manager=None):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
-        self._word_processor = WordFileProcessor()
         self._gemini_keys = gemini_tts_key_manager
 
     @staticmethod
@@ -145,7 +143,6 @@ class StageVoiceProcessor(BaseStageProcessor):
     def process_voice_class_step1(
         self,
         tagged_json_path: str,
-        word_file_path: str,
         prompt: str,
         model_name: str,
         output_dir: str,
@@ -184,13 +181,6 @@ class StageVoiceProcessor(BaseStageProcessor):
         book_id, chapter_id = self.extract_book_chapter_from_pointid(str(first_pid))
         chapter_name = records[0].get("chapter") or records[0].get("Chapter") or ""
 
-        _progress("Reading Word document (questions with Shenasname)...")
-        word_content = self._word_processor.read_word_file(word_file_path)
-        if not word_content:
-            self.logger.error("Failed to read Word file")
-            return None
-        word_formatted = self._word_processor.prepare_word_for_model(word_content, context="Test Questions")
-
         lesson_context = self._build_lesson_context(records)
         _progress(f"Built lesson context: {len(lesson_context)} Imp 1–2 rows")
 
@@ -198,9 +188,6 @@ class StageVoiceProcessor(BaseStageProcessor):
 
 Tagged lesson JSON (Imp 1 and 2 points only):
 {json.dumps(lesson_context, ensure_ascii=False, indent=2)}
-
-Word document (test questions with Shenasname):
-{word_formatted}
 
 Return ONLY valid JSON with this structure:
 {{
@@ -265,7 +252,6 @@ Each paragraph must be a self-contained spoken block in Farsi (complete sentence
                 "chapter_id": chapter_id,
                 "chapter_name": chapter_name,
                 "source_tagged_json": os.path.basename(tagged_json_path),
-                "source_word_doc": os.path.basename(word_file_path),
                 "total_paragraphs": len(paragraphs),
                 "total_segments": len(segments),
                 "max_segment_seconds": max_segment_seconds,
