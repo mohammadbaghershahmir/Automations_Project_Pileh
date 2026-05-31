@@ -22,6 +22,12 @@
   <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ cfg.get('model_1') or '—' }}</code></p>
   <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.45;">This job will call OpenRouter with the model above; usage is billed to your API key. Create a new job if you need a different model.</p>
 </div>
+{% elif job.type == 'voice_class' %}
+<div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
+  <h2 style="margin:0 0 10px;font-size:1rem;">Voice Class — Step 1 script (OpenRouter)</h2>
+  <p style="margin:0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ cfg.get('model_1') or '—' }}</code></p>
+  <p style="margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--muted);">Step 2 TTS: <code>{{ cfg.get('tts_model') or '—' }}</code> / voice <code>{{ cfg.get('tts_voice') or '—' }}</code> (Gemini keys from admin pool)</p>
+</div>
 {% elif job.type == 'test_bank_2' %}
 <div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
   <h2 style="margin:0 0 10px;font-size:1rem;">OpenRouter — Step 2 (before you run)</h2>
@@ -60,7 +66,7 @@
   <form method="post" action="/jobs/{{ job.id }}/pairing" enctype="multipart/form-data">
     <table>
       <thead>
-        <tr><th>#</th><th>{% if job.type in ('test_bank', 'test_bank_1') %}Table notes (Stage J){% else %}Stage J{% endif %}</th><th>Word file</th></tr>
+        <tr><th>#</th><th>{% if job.type == 'voice_class' %}Importance &amp; Type (a*.json){% elif job.type in ('test_bank', 'test_bank_1') %}Table notes (Stage J){% else %}Stage J{% endif %}</th><th>Word file</th></tr>
       </thead>
       <tbody>
         {% for p in pairs %}
@@ -244,6 +250,9 @@
   {% elif job.type == 'chapter_summary' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run Chapter Summary</h2>
   <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> + Test Bank&nbsp;1 <code>step1_combined_*.json</code> → <code>o*.json</code> with <strong>chapter_name</strong> and <strong>summary</strong> (one LLM call per pair). Runs in the <strong>background worker</strong>.</p>
+  {% elif job.type == 'voice_class' %}
+  <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Step 1 — Generate script</h2>
+  <p class="muted" style="margin-top:0;">Importance &amp; Type <code>a*.json</code> + Word (شناسنامه questions) → <code>voice_script_*.json</code> with paragraphs and ≤1&nbsp;min TTS segments. Review the script, then run Step&nbsp;2.</p>
   {% elif job.type == 'image_file_catalog' %}
   <h2 style="margin-top:0;font-size:1rem;color:var(--accent);">Run image file catalog</h2>
   <p class="muted" style="margin-top:0;">Table notes (TA merged) + filepic + tablepic → catalog JSON (<code>f_*.json</code>) with both images and tables. Runs in the <strong>background worker</strong>.</p>
@@ -273,6 +282,11 @@
   <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
     <strong style="font-size:13px;display:block;margin-bottom:6px;">Token spend — OpenRouter model for this run</strong>
     <span style="font-size:13px;word-break:break-all;"><code>{{ cfg.get('model_1') or '—' }}</code> via {{ cfg.get('provider_1') or 'openrouter' }}</span>
+  </div>
+  {% elif job.type == 'voice_class' %}
+  <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
+    <strong style="font-size:13px;display:block;margin-bottom:6px;">OpenRouter script model</strong>
+    <span style="font-size:13px;word-break:break-all;"><code>{{ cfg.get('model_1') or '—' }}</code></span>
   </div>
   {% elif job.type == 'test_bank_2' %}
   <div style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--input-bg);">
@@ -310,6 +324,29 @@
     </tbody>
   </table>
 
+  {% if is_voice_class and is_job_owner %}
+  <div id="voice-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+    <h3 style="margin:0 0 8px;font-size:0.95rem;">Voice segments — Regenerate &amp; merge</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:13px;">After Step&nbsp;2, regenerate individual TTS segments or re-merge the final MP3 from existing WAV files (intro + segments + outro).</p>
+    <label style="font-size:13px;display:block;margin-bottom:8px;">Pair:
+      <select id="voice-repair-pair" style="margin-left:6px;padding:4px 8px;border-radius:6px;">
+        {% for p in pairs %}
+        <option value="{{ p.pair_index }}">{{ p.pair_index }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead>
+        <tr><th>Segment</th><th>Paragraphs</th><th>Est. sec</th><th>WAV</th><th></th></tr>
+      </thead>
+      <tbody id="voice-repair-tbody">
+        <tr><td colspan="5" class="muted">Load segments after Step 1…</td></tr>
+      </tbody>
+    </table>
+    <button type="button" id="btn-merge-voice" class="btn-cta secondary">Re-merge final MP3</button>
+  </div>
+  {% endif %}
+
   {% if supports_unit_repair and is_job_owner %}
   <div id="unit-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
     <h3 style="margin:0 0 8px;font-size:0.95rem;">LLM units — Regenerate &amp; Renumber</h3>
@@ -345,15 +382,17 @@
 
 {% if show_step2_section %}
 <div class="card">
-  <h2 style="margin-top:0;font-size:1rem;">Step 2 — Refined outputs</h2>
-  <p class="muted" style="margin-top:0;">Uses Step&nbsp;1 results. Run only after Step&nbsp;1 has succeeded and you have checked Step&nbsp;1 outputs above.</p>
+  <h2 style="margin-top:0;font-size:1rem;">{% if job.type == 'voice_class' %}Step 2 — TTS &amp; merge{% else %}Step 2 — Refined outputs{% endif %}</h2>
+  <p class="muted" style="margin-top:0;">{% if job.type == 'voice_class' %}Gemini TTS for each segment (≤1&nbsp;min), then merge intro + segments + outro into <code>final_voice_*.mp3</code>. Run only after Step&nbsp;1 succeeded and you reviewed the script.{% else %}Uses Step&nbsp;1 results. Run only after Step&nbsp;1 has succeeded and you have checked Step&nbsp;1 outputs above.{% endif %}</p>
   {% if is_job_owner %}
   {% if job.type == 'test_bank' and not step2_enabled %}
   <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;color:#fbbf24;">Finish Step&nbsp;1 successfully before running Step&nbsp;2.</p>
+  {% elif job.type == 'voice_class' and not step2_enabled %}
+  <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;color:#fbbf24;">Finish Step&nbsp;1 and review the script before running Step&nbsp;2.</p>
   {% else %}
   <p id="step2-hint" class="muted" style="margin:12px 0;font-size:13px;display:none;"></p>
   {% endif %}
-  <button type="button" id="btn-s2" class="btn-cta secondary btn-step{% if p0 and step2_enabled and p0.step2_status == 'running' %} is-running{% elif p0 and step2_enabled and p0.step2_status == 'failed' %} is-failed{% endif %}" data-default-label="Run Step 2" {% if job.type == 'test_bank' and not step2_enabled %}disabled data-keep-disabled="1"{% elif p0 and step2_enabled and p0.step2_status == 'running' %}disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and step2_enabled and p0.step2_status == 'running' %}Running…{% elif p0 and step2_enabled and p0.step2_status == 'failed' %}Failed — run again{% else %}Run Step 2{% endif %}</span></button>
+  <button type="button" id="btn-s2" class="btn-cta secondary btn-step{% if p0 and step2_enabled and p0.step2_status == 'running' %} is-running{% elif p0 and step2_enabled and p0.step2_status == 'failed' %} is-failed{% endif %}" data-default-label="Run Step 2" {% if job.type in ('test_bank', 'voice_class') and not step2_enabled %}disabled data-keep-disabled="1"{% elif p0 and step2_enabled and p0.step2_status == 'running' %}disabled{% endif %}><span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if p0 and step2_enabled and p0.step2_status == 'running' %}Running…{% elif p0 and step2_enabled and p0.step2_status == 'failed' %}Failed — run again{% else %}Run Step 2{% endif %}</span></button>
 
   <div id="stop-under-s2" class="stop-under-step" style="display:{% if show_stop_s2 %}block{% else %}none{% endif %};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <button type="button" class="btn-stop btn-stop-step" {% if job.status not in ('queued', 'running') %}disabled{% endif %}>Stop Step 2</button>
@@ -761,7 +800,7 @@
       setStepButton(btnS1, a1);
 
       if (!singleStage) {
-        if (testBank && btnS2) {
+        if ((testBank || jobType === "voice_class") && btnS2) {
           if (a1 !== "succeeded") {
             btnS2.setAttribute("data-keep-disabled", "1");
             btnS2.disabled = true;
@@ -770,7 +809,9 @@
             if (lb2) lb2.textContent = btnS2.getAttribute("data-default-label");
             if (step2Hint) {
               step2Hint.style.display = "";
-              step2Hint.textContent = "Finish Step 1 successfully before running Step 2.";
+              step2Hint.textContent = jobType === "voice_class"
+                ? "Finish Step 1 and review the script before running Step 2."
+                : "Finish Step 1 successfully before running Step 2.";
             }
           } else {
             btnS2.removeAttribute("data-keep-disabled");
@@ -1052,6 +1093,101 @@
           window.alert("Network error: " + e);
         }
         btnRenumber.disabled = !unitConfirm.checked;
+      };
+    }
+  }
+
+  const isVoiceClass = {{ is_voice_class | tojson }};
+  if (isVoiceClass) {
+    var voicePairSel = document.getElementById("voice-repair-pair");
+    var voiceTbody = document.getElementById("voice-repair-tbody");
+    var btnMergeVoice = document.getElementById("btn-merge-voice");
+
+    function renderVoiceSegments(data) {
+      if (!voiceTbody) return;
+      voiceTbody.innerHTML = "";
+      var segs = (data && data.segments) || [];
+      if (!segs.length) {
+        voiceTbody.innerHTML = "<tr><td colspan=\"5\" class=\"muted\">" + (data && data.script_missing ? "Run Step 1 first." : "No segments.") + "</td></tr>";
+        return;
+      }
+      segs.forEach(function (s) {
+        var tr = document.createElement("tr");
+        var dl = s.artifact_id ? "<a href=\"/artifacts/" + s.artifact_id + "/download\">Download</a>" : "—";
+        tr.innerHTML =
+          "<td>" + s.segment_id + "</td>" +
+          "<td>" + (s.paragraph_count != null ? s.paragraph_count : "—") + "</td>" +
+          "<td>" + (s.estimated_seconds != null ? s.estimated_seconds : "—") + "</td>" +
+          "<td>" + (s.has_wav ? "yes" : "no") + "</td>" +
+          "<td><button type=\"button\" class=\"secondary btn-voice-regen\" data-seg=\"" + s.segment_id + "\" style=\"font-size:11px;padding:4px 8px;\">Regenerate</button> " + dl + "</td>";
+        voiceTbody.appendChild(tr);
+      });
+      voiceTbody.querySelectorAll(".btn-voice-regen").forEach(function (btn) {
+        btn.onclick = async function () {
+          var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;
+          var si = parseInt(btn.getAttribute("data-seg"), 10);
+          if (!window.confirm("Regenerate TTS for segment " + si + "?")) return;
+          btn.disabled = true;
+          try {
+            var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/voice-segments/" + si + "/regenerate", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (!r.ok) {
+              window.alert(await r.text());
+              btn.disabled = false;
+              return;
+            }
+            addBanner("ok", "Segment regenerate started — poll log for progress.");
+            poll();
+          } catch (e) {
+            window.alert(String(e));
+            btn.disabled = false;
+          }
+        };
+      });
+    }
+
+    async function loadVoiceSegments() {
+      if (!voicePairSel) return;
+      var pi = parseInt(voicePairSel.value, 10);
+      try {
+        var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/voice-segments", { credentials: "same-origin" });
+        if (!r.ok) return;
+        renderVoiceSegments(await r.json());
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    if (voicePairSel) {
+      voicePairSel.addEventListener("change", loadVoiceSegments);
+      loadVoiceSegments();
+      setInterval(loadVoiceSegments, 8000);
+    }
+
+    if (btnMergeVoice) {
+      btnMergeVoice.onclick = async function () {
+        var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;
+        btnMergeVoice.disabled = true;
+        try {
+          var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/merge-voice", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          });
+          if (!r.ok) {
+            window.alert(await r.text());
+            btnMergeVoice.disabled = false;
+            return;
+          }
+          addBanner("ok", "Re-merge complete — refresh Step 2 artifacts.");
+          poll();
+        } catch (e) {
+          window.alert(String(e));
+        }
+        btnMergeVoice.disabled = false;
       };
     }
   }

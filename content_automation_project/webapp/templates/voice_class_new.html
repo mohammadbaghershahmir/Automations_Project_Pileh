@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}New Voice / Speech Class{% endblock %}
+{% block head %}
+<style>
+  .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
+  .tb-row input[type="text"], .tb-row select { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 14px; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Voice / Speech Class</h1>
+{% if multipart_ok is defined and not multipart_ok %}
+<p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
+{% endif %}
+<p class="muted"><strong>Two-step job:</strong> Step&nbsp;1 generates a reviewable script JSON via OpenRouter. Step&nbsp;2 runs Gemini TTS (≤1&nbsp;min per segment), then merges intro + speech + outro into one MP3 per chapter. Upload <strong>Importance &amp; Type</strong> output (<code>a*.json</code>) and a <strong>Word document</strong> with سوالات شناسنامه‌دار. Pairing follows book/chapter like Test Bank 1.</p>
+
+<form method="post" action="/jobs/voice-class" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Job name</h2>
+    <input id="job_name" type="text" name="job_name" required maxlength="200" placeholder="e.g. Ch.30 voice class" style="width:100%;max-width:480px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Tagged JSON (Importance &amp; Type)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;"><code>a*.json</code> with Imp and Type columns.</p>
+    <input type="file" name="tagged_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Word document (questions with Shenasname)</h2>
+    <input type="file" name="word_files" multiple accept=".doc,.docx" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Step 1 — Script (OpenRouter)</h2>
+    {% if request.query_params.get('prompt_saved') %}
+    <p class="muted" style="margin:0 0 10px;color:var(--accent);font-size:13px;">System default prompt saved.</p>
+    {% endif %}
+    <p class="muted" style="margin-top:0;font-size:13px;">{% if is_admin %}<strong>Submit</strong> saves defaults for future jobs.{% else %}Only admins can change system defaults here.{% endif %} Leave empty on <strong>Create job</strong> to use system defaults.</p>
+    <label>Script prompt</label>
+    <textarea name="prompt_1" dir="auto"{% if not is_admin %} readonly{% endif %}>{{ default_prompt_1 }}</textarea>
+    <div class="tb-row">
+      <label for="provider_1">Provider
+        <select name="provider_1" id="provider_1"><option value="openrouter" selected>openrouter</option></select>
+      </label>
+      <label for="model_1">Model
+        <select name="model_1" id="model_1" required>
+          {% for m in test_bank_model_choices %}
+          <option value="{{ m }}"{% if m == default_test_bank_model %} selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="tb-row">
+      <label>Max segment (seconds)
+        <input type="text" name="max_segment_seconds" value="60"/>
+      </label>
+      <label>Chars per second (estimate)
+        <input type="text" name="chars_per_second" value="13"/>
+      </label>
+      <label>Delay between pairs (s)
+        <input type="text" name="delay_seconds" value="5"/>
+      </label>
+    </div>
+    {% if is_admin %}
+    <button type="submit" class="btn-cta secondary" formaction="/admin/prompt-defaults/voice_class" formmethod="post" formnovalidate style="margin-top:16px;margin-right:8px;">Submit defaults</button>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Step 2 — TTS (Gemini)</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">API keys are managed on the <a href="/admin/gemini-tts-keys">Gemini TTS Keys</a> admin page.</p>
+    <label>TTS delivery instruction</label>
+    <textarea name="tts_instruction" dir="auto" style="min-height:160px;"{% if not is_admin %} readonly{% endif %}>{{ default_tts_instruction }}</textarea>
+    <div class="tb-row">
+      <label for="tts_model">TTS model
+        <select name="tts_model" id="tts_model">
+          {% for m in tts_model_choices %}
+          <option value="{{ m }}"{% if m == default_tts_model %} selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label for="tts_voice">Voice
+        <select name="tts_voice" id="tts_voice">
+          {% for v in tts_voice_choices %}
+          <option value="{{ v }}"{% if v == default_tts_voice %} selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+  </div>
+</form>
+{% endblock %}

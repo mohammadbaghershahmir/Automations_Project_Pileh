@@ -100,6 +100,14 @@ def register_artifacts_under(
                 role = "step2_failed_topics"
             elif fn_low.startswith("b") and fn_low.endswith(".json") and "+" in fn:
                 role = "final_b_json"
+            elif fn_low.startswith("voice_script_") and fn_low.endswith(".json"):
+                role = "voice_script_json"
+            elif "/tts_segments/" in low and fn_low.startswith("segment_") and fn_low.endswith(".wav"):
+                role = "tts_segment"
+            elif fn_low.startswith("final_voice_") and fn_low.endswith(".mp3"):
+                role = "final_mp3"
+            elif "/prompts/" in low and "llm_prompt" in low:
+                role = "llm_prompt_step1" if "step1" in low else "llm_prompt_step2"
             elif low.endswith(".txt"):
                 role = "txt_dump"
 

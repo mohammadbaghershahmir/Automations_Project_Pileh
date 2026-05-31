@@ -34,9 +34,15 @@ from webapp.bootstrap import (
 from webapp.config import (
     DEFAULT_TEST_BANK_MODEL,
     DEFAULT_TEST_BANK_PROVIDER,
+    DEFAULT_VOICE_CLASS_CHARS_PER_SECOND,
+    DEFAULT_VOICE_CLASS_MAX_SEGMENT_SECONDS,
+    DEFAULT_VOICE_CLASS_TTS_MODEL,
+    DEFAULT_VOICE_CLASS_TTS_VOICE,
+    GEMINI_TTS_KEYS_SEED_DIR,
     JOBS_ROOT,
     PROJECT_ROOT,
     RUN_TASKS_INLINE,
+    SONGS_DIR,
     TEST_BANK_OPENROUTER_MODEL_CHOICES,
     normalize_test_bank_model,
     normalize_test_bank_provider,
@@ -70,7 +76,7 @@ from webapp.system_prompt_defaults import (
     resolve_prompt_for_job,
     seed_system_prompt_defaults,
 )
-from webapp.models import Artifact, InboxNotification, Job, JobLogLine, JobPair, User
+from webapp.models import Artifact, GeminiTtsApiKey, InboxNotification, Job, JobLogLine, JobPair, User
 from webapp.tasks_stage_v import run_full_pipeline_job, run_step1_job, run_step2_job
 from stage_v_pairing import (
     attach_step1_combined_uploads_to_pairs,
@@ -265,6 +271,7 @@ JOB_STAGE_LABELS = {
     "table_notes_json_to_word": "Table Notes → Word",
     "document_processing_json_to_word": "Table Notes → Word",
     "stage_l": "Chapter Summary",
+    "voice_class": "Voice / Speech Class",
     # Book Changes Detection — Stage X
     "book_changes": "Book Changes Detection",
     "book_changes_detection": "Book Changes Detection",
@@ -323,9 +330,18 @@ def effective_job_list_status(job: Job, pairs: List[JobPair]) -> str:
     return "pending"
 
 
-STEP1_ARTIFACT_ROLES = frozenset({"step1_combined", "txt_dump", "llm_prompt_step1"})
+STEP1_ARTIFACT_ROLES = frozenset({"step1_combined", "txt_dump", "llm_prompt_step1", "voice_script_json"})
 STEP2_ARTIFACT_ROLES = frozenset(
-    {"step2_topic", "final_b_json", "step2_failed_topics", "step2_prompt_input", "output", "llm_prompt_step2"}
+    {
+        "step2_topic",
+        "final_b_json",
+        "step2_failed_topics",
+        "step2_prompt_input",
+        "output",
+        "llm_prompt_step2",
+        "tts_segment",
+        "final_mp3",
+    }
 )
 
 
@@ -411,6 +427,9 @@ def create_app() -> FastAPI:
             ensure_missing_env_admins(db)
             sync_admin_password_from_env(db)
             seed_system_prompt_defaults(db)
+            from webapp.gemini_tts_keys_service import seed_gemini_tts_keys_from_dir
+
+            seed_gemini_tts_keys_from_dir(db, GEMINI_TTS_KEYS_SEED_DIR)
         finally:
             db.close()
 
@@ -534,7 +553,7 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(
             request,
             "jobs_list.html",
-            {"user": user, "job_rows": job_rows},
+            {"user": user, "job_rows": job_rows, "is_admin": is_admin_user(user)},
         )
 
     @app.get("/test-bank/new", response_class=HTMLResponse)
@@ -736,6 +755,32 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/voice-class/new", response_class=HTMLResponse)
+    def voice_class_new(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
+        from api_layer import APIConfig
+
+        return templates.TemplateResponse(
+            request,
+            "voice_class_new.html",
+            {
+                "user": user,
+                "is_admin": is_admin_user(user),
+                "multipart_ok": HAS_MULTIPART,
+                "default_prompt_1": _system_prompt_for_ui(db, "voice_class", "prompt_1"),
+                "default_tts_instruction": _system_prompt_for_ui(db, "voice_class", "tts_instruction"),
+                "default_test_bank_model": DEFAULT_TEST_BANK_MODEL,
+                "test_bank_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
+                "default_tts_model": DEFAULT_VOICE_CLASS_TTS_MODEL,
+                "default_tts_voice": DEFAULT_VOICE_CLASS_TTS_VOICE,
+                "tts_model_choices": APIConfig.TTS_MODELS,
+                "tts_voice_choices": APIConfig.TTS_VOICES,
+            },
+        )
+
     @app.post("/admin/prompt-defaults/{job_type}")
     async def post_admin_prompt_defaults(
         job_type: str,
@@ -754,6 +799,105 @@ def create_app() -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         redirect_path = NEW_JOB_PAGE_BY_TYPE.get(jt, "/jobs")
         return RedirectResponse(f"{redirect_path}?prompt_saved=1", status_code=302)
+
+    @app.get("/admin/gemini-tts-keys", response_class=HTMLResponse)
+    def admin_gemini_tts_keys_page(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> Any:
+        require_admin(user)
+        from webapp.gemini_tts_keys_service import list_keys_for_admin
+
+        imported = request.query_params.get("imported")
+        added = request.query_params.get("added")
+        skipped = request.query_params.get("skipped")
+        err = request.query_params.get("error")
+        return templates.TemplateResponse(
+            request,
+            "admin_gemini_tts_keys.html",
+            {
+                "user": user,
+                "keys": list_keys_for_admin(db),
+                "imported": imported,
+                "added": added,
+                "skipped": skipped,
+                "error": err,
+            },
+        )
+
+    @app.post("/admin/gemini-tts-keys/add")
+    async def admin_gemini_tts_keys_add(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> RedirectResponse:
+        require_admin(user)
+        form = await request.form()
+        from webapp.gemini_tts_keys_service import add_key_manual
+
+        ok, msg = add_key_manual(
+            db,
+            account_name=str(form.get("account_name") or ""),
+            project_name=str(form.get("project_name") or ""),
+            api_key=str(form.get("api_key") or ""),
+            admin_user_id=user.id,
+        )
+        if not ok:
+            return RedirectResponse(f"/admin/gemini-tts-keys?error={msg}", status_code=302)
+        return RedirectResponse("/admin/gemini-tts-keys?imported=1&added=1", status_code=302)
+
+    @app.post("/admin/gemini-tts-keys/import")
+    async def admin_gemini_tts_keys_import(
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+        csv_file: UploadFile = File(...),
+    ) -> RedirectResponse:
+        require_admin(user)
+        from webapp.gemini_tts_keys_service import import_csv_bytes
+
+        content = await csv_file.read()
+        fallback = (csv_file.filename or "").replace(".csv", "").replace(" apikey", "").strip()
+        added, skipped, errors = import_csv_bytes(
+            db,
+            content,
+            fallback_account=fallback,
+            admin_user_id=user.id,
+        )
+        if errors and added == 0:
+            return RedirectResponse(
+                f"/admin/gemini-tts-keys?error={errors[0][:200]}",
+                status_code=302,
+            )
+        return RedirectResponse(
+            f"/admin/gemini-tts-keys?imported=1&added={added}&skipped={skipped}",
+            status_code=302,
+        )
+
+    @app.post("/admin/gemini-tts-keys/{key_id}/toggle")
+    def admin_gemini_tts_keys_toggle(
+        key_id: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+        active: str = Form("1"),
+    ) -> RedirectResponse:
+        require_admin(user)
+        from webapp.gemini_tts_keys_service import toggle_key_active
+
+        toggle_key_active(db, key_id, active in ("1", "true", "on", "yes"))
+        return RedirectResponse("/admin/gemini-tts-keys", status_code=302)
+
+    @app.post("/admin/gemini-tts-keys/{key_id}/delete")
+    def admin_gemini_tts_keys_delete(
+        key_id: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> RedirectResponse:
+        require_admin(user)
+        from webapp.gemini_tts_keys_service import delete_key
+
+        delete_key(db, key_id)
+        return RedirectResponse("/admin/gemini-tts-keys", status_code=302)
 
     @app.get("/image-file-catalog/new", response_class=HTMLResponse)
     def image_file_catalog_new(request: Request, user: CurrentUser) -> Any:
@@ -1968,6 +2112,142 @@ def create_app() -> FastAPI:
 
             return RedirectResponse(f"/jobs/{job_id}", status_code=302)
 
+        @app.post("/jobs/voice-class")
+        async def create_voice_class_job(
+            user: CurrentUser,
+            db: Session = Depends(get_db),
+            tagged_json_files: List[UploadFile] = File(...),
+            word_files: List[UploadFile] = File(...),
+            prompt_1: str = Form(""),
+            tts_instruction: str = Form(""),
+            provider_1: str = Form(DEFAULT_TEST_BANK_PROVIDER),
+            model_1: str = Form(DEFAULT_TEST_BANK_MODEL),
+            tts_model: str = Form(DEFAULT_VOICE_CLASS_TTS_MODEL),
+            tts_voice: str = Form(DEFAULT_VOICE_CLASS_TTS_VOICE),
+            max_segment_seconds: str = Form("60"),
+            chars_per_second: str = Form("13"),
+            delay_seconds: str = Form("5"),
+            job_name: str = Form(""),
+        ) -> RedirectResponse:
+            name_stripped = (job_name or "").strip()
+            if not name_stripped:
+                raise HTTPException(400, "Job name is required (a short label to find this job in the list).")
+            if len(name_stripped) > 200:
+                raise HTTPException(400, "Job name must be at most 200 characters.")
+
+            tmp = tempfile.mkdtemp(prefix="voiceclass_upload_")
+            try:
+                j_paths: List[str] = []
+                for uf in tagged_json_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    j_paths.append(dest)
+
+                w_paths: List[str] = []
+                for uf in word_files:
+                    if not uf.filename:
+                        continue
+                    dest = os.path.join(tmp, os.path.basename(uf.filename))
+                    content = await uf.read()
+                    with open(dest, "wb") as f:
+                        f.write(content)
+                    w_paths.append(dest)
+
+                if not j_paths:
+                    raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
+                if not w_paths:
+                    raise HTTPException(400, "Upload at least one Word document with Shenasname questions.")
+
+                pairs_spec = auto_pair_stage_v_files(j_paths, w_paths)
+                if not pairs_spec:
+                    raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
+                unpaired = [p for p in pairs_spec if not p.get("word_path")]
+                if unpaired:
+                    raise HTTPException(
+                        400,
+                        f"{len(unpaired)} tagged file(s) could not be matched to a Word document.",
+                    )
+
+                try:
+                    delay_val = float(delay_seconds)
+                except ValueError:
+                    delay_val = 5.0
+                try:
+                    max_seg_val = float(max_segment_seconds)
+                except ValueError:
+                    max_seg_val = DEFAULT_VOICE_CLASS_MAX_SEGMENT_SECONDS
+                try:
+                    cps_val = float(chars_per_second)
+                except ValueError:
+                    cps_val = DEFAULT_VOICE_CLASS_CHARS_PER_SECOND
+
+                prompt_1_eff = _prompt_for_new_job(db, "voice_class", prompt_1, "prompt_1")
+                tts_instruction_eff = _prompt_for_new_job(db, "voice_class", tts_instruction, "tts_instruction")
+                model_1_eff = normalize_test_bank_model(model_1)
+                if model_1_eff not in TEST_BANK_OPENROUTER_MODEL_CHOICES:
+                    raise HTTPException(400, "Invalid OpenRouter model.")
+                provider_1_eff = normalize_test_bank_provider(provider_1)
+
+                cfg = {
+                    "display_name": name_stripped,
+                    "prompt_1": prompt_1_eff,
+                    "tts_instruction": tts_instruction_eff,
+                    "provider_1": provider_1_eff,
+                    "model_1": model_1_eff,
+                    "tts_model": (tts_model or DEFAULT_VOICE_CLASS_TTS_MODEL).strip(),
+                    "tts_voice": (tts_voice or DEFAULT_VOICE_CLASS_TTS_VOICE).strip(),
+                    "max_segment_seconds": max_seg_val,
+                    "chars_per_second": cps_val,
+                    "delay_seconds": delay_val,
+                }
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                job = Job(
+                    id=job_id,
+                    type="voice_class",
+                    status="draft",
+                    created_by_id=user.id,
+                    config_json=json.dumps(cfg, ensure_ascii=False),
+                )
+                db.add(job)
+                db.flush()
+
+                for pair_index, p in enumerate(pairs_spec):
+                    tagged = p["stage_j_path"]
+                    word = p["word_path"]
+                    ensure_dirs(job_id, pair_index)
+                    tagged_name = os.path.basename(tagged)
+                    word_name = os.path.basename(word)
+                    rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
+                    rel_word = f"pair_{pair_index}/inputs/{word_name}"
+                    shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
+                    shutil.copy2(word, os.path.join(root, rel_word.replace("/", os.sep)))
+                    db.add(
+                        JobPair(
+                            job_id=job_id,
+                            pair_index=pair_index,
+                            stage_j_filename=tagged_name,
+                            word_filename=word_name,
+                            stage_j_relpath=rel_tagged,
+                            word_relpath=rel_word,
+                            output_relpath=f"pair_{pair_index}/output",
+                        )
+                    )
+                    register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
+                    register_input_artifact(db, job_id, pair_index, root, rel_word, "upload_word")
+
+                db.commit()
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+            return RedirectResponse(f"/jobs/{job_id}", status_code=302)
+
         @app.post("/jobs/image-file-catalog")
         async def create_image_file_catalog_job(
             user: CurrentUser,
@@ -2355,6 +2635,10 @@ def create_app() -> FastAPI:
         def create_chapter_summary_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
 
+        @app.post("/jobs/voice-class")
+        def create_voice_class_job_stub(user: CurrentUser) -> None:
+            raise HTTPException(503, "Install python-multipart to enable file uploads.")
+
         @app.post("/jobs/image-file-catalog")
         def create_image_file_catalog_job_stub(user: CurrentUser) -> None:
             raise HTTPException(503, "Install python-multipart to enable file uploads.")
@@ -2403,6 +2687,8 @@ def create_app() -> FastAPI:
             step2_enabled = False
         elif jt == "test_bank_1":
             step2_enabled = False
+        elif jt in ("test_bank", "voice_class"):
+            step2_enabled = all_pairs_step1_succeeded(pairs)
         else:
             step2_enabled = job.type != "test_bank" or all_pairs_step1_succeeded(pairs)
         show_step2_section = (not single_stage) and (jt != "test_bank_1")
@@ -2427,17 +2713,21 @@ def create_app() -> FastAPI:
                 )
             step2_poll_roles_json = "[]"
         else:
-            step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump", "llm_prompt_step1"])
-            step2_poll_roles_json = json.dumps(
-                [
-                    "step2_topic",
-                    "final_b_json",
-                    "step2_failed_topics",
-                    "step2_prompt_input",
-                    "output",
-                    "llm_prompt_step2",
-                ]
-            )
+            if jt == "voice_class":
+                step1_poll_roles_json = json.dumps(["voice_script_json", "llm_prompt_step1"])
+                step2_poll_roles_json = json.dumps(["tts_segment", "final_mp3"])
+            else:
+                step1_poll_roles_json = json.dumps(["step1_combined", "txt_dump", "llm_prompt_step1"])
+                step2_poll_roles_json = json.dumps(
+                    [
+                        "step2_topic",
+                        "final_b_json",
+                        "step2_failed_topics",
+                        "step2_prompt_input",
+                        "output",
+                        "llm_prompt_step2",
+                    ]
+                )
         stage_label = job_stage_label(job)
         cfg_dict = json.loads(job.config_json or "{}")
         prompt_editor_rows = build_prompt_editor_rows(db, jt, cfg_dict)
@@ -2470,6 +2760,8 @@ def create_app() -> FastAPI:
                 "job_type_has_editable_prompts": job_type_has_editable_prompts(jt),
                 "supports_unit_repair": supports_unit_repair,
                 "renumber_scheme": renumber_scheme,
+                "is_voice_class": jt == "voice_class",
+                "is_admin": is_admin_user(user),
             },
         )
 
@@ -2834,6 +3126,118 @@ def create_app() -> FastAPI:
             if art:
                 sec["artifact_id"] = art.id
         return payload
+
+    @app.get("/jobs/{job_id}/pairs/{pair_index}/voice-segments")
+    def get_voice_segments(
+        job_id: str,
+        pair_index: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if (job.type or "").strip() != "voice_class":
+            return {"supported": False, "segments": []}
+
+        from webapp.tasks_voice_class import _find_voice_script
+
+        base = job_root(job_id)
+        script_path = _find_voice_script(base, pair_index)
+        if not script_path:
+            return {"supported": True, "segments": [], "script_missing": True}
+
+        with open(script_path, encoding="utf-8") as f:
+            data = json.load(f)
+        segments = data.get("segments") or []
+        meta = data.get("metadata") or {}
+        out = []
+        for seg in segments:
+            sid = int(seg.get("segment_id") or 0)
+            rel_wav = f"pair_{pair_index}/output/tts_segments/segment_{sid:03d}.wav"
+            abs_wav = os.path.join(base, rel_wav.replace("/", os.sep))
+            art = (
+                db.query(Artifact)
+                .filter(Artifact.job_id == job_id, Artifact.rel_path == rel_wav)
+                .one_or_none()
+            )
+            out.append(
+                {
+                    "segment_id": sid,
+                    "paragraph_count": seg.get("paragraph_count"),
+                    "estimated_seconds": seg.get("estimated_seconds"),
+                    "char_count": seg.get("char_count"),
+                    "has_wav": os.path.isfile(abs_wav),
+                    "artifact_id": art.id if art else None,
+                    "rel_path": rel_wav if os.path.isfile(abs_wav) else None,
+                }
+            )
+        return {
+            "supported": True,
+            "segments": out,
+            "metadata": meta,
+        }
+
+    @app.post("/jobs/{job_id}/pairs/{pair_index}/voice-segments/{segment_id}/regenerate")
+    def post_regenerate_voice_segment(
+        job_id: str,
+        pair_index: int,
+        segment_id: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if (job.type or "").strip() != "voice_class":
+            raise HTTPException(400, "Not a voice class job")
+        if job.status in ("running", "queued"):
+            raise HTTPException(409, "Job is still running")
+
+        job.status = "queued"
+        job.cancel_requested = False
+        db.commit()
+
+        def _run() -> None:
+            from webapp.tasks_voice_class import run_voice_class_regenerate_segment
+
+            run_voice_class_regenerate_segment(job_id, pair_index, segment_id)
+
+        try:
+            if tasks_use_celery_queue():
+                import threading
+
+                threading.Thread(target=_run, daemon=True).start()
+            else:
+                import threading
+
+                threading.Thread(target=_run, daemon=True).start()
+        except Exception as e:
+            raise HTTPException(503, str(e)) from e
+        return {"ok": True, "job_id": job_id, "segment_id": segment_id}
+
+    @app.post("/jobs/{job_id}/pairs/{pair_index}/merge-voice")
+    def post_merge_voice(
+        job_id: str,
+        pair_index: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if (job.type or "").strip() != "voice_class":
+            raise HTTPException(400, "Not a voice class job")
+        if job.status in ("running", "queued"):
+            raise HTTPException(409, "Job is still running")
+
+        from webapp.tasks_voice_class import run_voice_class_merge_only
+
+        run_voice_class_merge_only(job_id, pair_index)
+        return {"ok": True, "job_id": job_id, "pair_index": pair_index}
 
     @app.post("/jobs/{job_id}/pairs/{pair_index}/units/{unit_index}/regenerate")
     def post_regenerate_unit(

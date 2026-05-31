@@ -339,6 +339,11 @@
       <a href="/image-file-catalog/new" class="{% if request.url.path.startswith('/image-file-catalog') %}active{% endif %}">Image File Catalog</a>
       <a href="/flashcard/new" class="{% if request.url.path == '/flashcard/new' %}active{% endif %}">Flashcards</a>
       <a href="/chapter-summary/new" class="{% if request.url.path == '/chapter-summary/new' %}active{% endif %}">Chapter Summary</a>
+      <a href="/voice-class/new" class="{% if request.url.path == '/voice-class/new' %}active{% endif %}">Voice Class</a>
+      {% if is_admin is defined and is_admin %}
+      <span class="nav-label">Admin</span>
+      <a href="/admin/gemini-tts-keys" class="{% if request.url.path.startswith('/admin/gemini-tts-keys') %}active{% endif %}">Gemini TTS Keys</a>
+      {% endif %}
       <a href="/json-to-csv/new" class="{% if request.url.path.startswith('/json-to-csv') %}active{% endif %}">JSON to CSV</a>
       <a href="/table-notes/json-to-word/new" class="{% if request.url.path.startswith('/table-notes/json-to-word') or request.url.path.startswith('/document-processing/json-to-word') %}active{% endif %}">Table Notes → Word</a>
       {% block sidebar_extra %}{% endblock %}

@@ -20,6 +20,8 @@ _TABLE_NOTES_KEY = "Table Notes Prompt"
 _IMPORTANCE_TYPE_KEY = "Importance & Type Prompt"
 _FLASHCARD_KEY = "Flashcard Prompt"
 _CHAPTER_SUMMARY_KEY = "Chapter Summary Prompt"
+_VOICE_CLASS_SCRIPT_KEY = "Voice Class Script Prompt"
+_VOICE_CLASS_TTS_KEY = "Voice Class TTS Instruction"
 
 
 def _read_prompts() -> dict:
@@ -70,6 +72,14 @@ def get_default_flashcard_prompt() -> str:
 
 def get_default_chapter_summary_prompt() -> str:
     return _read_prompts()[_CHAPTER_SUMMARY_KEY].strip()
+
+
+def get_default_voice_class_script_prompt() -> str:
+    return _read_prompts()[_VOICE_CLASS_SCRIPT_KEY].strip()
+
+
+def get_default_voice_class_tts_instruction() -> str:
+    return _read_prompts()[_VOICE_CLASS_TTS_KEY].strip()
 
 
 DEFAULT_TEST_BANK_STEP1_PROMPT = get_default_step1_prompt()

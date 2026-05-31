@@ -23,4 +23,8 @@ PROMPT_KEYS_BY_JOB_TYPE: Dict[str, List[tuple[str, str]]] = {
     "importance_type": [("prompt", "Importance & Type (Stage J) prompt")],
     "flashcard": [("prompt", "Flashcard Generation (Stage H) prompt")],
     "chapter_summary": [("prompt", "Chapter Summary (Stage L) prompt")],
+    "voice_class": [
+        ("prompt_1", "Step 1 — voice script prompt"),
+        ("tts_instruction", "Step 2 — Gemini TTS delivery instruction"),
+    ],
 }

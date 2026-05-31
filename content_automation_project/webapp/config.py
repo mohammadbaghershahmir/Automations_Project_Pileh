@@ -45,4 +45,13 @@ def normalize_test_bank_provider(value: object, default: str = DEFAULT_TEST_BANK
     return normalize_nonempty(value, default)
 
 
-# Admin bootstrap: ADMIN_EMAIL_1, ADMIN_PASSWORD_1, ... up to 3, or JSON in ADMIN_BOOTSTRAP
+SONGS_DIR = os.environ.get("SONGS_DIR", str(PROJECT_ROOT / "songs"))
+GEMINI_TTS_KEYS_SEED_DIR = os.environ.get(
+    "GEMINI_TTS_KEYS_SEED_DIR",
+    str(PROJECT_ROOT / "data" / "seed" / "gemini_tts_keys"),
+)
+
+DEFAULT_VOICE_CLASS_TTS_MODEL = "gemini-2.5-flash-preview-tts"
+DEFAULT_VOICE_CLASS_TTS_VOICE = "Kore"
+DEFAULT_VOICE_CLASS_MAX_SEGMENT_SECONDS = 60.0
+DEFAULT_VOICE_CLASS_CHARS_PER_SECOND = 13.0

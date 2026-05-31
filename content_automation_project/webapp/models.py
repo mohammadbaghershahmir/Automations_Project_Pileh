@@ -128,3 +128,20 @@ class SystemPromptDefault(Base):
     prompt_text = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+class GeminiTtsApiKey(Base):
+    """Gemini TTS API keys for Voice Class jobs (admin-managed pool)."""
+
+    __tablename__ = "gemini_tts_api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_name = Column(String(255), nullable=False, default="")
+    project_name = Column(String(512), nullable=False, default="")
+    api_key = Column(String(512), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    exhausted_until = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)

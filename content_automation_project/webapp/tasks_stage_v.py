@@ -124,6 +124,12 @@ def run_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
 
             run_chapter_summary_step1_job(job_id, pair_indices)
             return
+        if jt == "voice_class":
+            db.close()
+            from webapp.tasks_voice_class import run_voice_class_step1_job
+
+            run_voice_class_step1_job(job_id, pair_indices)
+            return
         if jt in (
             "chapter_summary_json_to_csv",
             "image_catalog_json_to_csv",
@@ -305,9 +311,15 @@ def run_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None
             return
         if jt == "test_bank_1":
             return
+        if jt == "voice_class":
+            db.close()
+            from webapp.tasks_voice_class import run_voice_class_step2_job
+
+            run_voice_class_step2_job(job_id, pair_indices)
+            return
 
         cfg = json.loads(job.config_json or "{}")
-        prompt_2 = resolve_prompt_for_job(db, jt_gate, cfg, "prompt_2")
+        prompt_2 = resolve_prompt_for_job(db, jt, cfg, "prompt_2")
         model_2 = normalize_test_bank_model(cfg.get("model_2"))
         provider_2 = normalize_test_bank_provider(cfg.get("provider_2"))
         model_1 = normalize_test_bank_model(cfg.get("model_1"))

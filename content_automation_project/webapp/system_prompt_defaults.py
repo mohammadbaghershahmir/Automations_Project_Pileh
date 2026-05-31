@@ -21,6 +21,8 @@ from webapp.default_prompts import (
     get_default_step1_prompt,
     get_default_step2_prompt,
     get_default_table_notes_prompt,
+    get_default_voice_class_script_prompt,
+    get_default_voice_class_tts_instruction,
 )
 from webapp.prompt_keys import PROMPT_KEYS_BY_JOB_TYPE
 from webapp.models import Job, SystemPromptDefault
@@ -45,14 +47,19 @@ NEW_JOB_PAGE_BY_TYPE: Dict[str, str] = {
     "importance_type": "/importance-type/new",
     "flashcard": "/flashcard/new",
     "chapter_summary": "/chapter-summary/new",
+    "voice_class": "/voice-class/new",
 }
 
 
 def _seed_text_for_key(job_type: str, config_key: str) -> str:
     if config_key == "prompt_1":
+        if job_type == "voice_class":
+            return get_default_voice_class_script_prompt()
         return get_default_step1_prompt()
     if config_key == "prompt_2":
         return get_default_step2_prompt()
+    if config_key == "tts_instruction" and job_type == "voice_class":
+        return get_default_voice_class_tts_instruction()
     if config_key != "prompt":
         return ""
     if job_type == "pre_ocr_topic":
