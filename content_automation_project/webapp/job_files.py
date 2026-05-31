@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from typing import Iterable, List, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from webapp.config import JOBS_ROOT
-from webapp.models import Artifact, JobLogLine
+from webapp.models import Artifact, InboxNotification, Job, JobLogLine
 
 
 def job_root(job_id: str) -> str:
@@ -165,6 +166,17 @@ def list_word_basenames_for_job(job_id: str) -> List[str]:
             if low.endswith(".docx") or low.endswith(".doc"):
                 names.add(fn)
     return sorted(names, key=lambda s: s.lower())
+
+
+def delete_job_completely(db: Session, job: Job) -> None:
+    """Remove DB rows (cascade) and the job directory under JOBS_ROOT."""
+    job_id = job.id
+    db.query(InboxNotification).filter(InboxNotification.job_id == job_id).delete(
+        synchronize_session=False
+    )
+    db.delete(job)
+    db.commit()
+    shutil.rmtree(job_root(job_id), ignore_errors=True)
 
 
 def find_word_file_abs_for_basename(job_id: str, basename: str) -> Optional[str]:

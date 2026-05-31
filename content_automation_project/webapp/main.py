@@ -48,6 +48,7 @@ from webapp.deps import CurrentUser, is_admin_user, require_admin
 from webapp.datetime_jalali import format_tehran_shamsi
 from webapp.job_files import (
     append_log,
+    delete_job_completely,
     ensure_dirs,
     find_word_file_abs_for_basename,
     job_root,
@@ -286,6 +287,13 @@ def job_stage_label(job: Job) -> str:
     return JOB_STAGE_LABELS.get(t, t.replace("_", " ").title())
 
 
+def job_active_for_delete(job: Job, pairs: List[JobPair]) -> bool:
+    """True while a worker may still be using this job (stop before delete)."""
+    if (job.status or "") in ("queued", "running"):
+        return True
+    return effective_job_list_status(job, pairs) in ("running", "queued")
+
+
 def effective_job_list_status(job: Job, pairs: List[JobPair]) -> str:
     """Jobs list row status: prefer pair outcomes so stale job.status does not show succeeded when pairs failed."""
     st = job.status or ""
@@ -519,6 +527,7 @@ def create_app() -> FastAPI:
                 "job": j,
                 "list_status": effective_job_list_status(j, list(j.pairs)),
                 "stage_label": job_stage_label(j),
+                "can_delete": user_can_edit_job(j, user),
             }
             for j in jobs
         ]
@@ -2719,6 +2728,30 @@ def create_app() -> FastAPI:
             None,
         )
         db.commit()
+        return {"ok": True, "job_id": job_id}
+
+    @app.post("/jobs/{job_id}/delete")
+    def delete_job_endpoint(
+        job_id: str,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = (
+            db.query(Job)
+            .options(joinedload(Job.pairs))
+            .filter(Job.id == job_id)
+            .one_or_none()
+        )
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        pairs = list(job.pairs)
+        if job_active_for_delete(job, pairs):
+            raise HTTPException(
+                409,
+                "Job is still queued or running. Stop it and wait until it finishes stopping, then try again.",
+            )
+        delete_job_completely(db, job)
         return {"ok": True, "job_id": job_id}
 
     @app.get("/jobs/{job_id}/pairs/{pair_index}/units")

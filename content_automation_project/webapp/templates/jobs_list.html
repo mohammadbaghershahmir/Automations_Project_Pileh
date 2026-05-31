@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Jobs{% endblock %}
+{% block head %}
+<style>
+  .jobs-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button.btn-danger {
+    background: #7f1d1d;
+    color: #fecaca;
+    border: 1px solid #991b1b;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button.btn-danger:hover { background: #991b1b; }
+  button.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+{% endblock %}
 {% block content %}
 <h1>Jobs</h1>
 <p class="muted">Recent jobs (all users). Times are <strong>Asia/Tehran</strong> (شمسی). Status reflects pair outcomes when available.</p>
@@ -7,11 +23,11 @@
   <thead>
     <tr><th>Name</th><th>Creator</th><th>Stage</th><th>Status</th><th>Created</th><th></th></tr>
   </thead>
-  <tbody>
+  <tbody id="jobs-table-body">
     {% for row in job_rows %}
     {% set j = row.job %}
     {% set c = j|job_cfg %}
-    <tr class="{% if row.list_status in ['running', 'queued'] %}job-row-active{% endif %}">
+    <tr class="{% if row.list_status in ['running', 'queued'] %}job-row-active{% endif %}" data-job-id="{{ j.id }}">
       <td>
         <strong>{{ c.get("display_name", "Test Bank") }}</strong>
         <span class="muted" style="font-size:11px;margin-left:6px;"><code>{{ j.id[:8] }}</code></span>
@@ -22,11 +38,179 @@
         <span class="badge {% if row.list_status == 'succeeded' %}ok{% elif row.list_status == 'failed' %}fail{% elif row.list_status in ['running', 'queued'] %}run{% elif row.list_status == 'cancelled' %}cancelled{% elif row.list_status in ['pending', 'draft'] %}pending{% endif %}">{{ row.list_status }}</span>
       </td>
       <td>{{ j.created_at|shamsi }}</td>
-      <td><a href="/jobs/{{ j.id }}">Open</a></td>
+      <td class="jobs-actions">
+        <a href="/jobs/{{ j.id }}">Open</a>
+        {% if row.can_delete %}
+        <button type="button" class="btn-danger btn-delete-job"
+          data-job-id="{{ j.id }}"
+          data-display-name="{{ c.get('display_name', 'Test Bank')|e }}"
+          data-list-status="{{ row.list_status }}"
+          data-job-status="{{ j.status }}">Delete</button>
+        {% endif %}
+      </td>
     </tr>
     {% else %}
     <tr><td colspan="6" class="muted">No jobs yet. <a href="/test-bank-1/new">Test Bank 1</a> / <a href="/test-bank-2/new">Test Bank 2</a> or <a href="/image-notes/new">Image Notes</a> / <a href="/table-notes/new">Table Notes</a> / <a href="/importance-type/new">Importance &amp; Type</a> / <a href="/image-file-catalog/new">Image File Catalog</a> / <a href="/flashcard/new">Flashcards</a> / <a href="/chapter-summary/new">Chapter Summary</a> / <a href="/json-to-csv/new">JSON to CSV</a> / <a href="/table-notes/json-to-word/new">Table Notes → Word</a>.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+
+<div id="job-delete-modal" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(0,0,0,0.65);">
+  <div role="dialog" aria-modal="true" aria-labelledby="job-delete-title" style="max-width:480px;margin:12vh auto 0;background:var(--card);border:1px solid var(--border-strong);border-radius:10px;padding:18px 18px 14px;box-shadow:var(--panel-shadow);">
+    <h2 id="job-delete-title" style="margin:0 0 10px;font-size:1.1rem;">Delete job?</h2>
+    <p id="job-delete-body" class="muted" style="margin:0 0 14px;font-size:14px;line-height:1.5;"></p>
+    <p id="job-delete-active-note" class="muted" style="display:none;margin:0 0 14px;font-size:13px;color:#fbbf24;"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+      <button type="button" id="job-delete-cancel" class="secondary">Cancel</button>
+      <button type="button" id="job-delete-confirm" class="btn-danger" style="padding:8px 16px;font-size:14px;">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById("job-delete-modal");
+  var bodyEl = document.getElementById("job-delete-body");
+  var activeNote = document.getElementById("job-delete-active-note");
+  var btnCancel = document.getElementById("job-delete-cancel");
+  var btnConfirm = document.getElementById("job-delete-confirm");
+  var pending = null;
+
+  function isListStatusActive(listStatus, jobStatus) {
+    if (listStatus === "running" || listStatus === "queued") return true;
+    if (jobStatus === "running" || jobStatus === "queued") return true;
+    return false;
+  }
+
+  function pollStillActive(data) {
+    if (!data) return true;
+    if (data.status === "running" || data.status === "queued") return true;
+    var pairs = data.pairs || [];
+    for (var i = 0; i < pairs.length; i++) {
+      var p = pairs[i];
+      if (p.step1_status === "running" || p.step2_status === "running") return true;
+    }
+    return false;
+  }
+
+  function parseError(text) {
+    try {
+      var jo = JSON.parse(text);
+      if (jo && jo.detail) {
+        return typeof jo.detail === "string" ? jo.detail : JSON.stringify(jo.detail);
+      }
+    } catch (_) {}
+    return text.slice(0, 400) || "Request failed";
+  }
+
+  function closeModal() {
+    if (modal) modal.style.display = "none";
+    pending = null;
+    if (btnConfirm) {
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = "Delete";
+    }
+  }
+
+  function openModal(btn) {
+    pending = {
+      jobId: btn.getAttribute("data-job-id"),
+      displayName: btn.getAttribute("data-display-name") || "job",
+      listStatus: btn.getAttribute("data-list-status") || "",
+      jobStatus: btn.getAttribute("data-job-status") || "",
+      row: btn.closest("tr"),
+    };
+    var active = isListStatusActive(pending.listStatus, pending.jobStatus);
+    if (bodyEl) {
+      bodyEl.textContent =
+        "Permanently delete \"" + pending.displayName + "\" (" + pending.jobId.slice(0, 8) + "…)? " +
+        "All uploads, outputs, and logs for this job will be removed. This cannot be undone.";
+    }
+    if (activeNote) {
+      if (active) {
+        activeNote.style.display = "block";
+        activeNote.textContent =
+          "This job is queued or running. It will be stopped first, then deleted once the worker has finished stopping.";
+      } else {
+        activeNote.style.display = "none";
+        activeNote.textContent = "";
+      }
+    }
+    if (modal) modal.style.display = "block";
+  }
+
+  async function requestStop(jobId) {
+    var r = await fetch("/jobs/" + jobId + "/cancel", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    var text = await r.text();
+    if (!r.ok) {
+      var msg = parseError(text);
+      if (r.status === 400 && msg.indexOf("Nothing to stop") !== -1) return;
+      throw new Error(msg);
+    }
+  }
+
+  async function waitUntilStopped(jobId) {
+    var deadline = Date.now() + 180000;
+    while (Date.now() < deadline) {
+      var r = await fetch("/jobs/" + jobId + "/poll?after_seq=0&limit=1", {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      if (!r.ok) throw new Error(parseError(await r.text()));
+      var data = await r.json();
+      if (!pollStillActive(data)) return;
+      await new Promise(function (resolve) { setTimeout(resolve, 2000); });
+    }
+    throw new Error("Timed out waiting for the job to stop. Try again in a moment.");
+  }
+
+  async function requestDelete(jobId) {
+    var r = await fetch("/jobs/" + jobId + "/delete", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    var text = await r.text();
+    if (!r.ok) throw new Error(parseError(text));
+  }
+
+  async function confirmDelete() {
+    if (!pending || !btnConfirm) return;
+    btnConfirm.disabled = true;
+    var jobId = pending.jobId;
+    var row = pending.row;
+    try {
+      if (isListStatusActive(pending.listStatus, pending.jobStatus)) {
+        btnConfirm.textContent = "Stopping…";
+        await requestStop(jobId);
+        btnConfirm.textContent = "Waiting…";
+        await waitUntilStopped(jobId);
+      }
+      btnConfirm.textContent = "Deleting…";
+      await requestDelete(jobId);
+      if (row && row.parentNode) row.remove();
+      closeModal();
+    } catch (e) {
+      window.alert(e && e.message ? e.message : String(e));
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = "Delete";
+    }
+  }
+
+  document.querySelectorAll(".btn-delete-job").forEach(function (btn) {
+    btn.addEventListener("click", function () { openModal(btn); });
+  });
+  if (btnCancel) btnCancel.addEventListener("click", closeModal);
+  if (btnConfirm) btnConfirm.addEventListener("click", confirmDelete);
+  if (modal) {
+    modal.addEventListener("click", function (ev) {
+      if (ev.target === modal) closeModal();
+    });
+  }
+})();
+</script>
 {% endblock %}
