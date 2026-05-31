@@ -4,11 +4,18 @@
 {% if is_voice_class %}
 <style>
   .voice-wave-wrap { display:flex; flex-direction:column; gap:6px; min-width:260px; max-width:440px; }
+  .voice-player-row { display:flex; align-items:center; gap:8px; }
+  .voice-play-btn {
+    flex:0 0 36px; width:36px; height:36px; padding:0; border-radius:50%;
+    font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  .voice-player-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
   .voice-wave-canvas { width:100%; height:52px; border-radius:6px; background:var(--input-bg); border:1px solid var(--border); display:block; cursor:pointer; }
   .voice-wave-canvas.is-silent { border-color:#f87171; background:#1c0f0f; }
+  .voice-time { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .voice-wave-meta { font-size:11px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .voice-wave-badge { color:#f87171; font-weight:600; font-size:11px; }
-  .voice-wave-wrap audio { width:100%; height:32px; }
+  .voice-audio-el { display:none; }
   .voice-final-wrap { max-width:640px; }
   .voice-final-wrap .voice-wave-canvas { height:72px; }
 </style>
@@ -667,6 +674,7 @@
 
   let prevS1 = null;
   let prevS2 = null;
+  var refreshVoiceSegmentsOnStep2Done = null;
   let prevJobStatus = "{{ job.status }}";
   let lastShownAdminErrorKey = "";
 
@@ -803,6 +811,7 @@
       if (!singleStage && prevS2 !== null) {
         if (prevS2 === "running" && a2 === "succeeded") {
           addBanner("ok", "Step 2 finished — review Step 2 outputs below.");
+          if (refreshVoiceSegmentsOnStep2Done) refreshVoiceSegmentsOnStep2Done(true);
         }
         if (prevS2 === "running" && a2 === "failed") {
           addBanner("fail", "Step 2 failed. Check the log below.");
@@ -1145,8 +1154,82 @@
     var voiceTbody = document.getElementById("voice-repair-tbody");
     var btnMergeVoice = document.getElementById("btn-merge-voice");
 
-    function drawVoiceWaveform(canvas, peaks, isSilent) {
-      if (!canvas || !peaks || !peaks.length) return;
+    var voiceSegmentsCacheKey = "";
+
+    function voiceFormatTime(sec) {
+      if (!isFinite(sec) || sec < 0) return "0:00";
+      var m = Math.floor(sec / 60);
+      var s = Math.floor(sec % 60);
+      return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    function voiceIsAnyPlaying() {
+      var playing = false;
+      document.querySelectorAll(".voice-audio-el").forEach(function (a) {
+        if (!a.paused && !a.ended) playing = true;
+      });
+      return playing;
+    }
+
+    function voiceDataKey(data) {
+      return JSON.stringify({
+        segments: (data.segments || []).map(function (s) {
+          return [s.segment_id, s.artifact_id, s.has_wav, s.is_silent, s.duration_seconds];
+        }),
+        final: data.final_mp3
+          ? [data.final_mp3.artifact_id, data.final_mp3.duration_seconds, data.final_mp3.is_silent]
+          : null,
+        songs: data.songs,
+      });
+    }
+
+    function captureVoicePlaybackState() {
+      var states = {};
+      document.querySelectorAll(".voice-wave-wrap[data-artifact]").forEach(function (wrap) {
+        var aid = wrap.getAttribute("data-artifact");
+        var audio = wrap.querySelector(".voice-audio-el");
+        if (!aid || !audio) return;
+        states[aid] = { t: audio.currentTime || 0, playing: !audio.paused && !audio.ended };
+      });
+      return states;
+    }
+
+    function restoreVoicePlaybackState(states) {
+      if (!states) return;
+      Object.keys(states).forEach(function (aid) {
+        var wrap = document.querySelector('.voice-wave-wrap[data-artifact="' + aid + '"]');
+        if (!wrap) return;
+        var audio = wrap.querySelector(".voice-audio-el");
+        var st = states[aid];
+        if (!audio || !st) return;
+        var apply = function () {
+          if (st.t > 0 && isFinite(audio.duration) && audio.duration > 0) {
+            audio.currentTime = Math.min(st.t, audio.duration - 0.05);
+          }
+          if (st.playing) {
+            voicePauseAllExcept(audio);
+            audio.play().catch(function () {});
+          }
+          voiceSyncPlayerUi(wrap);
+        };
+        if (audio.readyState >= 1) apply();
+        else audio.addEventListener("loadedmetadata", apply, { once: true });
+      });
+    }
+
+    function voicePauseAllExcept(exceptAudio) {
+      document.querySelectorAll(".voice-audio-el").forEach(function (a) {
+        if (a !== exceptAudio && !a.paused) {
+          a.pause();
+          var w = a.closest(".voice-wave-wrap");
+          if (w) voiceSyncPlayerUi(w);
+        }
+      });
+    }
+
+    function drawVoiceWaveform(canvas, peaks, isSilent, progress) {
+      if (!canvas) return;
+      if (!peaks || !peaks.length) peaks = [0];
       var w = canvas.clientWidth || 280;
       var h = canvas.clientHeight || 52;
       var dpr = window.devicePixelRatio || 1;
@@ -1157,14 +1240,52 @@
       ctx.clearRect(0, 0, w, h);
       var mid = h / 2;
       var barW = w / peaks.length;
-      var color = isSilent ? "#ef4444" : "#38bdf8";
+      var prog = isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+      var unplayed = isSilent ? "#7f1d1d" : "#334155";
+      var played = isSilent ? "#ef4444" : "#38bdf8";
       peaks.forEach(function (p, i) {
         var amp = isSilent ? Math.min(p, 0.06) : Math.max(0.04, p);
         var bh = amp * (h * 0.88);
-        ctx.fillStyle = color;
-        ctx.fillRect(i * barW + 0.5, mid - bh / 2, Math.max(1, barW - 1), bh);
+        var x = i * barW;
+        var barProgress = (x + barW * 0.5) / w;
+        ctx.fillStyle = barProgress <= prog ? played : unplayed;
+        ctx.fillRect(x + 0.5, mid - bh / 2, Math.max(1, barW - 1), bh);
       });
+      if (prog > 0 && prog < 1) {
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(w * prog, 0);
+        ctx.lineTo(w * prog, h);
+        ctx.stroke();
+      }
       canvas.classList.toggle("is-silent", !!isSilent);
+    }
+
+    function voiceSyncPlayerUi(wrap) {
+      if (!wrap) return;
+      var audio = wrap.querySelector(".voice-audio-el");
+      var btn = wrap.querySelector(".voice-play-btn");
+      var curEl = wrap.querySelector(".voice-cur");
+      var durEl = wrap.querySelector(".voice-dur");
+      var canvas = wrap.querySelector(".voice-wave-canvas");
+      if (!audio) return;
+      if (btn) btn.textContent = audio.paused ? "▶" : "⏸";
+      if (curEl) curEl.textContent = voiceFormatTime(audio.currentTime);
+      if (durEl) {
+        durEl.textContent = isFinite(audio.duration) && audio.duration > 0
+          ? voiceFormatTime(audio.duration)
+          : wrap.getAttribute("data-duration-label") || "—";
+      }
+      var peaks = [];
+      try {
+        peaks = JSON.parse(decodeURIComponent(canvas.getAttribute("data-peaks") || "%5B%5D"));
+      } catch (e) {
+        peaks = [];
+      }
+      var isSilent = canvas.getAttribute("data-silent") === "1";
+      var prog = isFinite(audio.duration) && audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+      drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent, prog);
     }
 
     function buildVoicePreviewCell(s) {
@@ -1174,21 +1295,29 @@
       var silentBadge = s.is_silent
         ? "<span class=\"voice-wave-badge\">Silent / empty</span>"
         : "";
-      var dur = s.duration_seconds != null ? s.duration_seconds + "s actual" : "";
-      var meta = [dur, silentBadge].filter(Boolean).join(" · ");
+      var durLabel = s.duration_seconds != null ? s.duration_seconds + "s actual" : "";
+      var durTime = s.duration_seconds != null ? voiceFormatTime(Number(s.duration_seconds)) : "—";
+      var peaksAttr = encodeURIComponent(JSON.stringify(s.waveform_peaks || []));
       return (
-        "<div class=\"voice-wave-wrap\" data-artifact=\"" + s.artifact_id + "\">" +
-        "<canvas class=\"voice-wave-canvas" + (s.is_silent ? " is-silent" : "") + "\" data-peaks=\"" + encodeURIComponent(JSON.stringify(s.waveform_peaks || [])) + "\" data-silent=\"" + (s.is_silent ? "1" : "0") + "\" title=\"Click to play/pause\"></canvas>" +
-        "<audio controls preload=\"metadata\" src=\"/artifacts/" + s.artifact_id + "/audio\"></audio>" +
-        (meta ? "<div class=\"voice-wave-meta\">" + meta + "</div>" : "") +
+        "<div class=\"voice-wave-wrap\" data-artifact=\"" + s.artifact_id + "\" data-duration-label=\"" + durTime + "\">" +
+        "<div class=\"voice-player-row\">" +
+        "<button type=\"button\" class=\"voice-play-btn secondary\" aria-label=\"Play\">▶</button>" +
+        "<div class=\"voice-player-main\">" +
+        "<canvas class=\"voice-wave-canvas" + (s.is_silent ? " is-silent" : "") + "\" data-peaks=\"" + peaksAttr + "\" data-silent=\"" + (s.is_silent ? "1" : "0") + "\" title=\"Click to seek\"></canvas>" +
+        "<div class=\"voice-time\"><span class=\"voice-cur\">0:00</span> / <span class=\"voice-dur\">" + durTime + "</span></div>" +
+        "</div></div>" +
+        "<audio class=\"voice-audio-el\" preload=\"metadata\" src=\"/artifacts/" + s.artifact_id + "/audio\"></audio>" +
+        (durLabel || silentBadge ? "<div class=\"voice-wave-meta\">" + [durLabel, silentBadge].filter(Boolean).join(" · ") + "</div>" : "") +
         "</div>"
       );
     }
 
     function wireVoicePreviewWrap(wrap) {
-      if (!wrap) return;
+      if (!wrap || wrap.getAttribute("data-voice-wired") === "1") return;
+      wrap.setAttribute("data-voice-wired", "1");
       var canvas = wrap.querySelector(".voice-wave-canvas");
-      var audio = wrap.querySelector("audio");
+      var audio = wrap.querySelector(".voice-audio-el");
+      var btn = wrap.querySelector(".voice-play-btn");
       if (!canvas) return;
       var peaks = [];
       try {
@@ -1197,21 +1326,31 @@
         peaks = [];
       }
       var isSilent = canvas.getAttribute("data-silent") === "1";
-      drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent);
-      if (audio) {
-        canvas.onclick = function () {
-          if (audio.paused) audio.play(); else audio.pause();
-        };
-        audio.addEventListener("play", function () {
-          canvas.style.outline = "2px solid var(--accent)";
-        });
-        audio.addEventListener("pause", function () {
-          canvas.style.outline = "";
-        });
-        audio.addEventListener("ended", function () {
-          canvas.style.outline = "";
+      drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent, 0);
+      if (!audio) return;
+      if (btn) {
+        btn.addEventListener("click", function () {
+          if (audio.paused) {
+            voicePauseAllExcept(audio);
+            audio.play().catch(function () {});
+          } else {
+            audio.pause();
+          }
+          voiceSyncPlayerUi(wrap);
         });
       }
+      canvas.addEventListener("click", function (ev) {
+        if (!isFinite(audio.duration) || audio.duration <= 0) return;
+        var rect = canvas.getBoundingClientRect();
+        var ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        audio.currentTime = ratio * audio.duration;
+        voiceSyncPlayerUi(wrap);
+      });
+      audio.addEventListener("loadedmetadata", function () { voiceSyncPlayerUi(wrap); });
+      audio.addEventListener("timeupdate", function () { voiceSyncPlayerUi(wrap); });
+      audio.addEventListener("play", function () { voicePauseAllExcept(audio); voiceSyncPlayerUi(wrap); });
+      audio.addEventListener("pause", function () { voiceSyncPlayerUi(wrap); });
+      audio.addEventListener("ended", function () { voiceSyncPlayerUi(wrap); });
     }
 
     function wireVoicePreviewPlayers() {
@@ -1245,23 +1384,41 @@
         host.innerHTML = "<p class=\"muted\" style=\"font-size:13px;\">Not built yet — run Step&nbsp;2 or Re-merge.</p>";
         return;
       }
+      var existing = host.querySelector('.voice-wave-wrap[data-artifact="' + fin.artifact_id + '"]');
+      if (existing && voiceIsAnyPlaying()) return;
       var silentBadge = fin.is_silent
         ? "<span class=\"voice-wave-badge\">Silent / empty</span>"
         : "";
-      var dur = fin.duration_seconds != null ? fin.duration_seconds + "s total" : "";
-      var meta = [escapeHtml(fin.filename || "final_voice.mp3"), dur, silentBadge].filter(Boolean).join(" · ");
+      var durLabel = fin.duration_seconds != null ? fin.duration_seconds + "s total" : "";
+      var durTime = fin.duration_seconds != null ? voiceFormatTime(Number(fin.duration_seconds)) : "—";
+      var peaksAttr = encodeURIComponent(JSON.stringify(fin.waveform_peaks || []));
       host.innerHTML =
-        "<div class=\"voice-wave-wrap voice-final-wrap\">" +
-        "<canvas class=\"voice-wave-canvas" + (fin.is_silent ? " is-silent" : "") + "\" data-peaks=\"" + encodeURIComponent(JSON.stringify(fin.waveform_peaks || [])) + "\" data-silent=\"" + (fin.is_silent ? "1" : "0") + "\" title=\"Click to play/pause\"></canvas>" +
-        "<audio controls preload=\"metadata\" src=\"/artifacts/" + fin.artifact_id + "/audio\"></audio>" +
-        "<div class=\"voice-wave-meta\">" + meta +
+        "<div class=\"voice-wave-wrap voice-final-wrap\" data-artifact=\"" + fin.artifact_id + "\" data-duration-label=\"" + durTime + "\">" +
+        "<div class=\"voice-player-row\">" +
+        "<button type=\"button\" class=\"voice-play-btn secondary\" aria-label=\"Play\">▶</button>" +
+        "<div class=\"voice-player-main\">" +
+        "<canvas class=\"voice-wave-canvas" + (fin.is_silent ? " is-silent" : "") + "\" data-peaks=\"" + peaksAttr + "\" data-silent=\"" + (fin.is_silent ? "1" : "0") + "\" title=\"Click to seek\"></canvas>" +
+        "<div class=\"voice-time\"><span class=\"voice-cur\">0:00</span> / <span class=\"voice-dur\">" + durTime + "</span></div>" +
+        "</div></div>" +
+        "<audio class=\"voice-audio-el\" preload=\"metadata\" src=\"/artifacts/" + fin.artifact_id + "/audio\"></audio>" +
+        "<div class=\"voice-wave-meta\">" + escapeHtml(fin.filename || "final_voice.mp3") +
+        (durLabel ? " · " + durLabel : "") +
+        (silentBadge ? " · " + silentBadge : "") +
         " · <a href=\"/artifacts/" + fin.artifact_id + "/download\">Download</a></div>" +
         "</div>";
       wireVoicePreviewPlayers();
     }
 
-    function renderVoiceSegments(data) {
+    function renderVoiceSegments(data, force) {
       if (!voiceTbody) return;
+      var key = voiceDataKey(data);
+      if (!force && key === voiceSegmentsCacheKey) {
+        updateVoiceSongsWarning(data);
+        return;
+      }
+      if (!force && voiceIsAnyPlaying()) return;
+      var playbackStates = captureVoicePlaybackState();
+      voiceSegmentsCacheKey = key;
       voiceTbody.innerHTML = "";
       var segs = (data && data.segments) || [];
       if (!segs.length) {
@@ -1284,6 +1441,7 @@
       wireVoicePreviewPlayers();
       updateVoiceSongsWarning(data);
       renderVoiceFinal(data);
+      restoreVoicePlaybackState(playbackStates);
       voiceTbody.querySelectorAll(".btn-voice-regen").forEach(function (btn) {
         btn.onclick = async function () {
           var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;
@@ -1311,22 +1469,23 @@
       });
     }
 
-    async function loadVoiceSegments() {
+    async function loadVoiceSegments(force) {
       if (!voicePairSel) return;
       var pi = parseInt(voicePairSel.value, 10);
       try {
         var r = await fetch("/jobs/" + jobId + "/pairs/" + pi + "/voice-segments", { credentials: "same-origin" });
         if (!r.ok) return;
-        renderVoiceSegments(await r.json());
+        renderVoiceSegments(await r.json(), !!force);
       } catch (e) {
         console.warn(e);
       }
     }
 
     if (voicePairSel) {
-      voicePairSel.addEventListener("change", loadVoiceSegments);
-      loadVoiceSegments();
-      setInterval(loadVoiceSegments, 8000);
+      voicePairSel.addEventListener("change", function () { loadVoiceSegments(true); });
+      loadVoiceSegments(true);
+      refreshVoiceSegmentsOnStep2Done = loadVoiceSegments;
+      setInterval(function () { loadVoiceSegments(false); }, 30000);
     }
 
     if (btnMergeVoice) {
@@ -1346,7 +1505,7 @@
           }
           addBanner("ok", "Re-merge complete — refresh Step 2 artifacts.");
           poll();
-          loadVoiceSegments();
+          loadVoiceSegments(true);
         } catch (e) {
           window.alert(String(e));
         }
