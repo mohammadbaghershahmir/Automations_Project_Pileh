@@ -574,6 +574,32 @@ class BaseStageProcessor:
             chapter_obj["subchapters"] = new_subs
         return slim
 
+    def _ocr_subchapter_has_figure_extractions(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+    ) -> bool:
+        """True when OCR Extraction JSON has at least one figure/image extraction in this subchapter."""
+        ocr_slice = self._filter_ocr_extraction_for_subchapter(
+            ocr_extraction_data, subchapter_name
+        )
+        slim = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
+        for chapter_obj in slim.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+            for sub in chapter_obj.get("subchapters", []) or []:
+                if not isinstance(sub, dict):
+                    continue
+                for topic_obj in sub.get("topics", []) or []:
+                    if not isinstance(topic_obj, dict):
+                        continue
+                    ex = topic_obj.get("extractions")
+                    if isinstance(ex, list) and ex:
+                        return True
+                    if isinstance(ex, dict) and ex:
+                        return True
+        return False
+
     def save_json_file(self, data: List[Dict], file_path: str, 
                       metadata: Dict, stage_name: str) -> bool:
         """
