@@ -1636,6 +1636,8 @@ class MultiPartPostProcessor:
                     text=paragraph_json_text,
                     system_prompt=paragraph_prompt,
                     model_name=model_name,
+                    reasoning_effort_none=True,
+                    content_only=True,
                 )
                 prompt_seq_counter += 1
                 if response_text and response_text.strip():
@@ -1932,6 +1934,8 @@ class MultiPartPostProcessor:
                 text=paragraph_json_text,
                 system_prompt=paragraph_prompt,
                 model_name=model_name,
+                reasoning_effort_none=True,
+                content_only=True,
             )
             prompt_seq += 1
             if response_text and response_text.strip():
