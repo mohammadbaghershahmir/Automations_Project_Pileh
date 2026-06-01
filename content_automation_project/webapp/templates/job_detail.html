@@ -367,35 +367,6 @@
     </tbody>
   </table>
 
-  {% if is_voice_class and is_job_owner %}
-  <div id="voice-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
-    <h3 style="margin:0 0 8px;font-size:0.95rem;">Voice segments — Regenerate &amp; merge</h3>
-    <p class="muted" style="margin:0 0 12px;font-size:13px;">After Step&nbsp;2, preview each segment waveform (flat line = silent/empty TTS), play audio, regenerate bad segments, or re-merge the final MP3.</p>
-    <label style="font-size:13px;display:block;margin-bottom:8px;">Pair:
-      <select id="voice-repair-pair" style="margin-left:6px;padding:4px 8px;border-radius:6px;">
-        {% for p in pairs %}
-        <option value="{{ p.pair_index }}">{{ p.pair_index }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <table style="width:100%;margin-bottom:14px;">
-      <thead>
-        <tr><th>Segment</th><th>Paragraphs</th><th>Est. sec</th><th style="min-width:280px;">Audio preview</th><th></th></tr>
-      </thead>
-      <tbody id="voice-repair-tbody">
-        <tr><td colspan="5" class="muted">Load segments after Step 1…</td></tr>
-      </tbody>
-    </table>
-    <button type="button" id="btn-merge-voice" class="btn-cta secondary">Re-merge final MP3</button>
-    <div id="voice-songs-warning" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid #f87171;background:#1c0f0f;color:#fecaca;font-size:13px;"></div>
-    <div id="voice-final-section" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
-      <h4 style="margin:0 0 8px;font-size:0.9rem;">Final MP3 (intro + segments + outro)</h4>
-      <p class="muted" style="margin:0 0 10px;font-size:12px;">Full chapter audio after Step&nbsp;2 or Re-merge. Waveform should show intro bump, speech blocks, then outro.</p>
-      <div id="voice-final-player"><p class="muted" style="font-size:13px;">Not built yet — run Step&nbsp;2 or Re-merge.</p></div>
-    </div>
-  </div>
-  {% endif %}
-
   {% if supports_unit_repair and is_job_owner %}
   <div id="unit-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
     <h3 style="margin:0 0 8px;font-size:0.95rem;">LLM units — Regenerate &amp; Renumber</h3>
@@ -452,7 +423,7 @@
   {% endif %}
 
   <h3 style="margin:20px 0 8px;font-size:0.95rem;">Step 2 outputs</h3>
-  <p class="muted" style="margin-top:0;font-size:13px;">Final and Step&nbsp;2 topic artifacts (updates while Step&nbsp;2 runs). LLM request dumps: role <strong>llm_prompt_step2</strong> under <code style="font-size:11px;">pair_*/prompts/</code>.</p>
+  <p class="muted" style="margin-top:0;font-size:13px;">{% if job.type == 'voice_class' %}TTS segment WAVs and merged <code>final_voice_*.mp3</code> (updates while Step&nbsp;2 runs).{% else %}Final and Step&nbsp;2 topic artifacts (updates while Step&nbsp;2 runs). LLM request dumps: role <strong>llm_prompt_step2</strong> under <code style="font-size:11px;">pair_*/prompts/</code>.{% endif %}</p>
   <table>
     <thead>
       <tr><th>Role</th><th>Path</th><th>Size</th><th></th></tr>
@@ -471,6 +442,35 @@
       {% endfor %}
     </tbody>
   </table>
+
+  {% if is_voice_class and is_job_owner %}
+  <div id="voice-repair-section" style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+    <h3 style="margin:0 0 8px;font-size:0.95rem;">Preview segments — Regenerate &amp; merge</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:13px;">Listen to each TTS segment, regenerate bad ones, then re-merge the final MP3. A flat waveform usually means silent or empty audio.</p>
+    <label style="font-size:13px;display:block;margin-bottom:8px;">Pair:
+      <select id="voice-repair-pair" style="margin-left:6px;padding:4px 8px;border-radius:6px;">
+        {% for p in pairs %}
+        <option value="{{ p.pair_index }}">{{ p.pair_index }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead>
+        <tr><th>Segment</th><th>Paragraphs</th><th>Est. sec</th><th style="min-width:280px;">Audio preview</th><th></th></tr>
+      </thead>
+      <tbody id="voice-repair-tbody">
+        <tr><td colspan="5" class="muted">Run Step&nbsp;2 to generate segments…</td></tr>
+      </tbody>
+    </table>
+    <button type="button" id="btn-merge-voice" class="btn-cta secondary">Re-merge final MP3</button>
+    <div id="voice-songs-warning" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid #f87171;background:#1c0f0f;color:#fecaca;font-size:13px;"></div>
+    <div id="voice-final-section" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+      <h4 style="margin:0 0 8px;font-size:0.9rem;">Final MP3 (intro + segments + outro)</h4>
+      <p class="muted" style="margin:0 0 10px;font-size:12px;">Full chapter audio after Step&nbsp;2 or Re-merge.</p>
+      <div id="voice-final-player"><p class="muted" style="font-size:13px;">Not built yet — run Step&nbsp;2 or Re-merge.</p></div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 

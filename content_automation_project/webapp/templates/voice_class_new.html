@@ -13,6 +13,9 @@
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
 <p class="muted"><strong>Two-step job:</strong> Step&nbsp;1 generates a reviewable script JSON via OpenRouter from Importance &amp; Type output. Step&nbsp;2 runs Gemini TTS (≤1&nbsp;min per segment), then merges intro + speech + outro into one MP3 per chapter. Upload one or more <code>a*.json</code> files (one pair per file).</p>
+{% if request.query_params.get('prompt_saved') %}
+<p class="muted" style="margin:0 0 12px;color:var(--accent);font-size:13px;">System default prompts saved.</p>
+{% endif %}
 
 <form method="post" action="/jobs/voice-class" enctype="multipart/form-data">
   <div class="card">
@@ -26,10 +29,7 @@
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Step 1 — Script (OpenRouter)</h2>
-    {% if request.query_params.get('prompt_saved') %}
-    <p class="muted" style="margin:0 0 10px;color:var(--accent);font-size:13px;">System default prompt saved.</p>
-    {% endif %}
-    <p class="muted" style="margin-top:0;font-size:13px;">{% if is_admin %}<strong>Submit</strong> saves defaults for future jobs.{% else %}Only admins can change system defaults here.{% endif %} Leave empty on <strong>Create job</strong> to use system defaults.</p>
+    <p class="muted" style="margin-top:0;font-size:13px;">{% if is_admin %}Admins can edit prompts below; use <strong>Submit defaults</strong> at the bottom to save for future jobs.{% else %}Only admins can change system defaults here.{% endif %} Leave empty on <strong>Create job</strong> to use system defaults.</p>
     <label>Script prompt</label>
     <textarea name="prompt_1" dir="auto"{% if not is_admin %} readonly{% endif %}>{{ default_prompt_1 }}</textarea>
     <div class="tb-row">
@@ -55,9 +55,6 @@
         <input type="text" name="delay_seconds" value="5"/>
       </label>
     </div>
-    {% if is_admin %}
-    <button type="submit" class="btn-cta secondary" formaction="/admin/prompt-defaults/voice_class" formmethod="post" formnovalidate style="margin-top:16px;margin-right:8px;">Submit defaults</button>
-    {% endif %}
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Step 2 — TTS (Gemini)</h2>
@@ -80,7 +77,15 @@
         </select>
       </label>
     </div>
-    <button type="submit" class="btn-cta" style="margin-top:16px;">Create job</button>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      {% if is_admin %}
+      <button type="submit" class="btn-cta secondary" formaction="/admin/prompt-defaults/voice_class" formmethod="post" formnovalidate>Submit defaults</button>
+      {% endif %}
+      <button type="submit" class="btn-cta">Create job</button>
+    </div>
+    {% if is_admin %}
+    <p class="muted" style="margin:10px 0 0;font-size:12px;">Submit defaults saves both the Step&nbsp;1 script prompt and Step&nbsp;2 TTS instruction.</p>
+    {% endif %}
   </div>
 </form>
 {% endblock %}
