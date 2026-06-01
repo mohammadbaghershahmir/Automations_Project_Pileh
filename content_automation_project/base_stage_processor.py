@@ -574,17 +574,10 @@ class BaseStageProcessor:
             chapter_obj["subchapters"] = new_subs
         return slim
 
-    def _ocr_subchapter_has_figure_extractions(
-        self,
-        ocr_extraction_data: Dict[str, Any],
-        subchapter_name: str,
-    ) -> bool:
-        """True when OCR Extraction JSON has at least one figure/image extraction in this subchapter."""
-        ocr_slice = self._filter_ocr_extraction_for_subchapter(
-            ocr_extraction_data, subchapter_name
-        )
-        slim = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
-        for chapter_obj in slim.get("chapters", []) or []:
+    @staticmethod
+    def _ocr_slim_slice_has_figure_extractions(ocr_slice: Dict[str, Any]) -> bool:
+        """True when a slimmed OCR slice still contains figure/image extractions."""
+        for chapter_obj in ocr_slice.get("chapters", []) or []:
             if not isinstance(chapter_obj, dict):
                 continue
             for sub in chapter_obj.get("subchapters", []) or []:
@@ -599,6 +592,33 @@ class BaseStageProcessor:
                     if isinstance(ex, dict) and ex:
                         return True
         return False
+
+    def _ocr_subchapter_has_figure_extractions(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+    ) -> bool:
+        """True when OCR Extraction JSON has at least one figure/image extraction in this subchapter."""
+        ocr_slice = self._filter_ocr_extraction_for_subchapter(
+            ocr_extraction_data, subchapter_name
+        )
+        slim = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
+        return self._ocr_slim_slice_has_figure_extractions(slim)
+
+    def _ocr_topic_has_figure_extractions(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+        topic_name: str,
+    ) -> bool:
+        """True when OCR has figure/image extractions for one subchapter + topic pair."""
+        stage4_topic = (topic_name or "").strip() or "(بدون مبحث)"
+        ocr_topic_filter = "" if stage4_topic == "(بدون مبحث)" else stage4_topic
+        topic_slice = self._filter_ocr_extraction_for_subchapter_topic(
+            ocr_extraction_data, subchapter_name, ocr_topic_filter
+        )
+        slim = self._slim_ocr_for_stage_e_image_notes(topic_slice)
+        return self._ocr_slim_slice_has_figure_extractions(slim)
 
     def save_json_file(self, data: List[Dict], file_path: str, 
                       metadata: Dict, stage_name: str) -> bool:

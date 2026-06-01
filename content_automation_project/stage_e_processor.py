@@ -202,6 +202,24 @@ class StageEProcessor(BaseStageProcessor):
                 status="skipped",
             )
 
+    def _split_topic_groups_by_ocr_figures(
+        self,
+        topic_groups: List[Tuple[str, List[Dict[str, Any]]]],
+        ocr_extraction_data: Dict[str, Any],
+        persian_subchapter_name: str,
+    ) -> Tuple[List[Tuple[str, List[Dict[str, Any]]]], List[str]]:
+        """Keep only topics whose OCR slice contains figures; return skipped topic names."""
+        with_figures: List[Tuple[str, List[Dict[str, Any]]]] = []
+        skipped_topics: List[str] = []
+        for topic_name, pts in topic_groups:
+            if self._ocr_topic_has_figure_extractions(
+                ocr_extraction_data, persian_subchapter_name, topic_name
+            ):
+                with_figures.append((topic_name, pts))
+            else:
+                skipped_topics.append(topic_name)
+        return with_figures, skipped_topics
+
     @staticmethod
     def _stage4_points_grouped_by_topic_in_order(
         points: List[Dict[str, Any]],
@@ -936,35 +954,6 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Warning: No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping...")
                 continue
 
-            if not self._ocr_subchapter_has_figure_extractions(
-                ocr_extraction_data, persian_subchapter_name
-            ):
-                topic_names = list(
-                    dict.fromkeys(
-                        (p.get("topic") or "").strip()
-                        for p in filtered_stage4_points
-                        if isinstance(p, dict) and (p.get("topic") or "").strip()
-                    )
-                )
-                self._mark_subchapter_topic_units_skipped(
-                    topic_names=topic_names,
-                    persian_subchapter_name=persian_subchapter_name,
-                    filtered_stage4_points=filtered_stage4_points,
-                    unit_hooks=unit_hooks,
-                    topic_unit_map=topic_unit_map,
-                )
-                self.logger.warning(
-                    "OCR has no figure extractions for subchapter %r — skipping image notes "
-                    "(%s Stage 4 point(s) remain lesson-only).",
-                    persian_subchapter_name,
-                    len(filtered_stage4_points),
-                )
-                _progress(
-                    f"Warning: No figures in OCR for subchapter '{persian_subchapter_name}'. "
-                    f"Skipping image notes ({len(filtered_stage4_points)} Stage 4 point(s) are text-only)."
-                )
-                continue
-
             image_stage4_points = [
                 p for p in filtered_stage4_points if self._stage4_point_is_image_anchor(p)
             ]
@@ -1013,6 +1002,40 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Warning: No topic buckets for '{persian_subchapter_name}'. Skipping...")
                 continue
 
+            topic_groups, ocr_skipped_topics = self._split_topic_groups_by_ocr_figures(
+                topic_groups,
+                ocr_extraction_data,
+                persian_subchapter_name,
+            )
+            if ocr_skipped_topics:
+                self._mark_subchapter_topic_units_skipped(
+                    topic_names=ocr_skipped_topics,
+                    persian_subchapter_name=persian_subchapter_name,
+                    filtered_stage4_points=filtered_stage4_points,
+                    unit_hooks=unit_hooks,
+                    topic_unit_map=topic_unit_map,
+                )
+                for tn in ocr_skipped_topics:
+                    self.logger.warning(
+                        "OCR has no figures for subchapter %r topic %r — skipping image notes.",
+                        persian_subchapter_name,
+                        tn,
+                    )
+                    _progress(
+                        f"Warning: No OCR figures for topic «{tn}» in '{persian_subchapter_name}'. Skipping..."
+                    )
+
+            if not topic_groups:
+                self.logger.warning(
+                    "No topics with OCR figures for subchapter %r — skipping image notes.",
+                    persian_subchapter_name,
+                )
+                _progress(
+                    f"Warning: No OCR figures for any topic in '{persian_subchapter_name}'. "
+                    f"Skipping image notes ({len(filtered_stage4_points)} Stage 4 point(s) are text-only)."
+                )
+                continue
+
             _progress(
                 f"Stage E topic-parallel: {len(topic_groups)} topic(s) for subchapter "
                 f"'{persian_subchapter_name}' (batch size {self.STAGE_E_TOPIC_BATCH_SIZE})..."
@@ -1031,27 +1054,16 @@ class StageEProcessor(BaseStageProcessor):
             )
 
             if not subchapter_filepic_records:
-                if not self._ocr_subchapter_has_figure_extractions(
-                    ocr_extraction_data, persian_subchapter_name
-                ):
-                    topic_names = [tn for tn, _pts in topic_groups]
-                    self._mark_subchapter_topic_units_skipped(
-                        topic_names=topic_names,
-                        persian_subchapter_name=persian_subchapter_name,
-                        filtered_stage4_points=filtered_stage4_points,
-                        unit_hooks=unit_hooks,
-                        topic_unit_map=topic_unit_map,
-                    )
+                if not topic_errs:
                     self.logger.warning(
-                        "No image rows for subchapter %r and OCR has no figures — skipping.",
+                        "No image rows for subchapter %r after topic-parallel (no API/parse errors) — skipping.",
                         persian_subchapter_name,
                     )
                     _progress(
-                        f"Warning: No image notes for '{persian_subchapter_name}' "
-                        "(OCR has no figures for this subchapter). Skipping..."
+                        f"Warning: No image notes produced for '{persian_subchapter_name}'. Skipping..."
                     )
                     continue
-                detail = "; ".join(topic_errs) if topic_errs else "no topic returned usable rows"
+                detail = "; ".join(topic_errs)
                 subchapter_errors.append(
                     f"{persian_subchapter_name}: topic-parallel produced no rows ({detail})"
                 )
