@@ -247,6 +247,31 @@ def _remove_unit_points(all_points: List[Dict[str, Any]], unit: Dict[str, Any]) 
     ]
 
 
+def _units_to_clear(manifest_unit: Dict[str, Any], new_points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Manifest and process_list keys can differ on legacy jobs — remove both."""
+    units = [manifest_unit]
+    if new_points and isinstance(new_points[0], dict):
+        sample = new_points[0]
+        process_unit = {
+            "chapter": sample.get("chapter") or "",
+            "subchapter": sample.get("subchapter") or "",
+            "topic": sample.get("topic") or "",
+        }
+        manifest_key = (
+            (manifest_unit.get("chapter") or "").strip(),
+            (manifest_unit.get("subchapter") or "").strip(),
+            (manifest_unit.get("topic") or "").strip(),
+        )
+        process_key = (
+            (process_unit.get("chapter") or "").strip(),
+            (process_unit.get("subchapter") or "").strip(),
+            (process_unit.get("topic") or "").strip(),
+        )
+        if process_key != manifest_key:
+            units.append(process_unit)
+    return units
+
+
 def regenerate_unit(
     db: Session,
     job_id: str,
@@ -324,11 +349,17 @@ def regenerate_unit(
         except OSError:
             pass
 
+    if not new_points:
+        raise RuntimeError(
+            f"Regenerate unit {unit_index} produced no points — LLM response empty or JSON parse failed"
+        )
+
     lesson_path = _lesson_path(job_id, manifest)
     with open(lesson_path, "r", encoding="utf-8") as f:
         lesson = json.load(f)
     points = lesson.get("points") or []
-    points = _remove_unit_points(points, unit)
+    for clear_unit in _units_to_clear(unit, new_points):
+        points = _remove_unit_points(points, clear_unit)
     points.extend(new_points)
     lesson["points"] = points
     meta = lesson.setdefault("metadata", {})
@@ -339,9 +370,9 @@ def regenerate_unit(
 
     hooks.after_unit(
         unit_index,
-        unit.get("chapter") or "",
-        unit.get("subchapter") or "",
-        unit.get("topic") or "",
+        (new_points[0].get("chapter") if new_points else None) or unit.get("chapter") or "",
+        (new_points[0].get("subchapter") if new_points else None) or unit.get("subchapter") or "",
+        (new_points[0].get("topic") if new_points else None) or unit.get("topic") or "",
         new_points,
         prompt_seq,
         status="succeeded",

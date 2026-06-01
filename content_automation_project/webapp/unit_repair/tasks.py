@@ -30,8 +30,14 @@ def run_regenerate_unit_task(job_id: str, pair_index: int, unit_index: int) -> N
         run_regenerate_unit(db, job_id, pair_index, unit_index)
     except Exception as e:
         logger.exception("run_regenerate_unit_task")
+        err = str(e)
+        if "Worker exited prematurely" in err or "SIGKILL" in err:
+            err = (
+                f"Regenerate unit {unit_index} was killed (signal 9 — usually a RAM spike, not a bad unit). "
+                "Ensure only one LLM job runs at a time (worker --pool=solo), then retry."
+            )
         try:
-            append_log(db, job_id, f"Regenerate unit {unit_index} failed: {e}", pair_index)
+            append_log(db, job_id, f"Regenerate unit {unit_index} failed: {err}", pair_index)
         except Exception:
             pass
     finally:

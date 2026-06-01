@@ -1033,6 +1033,7 @@ class MultiPartPostProcessor:
         unit_hooks: Optional[Any] = None,
         assign_pointids: bool = True,
         plan_only: bool = False,
+        plan_only_quiet: bool = False,
     ) -> Optional[str]:
         """
         Process Document Processing stage using OCR Extraction JSON as input.
@@ -1066,6 +1067,13 @@ class MultiPartPostProcessor:
         if not os.path.exists(ocr_json_path):
             self.logger.error(f"OCR JSON file not found: {ocr_json_path}")
             return None
+
+        import logging
+
+        _restore_log_level: int | None = None
+        if plan_only and plan_only_quiet:
+            _restore_log_level = self.logger.level
+            self.logger.setLevel(logging.WARNING)
         
         # Load PointId mapping if provided
         chapter_pointids = []
@@ -1498,6 +1506,8 @@ class MultiPartPostProcessor:
             base_name = base_name[:-13]
         
         if plan_only:
+            if _restore_log_level is not None:
+                self.logger.setLevel(_restore_log_level)
             return None
 
         # Initialize output JSON file immediately (incremental writing)
@@ -1841,6 +1851,8 @@ class MultiPartPostProcessor:
         assign_pointids: bool = False,
     ) -> tuple[List[Dict[str, Any]], int]:
         """Re-run a single topic/paragraph unit; returns (new_points, prompt_seq)."""
+        import gc
+
         plan = getattr(self, "_docproc_plan", None)
         if not plan or plan.get("ocr_json_path") != ocr_json_path:
             self.process_document_processing_from_ocr_json(
@@ -1855,6 +1867,7 @@ class MultiPartPostProcessor:
                 assign_pointids=False,
                 unit_hooks=None,
                 plan_only=True,
+                plan_only_quiet=True,
             )
             plan = getattr(self, "_docproc_plan", None)
         if not plan:
@@ -1880,15 +1893,36 @@ class MultiPartPostProcessor:
             paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
             paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
             paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
-            full_subchapter_items = subchapter_full_items.get(subchapter_name, []) or [paragraph_data]
+            # Only keep this subchapter's items in memory for the LLM payload.
+            full_subchapter_items = {
+                subchapter_name: subchapter_full_items.get(subchapter_name, []) or [paragraph_data],
+            }
+            sc_items = full_subchapter_items[subchapter_name]
             paragraph_json = {
                 "subchapter": subchapter_name,
                 "chapter": chapter_name_for_paragraph,
-                "paragraphs": full_subchapter_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
-                "topics": full_subchapter_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None,
+                "paragraphs": sc_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
+                "topics": sc_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None,
             }
             paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
             paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
+        # Drop cached plan before the (possibly large) LLM call.
+        self._docproc_plan = None
+        gc.collect()
+        manifest_ch = (chapter or "").strip()
+        manifest_sub = (subchapter or "").strip()
+        manifest_top = (topic or "").strip()
+        proc_ch = (chapter_name_for_paragraph or "").strip()
+        proc_sub = (subchapter_name or "").strip()
+        proc_top = (paragraph_name or "").strip()
+        if manifest_top and proc_top and (manifest_ch, manifest_sub, manifest_top) != (proc_ch, proc_sub, proc_top):
+            self.logger.warning(
+                "Regenerate unit_index %s manifest topic %r != process_list topic %r — "
+                "merge will use both keys",
+                unit_index,
+                f"{manifest_ch}>{manifest_sub}>{manifest_top}",
+                f"{proc_ch}>{proc_sub}>{proc_top}",
+            )
         if progress_callback:
             progress_callback(f"Regenerating unit {unit_index}: {chapter_name_for_paragraph} > {subchapter_name} > {paragraph_name}")
         response_text = None
