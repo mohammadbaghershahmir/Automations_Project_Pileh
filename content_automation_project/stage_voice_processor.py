@@ -8,17 +8,24 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from api_layer import APIConfig, GeminiAPIClient
 from base_stage_processor import BaseStageProcessor
-from stage_j_processor import _sj_build_topic_key
+from voice_class_captions import (
+    TopicCaptionIndexes,
+    build_topic_caption_context,
+    load_topic_caption_indexes,
+)
+from voice_class_prompts import build_topic_script_prompt
 from webapp.audio_merge import merge_voice_tracks, wav_duration_seconds
 
 logger = logging.getLogger(__name__)
 
 MAX_TTS_CHARS = 4096
+DEFAULT_CHARS_PER_SECOND_ESTIMATE = 13.0
+IMP_LEVELS_FOR_VOICE_SCRIPT = ("1", "2")
+EMPTY_TOPIC_LABEL = "(بدون مبحث)"
 
 
 class StageVoiceProcessor(BaseStageProcessor):
@@ -93,73 +100,32 @@ class StageVoiceProcessor(BaseStageProcessor):
 
     def _build_lesson_context(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Compact Imp 1–2 lesson rows for the script LLM."""
-        out: List[Dict[str, Any]] = []
-        for rec in records:
-            imp = str(rec.get("Imp") or rec.get("imp") or "").strip()
-            if imp not in ("1", "2"):
+        lesson_rows: List[Dict[str, Any]] = []
+        for record in records:
+            importance = str(record.get("Imp") or record.get("imp") or "").strip()
+            if importance not in IMP_LEVELS_FOR_VOICE_SCRIPT:
                 continue
-            out.append(
+            lesson_rows.append(
                 {
-                    "PointId": rec.get("PointId") or rec.get("point_id"),
-                    "chapter": rec.get("chapter", ""),
-                    "subchapter": rec.get("subchapter", ""),
-                    "topic": rec.get("topic", ""),
-                    "subtopic": rec.get("subtopic", ""),
-                    "subsubtopic": rec.get("subsubtopic", ""),
-                    "Points": rec.get("Points") or rec.get("points", ""),
-                    "Imp": imp,
-                    "Type": rec.get("Type") or rec.get("type", ""),
+                    "PointId": record.get("PointId") or record.get("point_id"),
+                    "chapter": record.get("chapter", ""),
+                    "subchapter": record.get("subchapter", ""),
+                    "topic": record.get("topic", ""),
+                    "subtopic": record.get("subtopic", ""),
+                    "subsubtopic": record.get("subsubtopic", ""),
+                    "Points": record.get("Points") or record.get("points", ""),
+                    "Imp": importance,
+                    "Type": record.get("Type") or record.get("type", ""),
                 }
             )
-        return out
+        return lesson_rows
 
     @staticmethod
     def _topic_key(chapter: Any, subchapter: Any, topic: Any) -> Tuple[str, str, str]:
-        ch = str(chapter or "").strip()
-        sub = str(subchapter or "").strip()
-        top = str(topic or "").strip() or "(بدون مبحث)"
-        return ch, sub, top
-
-    @staticmethod
-    def _index_pic_captions_by_topic(
-        pic_records: List[Dict[str, Any]],
-    ) -> Dict[Tuple[str, str, str], List[Dict[str, str]]]:
-        by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = defaultdict(list)
-        for row in pic_records:
-            if not isinstance(row, dict):
-                continue
-            key = _sj_build_topic_key(row.get("chapter", ""), row.get("subchapter", ""), row.get("topic", ""))
-            by_topic[key].append(
-                {
-                    "point_text": str(row.get("point_text", "") or ""),
-                    "caption": str(row.get("caption", "") or ""),
-                }
-            )
-        return dict(by_topic)
-
-    @staticmethod
-    def _topic_captions_context(
-        chapter: str,
-        subchapter: str,
-        topic: str,
-        table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
-        image_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
-    ) -> Optional[Dict[str, Any]]:
-        key = _sj_build_topic_key(chapter, subchapter, topic)
-        tabs = table_by_topic.get(key)
-        imgs = image_by_topic.get(key)
-        if not tabs and not imgs:
-            return None
-        ctx: Dict[str, Any] = {
-            "chapter": chapter,
-            "subchapter": subchapter,
-            "topic": topic,
-        }
-        if tabs:
-            ctx["topic_table_captions"] = tabs
-        if imgs:
-            ctx["topic_image_captions"] = imgs
-        return ctx
+        chapter_name = str(chapter or "").strip()
+        subchapter_name = str(subchapter or "").strip()
+        topic_name = str(topic or "").strip() or EMPTY_TOPIC_LABEL
+        return chapter_name, subchapter_name, topic_name
 
     def _group_lesson_context_by_topic(
         self, lesson_rows: List[Dict[str, Any]]
@@ -175,49 +141,153 @@ class StageVoiceProcessor(BaseStageProcessor):
             buckets[key].append(row)
         return [(k[0], k[1], k[2], buckets[k]) for k in order]
 
-    def _build_topic_script_prompt(
+    def _load_tagged_records(self, tagged_json_path: str) -> Optional[List[Dict[str, Any]]]:
+        tagged_data = self.load_json_file(tagged_json_path)
+        if not tagged_data:
+            self.logger.error("Failed to load tagged JSON")
+            return None
+
+        records = self.get_data_from_json(tagged_data)
+        if not records:
+            self.logger.error("Tagged JSON has no data rows")
+            return None
+        return records
+
+    def _extract_chapter_metadata(
         self,
+        records: List[Dict[str, Any]],
+    ) -> Optional[Tuple[int, int, str]]:
+        first_point_id = records[0].get("PointId") or records[0].get("point_id")
+        if not first_point_id:
+            self.logger.error("No PointId in tagged JSON")
+            return None
+
+        book_id, chapter_id = self.extract_book_chapter_from_pointid(str(first_point_id))
+        chapter_name = records[0].get("chapter") or records[0].get("Chapter") or ""
+        return book_id, chapter_id, chapter_name
+
+    def _load_caption_indexes(
+        self,
+        filepic_json_path: Optional[str],
+        tablepic_json_path: Optional[str],
+    ) -> TopicCaptionIndexes:
+        return load_topic_caption_indexes(
+            filepic_json_path,
+            tablepic_json_path,
+            load_json=self.load_json_file,
+            extract_rows=self.get_data_from_json,
+        )
+
+    def _call_llm_for_topic_script(
+        self,
+        *,
         prompt: str,
-        chapter: str,
-        subchapter: str,
-        topic: str,
+        chapter_name: str,
+        subchapter_name: str,
+        topic_name: str,
         topic_rows: List[Dict[str, Any]],
         topic_index: int,
         total_topics: int,
-        *,
-        topics_context: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        scope = (
-            f"\n\n[مبحث {topic_index}/{total_topics}: «{topic}» — "
-            f"زیرفصل «{subchapter}» — فصل «{chapter}». "
-            f"فقط از نکات همین مبحث در JSON زیر اسکریپت بنویس.]\n"
+        caption_indexes: TopicCaptionIndexes,
+        model_name: str,
+        cancel_check: Optional[Callable[[], bool]],
+    ) -> Optional[List[Dict[str, Any]]]:
+        topics_context = build_topic_caption_context(
+            chapter_name,
+            subchapter_name,
+            topic_name,
+            caption_indexes,
         )
-        captions_block = ""
-        if topics_context:
-            captions_block = (
-                "\n\nImage and table captions for THIS TOPIC "
-                "(use these to explain figures and tables naturally in the spoken script):\n"
-                f"{json.dumps(topics_context, ensure_ascii=False, indent=2)}\n"
+        full_prompt = build_topic_script_prompt(
+            prompt,
+            chapter_name,
+            subchapter_name,
+            topic_name,
+            topic_rows,
+            topic_index,
+            total_topics,
+            topics_context=topics_context,
+        )
+        response = self.api_client.process_text(
+            text=full_prompt,
+            model_name=model_name,
+            temperature=0.7,
+            max_tokens=APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS,
+            cancel_check=cancel_check,
+        )
+        if not response:
+            self.logger.error("Empty response for topic %s", topic_name)
+            return None
+
+        topic_paragraphs = self._parse_script_paragraphs_from_response(response)
+        if not topic_paragraphs:
+            self.logger.error("No usable paragraphs for topic %s", topic_name)
+            return None
+        return topic_paragraphs
+
+    @staticmethod
+    def _renumber_topic_paragraphs(
+        topic_paragraphs: List[Dict[str, Any]],
+        *,
+        chapter_name: str,
+        subchapter_name: str,
+        topic_name: str,
+        start_paragraph_id: int,
+        chars_per_second: float,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        next_id = start_paragraph_id
+        for paragraph in topic_paragraphs:
+            paragraph["paragraph_id"] = next_id
+            paragraph["chapter"] = (paragraph.get("chapter") or chapter_name or "").strip()
+            paragraph["subchapter"] = (paragraph.get("subchapter") or subchapter_name or "").strip()
+            paragraph["topic"] = (paragraph.get("topic") or topic_name or "").strip()
+            paragraph["estimated_seconds"] = (
+                round(paragraph["char_count"] / chars_per_second, 2) if chars_per_second else 0.0
             )
-        return f"""{prompt}{scope}{captions_block}
+            next_id += 1
+        return topic_paragraphs, next_id
 
-Tagged lesson JSON for THIS TOPIC ONLY (Imp 1 and 2 points only):
-{json.dumps(topic_rows, ensure_ascii=False, indent=2)}
+    def _save_voice_script_json(
+        self,
+        *,
+        output_dir: str,
+        book_id: int,
+        chapter_id: int,
+        chapter_name: str,
+        tagged_json_path: str,
+        filepic_json_path: Optional[str],
+        tablepic_json_path: Optional[str],
+        paragraphs: List[Dict[str, Any]],
+        segments: List[Dict[str, Any]],
+        total_topics: int,
+        max_segment_seconds: float,
+        chars_per_second: float,
+    ) -> str:
+        output_payload = {
+            "metadata": {
+                "book_id": book_id,
+                "chapter_id": chapter_id,
+                "chapter_name": chapter_name,
+                "source_tagged_json": os.path.basename(tagged_json_path),
+                "source_filepic_json": os.path.basename(filepic_json_path) if filepic_json_path else None,
+                "source_tablepic_json": os.path.basename(tablepic_json_path) if tablepic_json_path else None,
+                "total_paragraphs": len(paragraphs),
+                "total_segments": len(segments),
+                "total_topics": total_topics,
+                "script_mode": "topic_by_topic",
+                "max_segment_seconds": max_segment_seconds,
+                "chars_per_second": chars_per_second,
+            },
+            "paragraphs": paragraphs,
+            "segments": segments,
+        }
 
-Return ONLY valid JSON with this structure:
-{{
-  "paragraphs": [
-    {{
-      "paragraph_id": 1,
-      "chapter": "...",
-      "subchapter": "...",
-      "topic": "...",
-      "text": "..."
-    }}
-  ]
-}}
-Each paragraph must be a self-contained spoken block in Farsi (complete sentences).
-Use paragraph_id starting at 1 within this topic response."""
+        os.makedirs(output_dir, exist_ok=True)
+        output_name = f"voice_script_{book_id:03d}{chapter_id:03d}.json"
+        output_path = os.path.join(output_dir, output_name)
+        with open(output_path, "w", encoding="utf-8") as file_handle:
+            json.dump(output_payload, file_handle, ensure_ascii=False, indent=2)
+        return output_path
 
     def _parse_script_paragraphs_from_response(self, response: str) -> List[Dict[str, Any]]:
         parsed = self.extract_json_from_response(response)
@@ -255,7 +325,7 @@ Use paragraph_id starting at 1 within this topic response."""
                     "topic": item.get("topic") or item.get("Topic") or "",
                     "text": text,
                     "char_count": char_count,
-                    "estimated_seconds": round(char_count / 13.0, 2),
+                    "estimated_seconds": round(char_count / DEFAULT_CHARS_PER_SECOND_ESTIMATE, 2),
                 }
             )
         paragraphs.sort(key=lambda p: p["paragraph_id"])
@@ -276,10 +346,10 @@ Use paragraph_id starting at 1 within this topic response."""
         progress_callback: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Optional[str]:
-        def _progress(msg: str) -> None:
+        def report_progress(message: str) -> None:
             if progress_callback:
-                progress_callback(msg)
-            self.logger.info(msg)
+                progress_callback(message)
+            self.logger.info(message)
 
         if cancel_check and cancel_check():
             return None
@@ -287,55 +357,34 @@ Use paragraph_id starting at 1 within this topic response."""
         if hasattr(self.api_client, "set_stage"):
             self.api_client.set_stage("voice_class")
 
-        _progress("Loading Importance & Type JSON...")
-        tagged_data = self.load_json_file(tagged_json_path)
-        if not tagged_data:
-            self.logger.error("Failed to load tagged JSON")
-            return None
-
-        records = self.get_data_from_json(tagged_data)
+        report_progress("Loading Importance & Type JSON...")
+        records = self._load_tagged_records(tagged_json_path)
         if not records:
-            self.logger.error("Tagged JSON has no data rows")
             return None
 
-        first_pid = records[0].get("PointId") or records[0].get("point_id")
-        if not first_pid:
-            self.logger.error("No PointId in tagged JSON")
+        chapter_metadata = self._extract_chapter_metadata(records)
+        if chapter_metadata is None:
             return None
-        book_id, chapter_id = self.extract_book_chapter_from_pointid(str(first_pid))
-        metadata_chapter_name = records[0].get("chapter") or records[0].get("Chapter") or ""
+        book_id, chapter_id, chapter_name = chapter_metadata
 
-        table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = {}
-        image_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = {}
-        if filepic_json_path or tablepic_json_path:
-            if tablepic_json_path:
-                tp_data = self.load_json_file(tablepic_json_path)
-                tablepic_records = self.get_data_from_json(tp_data) if tp_data else []
-                table_by_topic = self._index_pic_captions_by_topic(
-                    [r for r in tablepic_records if isinstance(r, dict)]
-                )
-            if filepic_json_path:
-                fp_data = self.load_json_file(filepic_json_path)
-                filepic_records = self.get_data_from_json(fp_data) if fp_data else []
-                image_by_topic = self._index_pic_captions_by_topic(
-                    [r for r in filepic_records if isinstance(r, dict)]
-                )
-            _progress(
-                f"Loaded captions: filepic topics={len(image_by_topic)}, "
-                f"tablepic topics={len(table_by_topic)}"
-            )
+        caption_indexes = self._load_caption_indexes(filepic_json_path, tablepic_json_path)
+        report_progress(
+            f"Loaded captions: filepic topics={caption_indexes.image_topic_count}, "
+            f"tablepic topics={caption_indexes.table_topic_count}"
+        )
 
         lesson_context = self._build_lesson_context(records)
         topic_groups = self._group_lesson_context_by_topic(lesson_context)
         if not topic_groups:
             self.logger.error("No Imp 1–2 rows to process")
             return None
-        _progress(
+
+        report_progress(
             f"Built lesson context: {len(lesson_context)} Imp 1–2 rows "
             f"across {len(topic_groups)} topic(s)"
         )
 
-        paragraphs: List[Dict[str, Any]] = []
+        all_paragraphs: List[Dict[str, Any]] = []
         next_paragraph_id = 1
         total_topics = len(topic_groups)
 
@@ -345,70 +394,53 @@ Use paragraph_id starting at 1 within this topic response."""
             if cancel_check and cancel_check():
                 return None
 
-            label = f"«{topic_name}» ({len(topic_rows)} row(s))"
-            _progress(
-                f"Topic {topic_index}/{total_topics}: {label} — "
+            topic_label = f"«{topic_name}» ({len(topic_rows)} row(s))"
+            report_progress(
+                f"Topic {topic_index}/{total_topics}: {topic_label} — "
                 f"calling OpenRouter ({model_name})..."
             )
 
-            topics_context = self._topic_captions_context(
-                chapter_name,
-                subchapter_name,
-                topic_name,
-                table_by_topic,
-                image_by_topic,
-            )
-            full_prompt = self._build_topic_script_prompt(
-                prompt,
-                chapter_name,
-                subchapter_name,
-                topic_name,
-                topic_rows,
-                topic_index,
-                total_topics,
-                topics_context=topics_context,
-            )
-            response = self.api_client.process_text(
-                text=full_prompt,
+            topic_paragraphs = self._call_llm_for_topic_script(
+                prompt=prompt,
+                chapter_name=chapter_name,
+                subchapter_name=subchapter_name,
+                topic_name=topic_name,
+                topic_rows=topic_rows,
+                topic_index=topic_index,
+                total_topics=total_topics,
+                caption_indexes=caption_indexes,
                 model_name=model_name,
-                temperature=0.7,
-                max_tokens=APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS,
                 cancel_check=cancel_check,
             )
-            if not response:
-                self.logger.error("Empty response for topic %s", topic_name)
-                return None
-
-            topic_paragraphs = self._parse_script_paragraphs_from_response(response)
-            if not topic_paragraphs:
-                self.logger.error("No usable paragraphs for topic %s", topic_name)
-                _progress(f"ERROR: Topic {topic_index}/{total_topics} {label} returned no paragraphs")
-                return None
-
-            for p in topic_paragraphs:
-                p["paragraph_id"] = next_paragraph_id
-                p["chapter"] = (p.get("chapter") or chapter_name or "").strip()
-                p["subchapter"] = (p.get("subchapter") or subchapter_name or "").strip()
-                p["topic"] = (p.get("topic") or topic_name or "").strip()
-                p["estimated_seconds"] = (
-                    round(p["char_count"] / chars_per_second, 2) if chars_per_second else 0.0
+            if topic_paragraphs is None:
+                report_progress(
+                    f"ERROR: Topic {topic_index}/{total_topics} {topic_label} returned no paragraphs"
                 )
-                next_paragraph_id += 1
-            paragraphs.extend(topic_paragraphs)
-            _progress(
-                f"Topic {topic_index}/{total_topics} {label}: "
-                f"{len(topic_paragraphs)} paragraph(s)"
+                return None
+
+            renumbered, next_paragraph_id = self._renumber_topic_paragraphs(
+                topic_paragraphs,
+                chapter_name=chapter_name,
+                subchapter_name=subchapter_name,
+                topic_name=topic_name,
+                start_paragraph_id=next_paragraph_id,
+                chars_per_second=chars_per_second,
+            )
+            all_paragraphs.extend(renumbered)
+            report_progress(
+                f"Topic {topic_index}/{total_topics} {topic_label}: "
+                f"{len(renumbered)} paragraph(s)"
             )
 
             if topic_index < total_topics and delay_seconds > 0:
                 time.sleep(delay_seconds)
 
-        if not paragraphs:
+        if not all_paragraphs:
             self.logger.error("LLM returned no usable paragraphs")
             return None
 
         segments = self.pack_segments(
-            paragraphs,
+            all_paragraphs,
             max_segment_seconds=max_segment_seconds,
             chars_per_second=chars_per_second,
         )
@@ -416,34 +448,27 @@ Use paragraph_id starting at 1 within this topic response."""
             self.logger.error("Segment packing produced no segments")
             return None
 
-        _progress(f"Script: {len(paragraphs)} paragraphs → {len(segments)} TTS segments (≤{max_segment_seconds}s each)")
+        report_progress(
+            f"Script: {len(all_paragraphs)} paragraphs → {len(segments)} TTS segments "
+            f"(≤{max_segment_seconds}s each)"
+        )
 
-        output_payload = {
-            "metadata": {
-                "book_id": book_id,
-                "chapter_id": chapter_id,
-                "chapter_name": metadata_chapter_name,
-                "source_tagged_json": os.path.basename(tagged_json_path),
-                "source_filepic_json": os.path.basename(filepic_json_path) if filepic_json_path else None,
-                "source_tablepic_json": os.path.basename(tablepic_json_path) if tablepic_json_path else None,
-                "total_paragraphs": len(paragraphs),
-                "total_segments": len(segments),
-                "total_topics": len(topic_groups),
-                "script_mode": "topic_by_topic",
-                "max_segment_seconds": max_segment_seconds,
-                "chars_per_second": chars_per_second,
-            },
-            "paragraphs": paragraphs,
-            "segments": segments,
-        }
-
-        os.makedirs(output_dir, exist_ok=True)
-        out_name = f"voice_script_{book_id:03d}{chapter_id:03d}.json"
-        out_path = os.path.join(output_dir, out_name)
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(output_payload, f, ensure_ascii=False, indent=2)
-        _progress(f"Saved voice script: {out_name}")
-        return out_path
+        output_path = self._save_voice_script_json(
+            output_dir=output_dir,
+            book_id=book_id,
+            chapter_id=chapter_id,
+            chapter_name=chapter_name,
+            tagged_json_path=tagged_json_path,
+            filepic_json_path=filepic_json_path,
+            tablepic_json_path=tablepic_json_path,
+            paragraphs=all_paragraphs,
+            segments=segments,
+            total_topics=total_topics,
+            max_segment_seconds=max_segment_seconds,
+            chars_per_second=chars_per_second,
+        )
+        report_progress(f"Saved voice script: {os.path.basename(output_path)}")
+        return output_path
 
     def _generate_tts_with_rotation(
         self,

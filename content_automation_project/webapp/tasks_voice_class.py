@@ -38,6 +38,11 @@ from webapp.processor_context import build_unified_api_client
 from webapp.prompt_capture import wrap_prompt_capture
 from webapp.system_prompt_defaults import resolve_prompt_for_job
 from webapp.tasks_single_stage import _load_pairs
+from webapp.voice_class_inputs import (
+    VoiceClassPairInputError,
+    pair_media_entry,
+    resolve_voice_class_pair_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +70,12 @@ def _find_final_voice_mp3(base: str, pair_index: int) -> Optional[str]:
 def _register_voice_artifacts(db: Session, job_id: str, pair_index: int, base: str, out_dir: str) -> None:
     rel_out = os.path.relpath(out_dir, base).replace("\\", "/")
     register_artifacts_under(db, job_id, pair_index, base, rel_out)
+
+
+def _fail_pair_step1(db: Session, pair: JobPair, error_message: str) -> None:
+    pair.step1_status = "failed"
+    pair.step1_error = error_message
+    db.commit()
 
 
 def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
@@ -105,27 +116,14 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                 _finalize_step1_cancelled(db, job_id, pairs)
                 return
 
-            pm = (cfg.get("pair_media") or {}).get(str(pair.pair_index), {})
-            rel_fp = (pm.get("filepic_relpath") or "").strip()
-            rel_tp = (pm.get("tablepic_relpath") or "").strip()
-
-            if not pair.stage_j_relpath or not rel_fp or not rel_tp:
-                pair.step1_status = "failed"
-                pair.step1_error = "Missing tagged JSON, filepic, or tablepic path"
-                db.commit()
-                continue
-
-            abs_tagged = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
-            abs_filepic = os.path.join(base, rel_fp.replace("/", os.sep))
-            abs_tablepic = os.path.join(base, rel_tp.replace("/", os.sep))
-            if (
-                not os.path.isfile(abs_tagged)
-                or not os.path.isfile(abs_filepic)
-                or not os.path.isfile(abs_tablepic)
-            ):
-                pair.step1_status = "failed"
-                pair.step1_error = "Tagged JSON, filepic, or tablepic file missing on disk"
-                db.commit()
+            pair_media = pair_media_entry(cfg, pair.pair_index)
+            resolved = resolve_voice_class_pair_files(
+                base,
+                tagged_relpath=pair.stage_j_relpath,
+                pair_media=pair_media,
+            )
+            if isinstance(resolved, VoiceClassPairInputError):
+                _fail_pair_step1(db, pair, resolved.message)
                 continue
 
             pair.step1_status = "running"
@@ -148,12 +146,12 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
             try:
                 append_log(db, job_id, f"--- Voice Class Step 1 pair {pair.pair_index} ---", pair.pair_index)
                 result = processor.process_voice_class_step1(
-                    tagged_json_path=abs_tagged,
+                    tagged_json_path=resolved.tagged_json,
                     prompt=prompt,
                     model_name=model_name,
                     output_dir=out_dir,
-                    filepic_json_path=abs_filepic,
-                    tablepic_json_path=abs_tablepic,
+                    filepic_json_path=resolved.filepic_json,
+                    tablepic_json_path=resolved.tablepic_json,
                     max_segment_seconds=max_seg,
                     chars_per_second=cps,
                     delay_seconds=delay_seconds,

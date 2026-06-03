@@ -85,7 +85,12 @@ from stage_v_pairing import (
     auto_pair_chapter_summary_files,
     auto_pair_flashcard_files,
     auto_pair_stage_v_files,
-    auto_pair_voice_class_files,
+)
+from webapp.voice_class_job_setup import (
+    VoiceClassPairStorage,
+    build_pair_media_entry,
+    copy_voice_class_pair_inputs,
+    prepare_voice_class_upload_triplets,
 )
 
 try:
@@ -2181,24 +2186,15 @@ def create_app() -> FastAPI:
                 tagged_sorted = _sorted_nonempty_paths(j_paths)
                 fp_sorted = _sorted_nonempty_paths(fp_paths)
                 tp_sorted = _sorted_nonempty_paths(tp_paths)
-                n_tagged, n_fp, n_tp = len(tagged_sorted), len(fp_sorted), len(tp_sorted)
 
-                if not tagged_sorted:
-                    raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
-                if not fp_sorted or not tp_sorted:
-                    raise HTTPException(
-                        400,
-                        "Upload matching filepic and tablepic JSON files for each chapter.",
-                    )
-                if n_tagged != n_fp or n_tagged != n_tp:
-                    raise HTTPException(
-                        400,
-                        f"File counts must match: tagged ({n_tagged}), filepic ({n_fp}), tablepic ({n_tp}). "
-                        "Sort order is by filename within each group.",
-                    )
-
-                pairs_spec = auto_pair_voice_class_files(tagged_sorted, fp_sorted, tp_sorted)
-                if not pairs_spec:
+                triplets, upload_error = prepare_voice_class_upload_triplets(
+                    tagged_sorted,
+                    fp_sorted,
+                    tp_sorted,
+                )
+                if upload_error:
+                    raise HTTPException(400, upload_error)
+                if not triplets:
                     raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
 
                 try:
@@ -2221,31 +2217,17 @@ def create_app() -> FastAPI:
                     raise HTTPException(400, "Invalid OpenRouter model.")
                 provider_1_eff = normalize_test_bank_provider(provider_1)
 
-                pair_media: dict = {}
                 job_id = str(uuid.uuid4())
                 root = job_root(job_id)
                 os.makedirs(root, exist_ok=True)
 
-                for pair_index, p in enumerate(pairs_spec):
-                    tagged = p["stage_j_path"]
-                    fp = p["filepic_path"]
-                    tp = p["tablepic_path"]
+                pair_media: dict = {}
+                staged_storage: List[VoiceClassPairStorage] = []
+                for pair_index, triplet in enumerate(triplets):
                     ensure_dirs(job_id, pair_index)
-                    tagged_name = os.path.basename(tagged)
-                    fp_name = os.path.basename(fp)
-                    tp_name = os.path.basename(tp)
-                    rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
-                    rel_fp = f"pair_{pair_index}/inputs/{fp_name}"
-                    rel_tp = f"pair_{pair_index}/inputs/{tp_name}"
-                    shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
-                    shutil.copy2(fp, os.path.join(root, rel_fp.replace("/", os.sep)))
-                    shutil.copy2(tp, os.path.join(root, rel_tp.replace("/", os.sep)))
-                    pair_media[str(pair_index)] = {
-                        "filepic_relpath": rel_fp,
-                        "tablepic_relpath": rel_tp,
-                        "filepic_basename": fp_name,
-                        "tablepic_basename": tp_name,
-                    }
+                    storage = copy_voice_class_pair_inputs(root, pair_index, triplet)
+                    staged_storage.append(storage)
+                    pair_media[str(pair_index)] = build_pair_media_entry(storage)
 
                 cfg = {
                     "display_name": name_stripped,
@@ -2270,21 +2252,19 @@ def create_app() -> FastAPI:
                 db.add(job)
                 db.flush()
 
-                for pair_index, p in enumerate(pairs_spec):
-                    tagged_name = os.path.basename(p["stage_j_path"])
-                    rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
+                for pair_index, storage in enumerate(staged_storage):
                     db.add(
                         JobPair(
                             job_id=job_id,
                             pair_index=pair_index,
-                            stage_j_filename=tagged_name,
+                            stage_j_filename=storage.tagged_basename,
                             word_filename=None,
-                            stage_j_relpath=rel_tagged,
+                            stage_j_relpath=storage.tagged_relpath,
                             word_relpath=None,
                             output_relpath=f"pair_{pair_index}/output",
                         )
                     )
-                    register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
+                    register_input_artifact(db, job_id, pair_index, root, storage.tagged_relpath, "upload_tagged_json")
                     register_input_artifact(
                         db, job_id, pair_index, root, pair_media[str(pair_index)]["filepic_relpath"], "upload_filepic_json"
                     )

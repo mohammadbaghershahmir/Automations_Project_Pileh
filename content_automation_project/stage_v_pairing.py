@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 
 def _records_from_stage_j_data(data: Any) -> List[Dict[str, Any]]:
@@ -163,32 +163,63 @@ def auto_pair_stage_v_files(
     return pairs
 
 
+class VoiceClassPairSpec(TypedDict):
+    """One Voice Class chapter pair: tagged JSON + filepic + tablepic."""
+
+    stage_j_path: str
+    filepic_path: str
+    tablepic_path: str
+    status: str
+    output_path: Optional[str]
+    error: Optional[str]
+
+
+def validate_voice_class_upload_counts(
+    tagged_count: int,
+    filepic_count: int,
+    tablepic_count: int,
+) -> Optional[str]:
+    """
+    Validate that all three upload groups are present and equal in size.
+
+    Returns an error message string, or None when counts are valid.
+    """
+    if tagged_count == 0:
+        return "Upload at least one tagged JSON (a*.json from Importance & Type)."
+    if filepic_count == 0 or tablepic_count == 0:
+        return "Upload matching filepic and tablepic JSON files for each chapter."
+    if tagged_count != filepic_count or tagged_count != tablepic_count:
+        return (
+            f"File counts must match: tagged ({tagged_count}), "
+            f"filepic ({filepic_count}), tablepic ({tablepic_count}). "
+            "Sort order is by filename within each group."
+        )
+    return None
+
+
 def auto_pair_voice_class_files(
     tagged_paths: List[str],
-    filepic_paths: Optional[List[str]] = None,
-    tablepic_paths: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
+    filepic_paths: List[str],
+    tablepic_paths: List[str],
+) -> List[VoiceClassPairSpec]:
     """
-    Pair Importance & Type JSON (a*.json) with optional filepic/tablepic sidecars.
+    Pair Importance & Type JSON (a*.json) with filepic and tablepic sidecars.
 
-    When filepic/tablepic lists are provided, lengths must match tagged_paths (sorted by filename).
+    Caller must validate equal lengths first (see validate_voice_class_upload_counts).
+    Paths are paired by index after sorting.
     """
-    pairs: List[Dict[str, Any]] = []
-    use_media = filepic_paths is not None and tablepic_paths is not None
-    fp_list = filepic_paths or []
-    tp_list = tablepic_paths or []
-
-    for i, tagged_path in enumerate(tagged_paths):
-        entry: Dict[str, Any] = {
-            "stage_j_path": tagged_path,
-            "status": "pending",
-            "output_path": None,
-            "error": None,
-        }
-        if use_media:
-            entry["filepic_path"] = fp_list[i]
-            entry["tablepic_path"] = tp_list[i]
-        pairs.append(entry)
+    pairs: List[VoiceClassPairSpec] = []
+    for tagged_path, filepic_path, tablepic_path in zip(tagged_paths, filepic_paths, tablepic_paths):
+        pairs.append(
+            VoiceClassPairSpec(
+                stage_j_path=tagged_path,
+                filepic_path=filepic_path,
+                tablepic_path=tablepic_path,
+                status="pending",
+                output_path=None,
+                error=None,
+            )
+        )
     return pairs
 
 

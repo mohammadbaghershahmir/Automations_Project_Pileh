@@ -144,6 +144,28 @@ def sj_web_slim_lesson_row(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def sj_index_pic_captions_by_topic(
+    pic_records: List[Dict[str, Any]],
+) -> Dict[Tuple[str, str, str], List[Dict[str, str]]]:
+    """Group filepic/tablepic rows by normalized chapter + subchapter + topic."""
+    by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = defaultdict(list)
+    for row in pic_records:
+        if not isinstance(row, dict):
+            continue
+        topic_key = _sj_build_topic_key(
+            row.get("chapter", ""),
+            row.get("subchapter", ""),
+            row.get("topic", ""),
+        )
+        by_topic[topic_key].append(
+            {
+                "point_text": str(row.get("point_text", "") or ""),
+                "caption": str(row.get("caption", "") or ""),
+            }
+        )
+    return dict(by_topic)
+
+
 def sj_web_topic_sidebar_rows(
     chunk_ta_rows: List[Dict[str, Any]],
     table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
@@ -679,18 +701,7 @@ Stage E Data - Part {part_num}/{num_parts} (JSON):
             return None
 
     def _sj_index_pic_rows(self, pic_records: List[Dict[str, Any]]) -> Dict[Tuple[str, str, str], List[Dict[str, str]]]:
-        by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = defaultdict(list)
-        for r in pic_records:
-            if not isinstance(r, dict):
-                continue
-            key = _sj_build_topic_key(r.get("chapter", ""), r.get("subchapter", ""), r.get("topic", ""))
-            by_topic[key].append(
-                {
-                    "point_text": str(r.get("point_text", "") or ""),
-                    "caption": str(r.get("caption", "") or ""),
-                }
-            )
-        return dict(by_topic)
+        return sj_index_pic_captions_by_topic(pic_records)
 
     def _parse_imp_type_rows_from_llm_response(self, response_text: str) -> List[Dict[str, Any]]:
         if not (response_text or "").strip():
