@@ -89,7 +89,12 @@ class StageEProcessor(BaseStageProcessor):
         "narrative",
     )
     _FIG_REF_RE = re.compile(
-        r"(تصویر(\s+الکترونیکی)?|fig\.?\s*\d|figure\s+\d|e[-\s]?fig\w*|electronic\s+figure)",
+        r"(?:^|\b)(?:"
+        r"تصویر(?:\s+الکترونیکی)?\s*[:\-]?\s*[0-9۰-۹]+(?:\s*[:\-]\s*[0-9۰-۹]+)?"
+        r"|fig(?:ure)?\.?\s*[0-9]+(?:\s*[:\-]\s*[0-9]+)?"
+        r"|e[-\s]?fig(?:ure)?\.?\s*[0-9]+(?:\s*[:\-]\s*[0-9]+)?"
+        r"|electronic\s+figure\s*[0-9]+(?:\s*[:\-]\s*[0-9]+)?"
+        r")",
         re.IGNORECASE | re.UNICODE,
     )
 
@@ -122,12 +127,51 @@ class StageEProcessor(BaseStageProcessor):
         t = (text or "").strip()
         if not t or cls._stage4_text_is_table_anchor(t):
             return False
-        if t.startswith("تصویر"):
-            return True
-        low = t.lower()
-        if low.startswith(("fig.", "figure", "fig ")):
-            return True
         return cls._FIG_REF_RE.search(t) is not None
+
+    @staticmethod
+    def _ocr_extraction_is_figure(type_str: str) -> bool:
+        """True for figure-like OCR extraction types (figure/e-figure/image/e-image)."""
+        x = (type_str or "").strip().lower().replace(" ", "")
+        if not x or x == "text":
+            return False
+        if x in ("table", "etable", "e-table", "e_table"):
+            return False
+        if x in ("figure", "e-figure", "efigure", "fig", "image", "e-image", "eimage"):
+            return True
+        return x.startswith("e-") and "fig" in x
+
+    def _ocr_figure_counts_by_topic(
+        self, ocr_extraction_data: Dict[str, Any], subchapter_name: str
+    ) -> Dict[str, int]:
+        """
+        Count OCR figure/e-figure extractions per topic for one subchapter.
+        Key "(بدون مبحث)" is used for empty topic names.
+        """
+        counts: Dict[str, int] = {}
+        ocr_slice = self._filter_ocr_extraction_for_subchapter(ocr_extraction_data, subchapter_name)
+        for chapter_obj in ocr_slice.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+            for sub in chapter_obj.get("subchapters", []) or []:
+                if not isinstance(sub, dict):
+                    continue
+                for topic_obj in sub.get("topics", []) or []:
+                    if not isinstance(topic_obj, dict):
+                        continue
+                    topic_key = (topic_obj.get("topic") or "").strip() or "(بدون مبحث)"
+                    extractions = topic_obj.get("extractions", [])
+                    if not isinstance(extractions, list):
+                        continue
+                    n = 0
+                    for ex in extractions:
+                        if not isinstance(ex, dict):
+                            continue
+                        if self._ocr_extraction_is_figure(str(ex.get("type", ""))):
+                            n += 1
+                    if n > 0:
+                        counts[topic_key] = counts.get(topic_key, 0) + n
+        return counts
 
     @classmethod
     def _stage4_point_is_image_anchor(cls, point: Dict[str, Any]) -> bool:
@@ -168,39 +212,6 @@ class StageEProcessor(BaseStageProcessor):
         if "you requested about" in msg and "tokens" in msg:
             return True
         return False
-
-    def _mark_subchapter_topic_units_skipped(
-        self,
-        *,
-        topic_names: List[str],
-        persian_subchapter_name: str,
-        filtered_stage4_points: List[Dict[str, Any]],
-        unit_hooks: Optional[Any],
-        topic_unit_map: Optional[Dict[str, Dict[str, Any]]],
-    ) -> None:
-        """Mark manifest units skipped when a subchapter has no OCR figures (no LLM call)."""
-        if not unit_hooks:
-            return
-        for topic_name in topic_names:
-            unit_info = (topic_unit_map or {}).get(topic_name)
-            if not unit_info:
-                continue
-            pts = [
-                p
-                for p in filtered_stage4_points
-                if isinstance(p, dict) and (p.get("topic") or "").strip() == topic_name
-            ]
-            ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
-            sub = unit_info.get("subchapter") or persian_subchapter_name
-            unit_hooks.after_unit(
-                int(unit_info["unit_index"]),
-                str(ch or ""),
-                str(sub or ""),
-                topic_name,
-                [],
-                int(unit_info["unit_index"]),
-                status="skipped",
-            )
 
     def _split_topic_groups_by_ocr_figures(
         self,
@@ -438,7 +449,8 @@ class StageEProcessor(BaseStageProcessor):
         scope = (
             f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
             f"تعداد نقاط Stage 4 در این درخواست: {len(pts)}. "
-            "خروجی JSON را فقط برای تصاویر/مواردی که در این فهرست نقاط هستند تولید کن.]"
+            "برای هر figure/e-figure موجود در OCR همین مبحث دقیقاً یک ردیف خروجی بده؛ "
+            "از Stage 4 فقط برای تعیین جایگاه سلسله‌مراتب استفاده کن.]"
         )
         full_prompt = self._build_image_notes_stage_e_prompt(
             prompt_with_subchapter,
@@ -954,44 +966,44 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Warning: No Stage 4 points found for subchapter '{persian_subchapter_name}'. Skipping...")
                 continue
 
-            image_stage4_points = [
+            image_anchor_stage4_points = [
                 p for p in filtered_stage4_points if self._stage4_point_is_image_anchor(p)
             ]
-            if not image_stage4_points:
-                # Some Stage 4 exports use only plain bullets (no "تصویر" prefix) — fall back to
-                # all subchapter rows except obvious table-placeholder lines; model + post-filter
-                # still enforce figures-only output.
-                non_table = [
-                    p
-                    for p in filtered_stage4_points
-                    if not self._stage4_text_is_table_anchor(self._stage4_row_primary_text(p))
-                ]
-                if not non_table:
-                    self.logger.warning(
-                        f"No usable Stage 4 rows for subchapter '{persian_subchapter_name}' "
-                        f"(all rows look like table anchors)."
-                    )
-                    _progress(
-                        f"Warning: No non-table Stage 4 rows for '{persian_subchapter_name}'. Skipping..."
-                    )
-                    continue
+            # Always use all non-table Stage 4 rows for topic grouping; image-anchor matching can
+            # be noisy because medical prose may contain the word "تصویر" without being a figure ref.
+            non_table_stage4_points = [
+                p
+                for p in filtered_stage4_points
+                if not self._stage4_text_is_table_anchor(self._stage4_row_primary_text(p))
+            ]
+            if not non_table_stage4_points:
                 self.logger.warning(
-                    "No explicit figure-reference rows (تصویر / Fig…) in Stage 4 for subchapter %r; "
-                    "using %s non-table Stage 4 row(s) as context (schema without image prefixes).",
+                    f"No usable Stage 4 rows for subchapter '{persian_subchapter_name}' "
+                    f"(all rows look like table anchors)."
+                )
+                _progress(
+                    f"Warning: No non-table Stage 4 rows for '{persian_subchapter_name}'. Skipping..."
+                )
+                continue
+
+            if not image_anchor_stage4_points:
+                self.logger.info(
+                    "No explicit figure-reference rows (تصویر/Fig with number) in Stage 4 for "
+                    "subchapter %r; using %s non-table row(s) for topic grouping.",
                     persian_subchapter_name,
-                    len(non_table),
+                    len(non_table_stage4_points),
                 )
                 _progress(
-                    f"Note: No dedicated image-reference rows in Points; sending {len(non_table)} "
-                    f"Stage 4 row(s) for this subchapter (table-style rows excluded). "
-                    "Model output is still filtered to drop any جدول rows."
+                    f"Note: No explicit figure-id anchors in Points; using {len(non_table_stage4_points)} "
+                    "non-table Stage 4 row(s) for topic grouping."
                 )
-                image_stage4_points = non_table
-            elif len(image_stage4_points) < len(filtered_stage4_points):
+            elif len(image_anchor_stage4_points) < len(non_table_stage4_points):
                 _progress(
-                    f"Using {len(image_stage4_points)} image-anchor Stage 4 row(s) for this call "
-                    f"(excluded {len(filtered_stage4_points) - len(image_stage4_points)} other rows including جدول)."
+                    f"Detected {len(image_anchor_stage4_points)} figure-anchor row(s), but using all "
+                    f"{len(non_table_stage4_points)} non-table rows to avoid false-positive narrowing."
                 )
+
+            image_stage4_points = non_table_stage4_points
 
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
             _progress(f"Using Persian subchapter name in prompt: '{persian_subchapter_name}'")
@@ -1011,7 +1023,7 @@ class StageEProcessor(BaseStageProcessor):
                 self._mark_subchapter_topic_units_skipped(
                     topic_names=ocr_skipped_topics,
                     persian_subchapter_name=persian_subchapter_name,
-                    filtered_stage4_points=filtered_stage4_points,
+                    filtered_points=filtered_stage4_points,
                     unit_hooks=unit_hooks,
                     topic_unit_map=topic_unit_map,
                 )
@@ -1036,6 +1048,10 @@ class StageEProcessor(BaseStageProcessor):
                 )
                 continue
 
+            ocr_figure_counts = self._ocr_figure_counts_by_topic(
+                ocr_extraction_data, persian_subchapter_name
+            )
+            expected_ocr_rows = sum(ocr_figure_counts.get(tn, 0) for tn, _ in topic_groups)
             _progress(
                 f"Stage E topic-parallel: {len(topic_groups)} topic(s) for subchapter "
                 f"'{persian_subchapter_name}' (batch size {self.STAGE_E_TOPIC_BATCH_SIZE})..."
@@ -1070,6 +1086,20 @@ class StageEProcessor(BaseStageProcessor):
                 self.logger.error("No image rows for subchapter %r", persian_subchapter_name)
                 _progress(
                     f"Error: No usable image rows for subchapter '{persian_subchapter_name}'."
+                )
+                continue
+
+            if len(subchapter_filepic_records) < expected_ocr_rows:
+                detail = (
+                    f"{persian_subchapter_name}: expected >= {expected_ocr_rows} figure row(s) from OCR, "
+                    f"got {len(subchapter_filepic_records)}"
+                )
+                subchapter_errors.append(detail)
+                self.logger.error("Stage E completeness check failed: %s", detail)
+                _progress(
+                    "Error: Stage E incomplete for subchapter "
+                    f"'{persian_subchapter_name}' (expected at least {expected_ocr_rows} image row(s), "
+                    f"got {len(subchapter_filepic_records)})."
                 )
                 continue
 

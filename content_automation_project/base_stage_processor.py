@@ -620,6 +620,91 @@ class BaseStageProcessor:
         slim = self._slim_ocr_for_stage_e_image_notes(topic_slice)
         return self._ocr_slim_slice_has_figure_extractions(slim)
 
+    @staticmethod
+    def _ocr_extraction_type_is_table(type_str: str) -> bool:
+        x = (type_str or "").strip().lower().replace(" ", "")
+        return x in ("table", "etable", "e-table", "e_table")
+
+    @staticmethod
+    def _ocr_slice_has_table_extractions(ocr_slice: Dict[str, Any]) -> bool:
+        """True when an OCR slice contains at least one table extraction."""
+        for chapter_obj in ocr_slice.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+            for sub in chapter_obj.get("subchapters", []) or []:
+                if not isinstance(sub, dict):
+                    continue
+                for topic_obj in sub.get("topics", []) or []:
+                    if not isinstance(topic_obj, dict):
+                        continue
+                    extractions = topic_obj.get("extractions", [])
+                    if not isinstance(extractions, list):
+                        continue
+                    for extraction in extractions:
+                        if not isinstance(extraction, dict):
+                            continue
+                        if BaseStageProcessor._ocr_extraction_type_is_table(
+                            str(extraction.get("type", ""))
+                        ):
+                            return True
+        return False
+
+    def _ocr_subchapter_has_table_extractions(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+    ) -> bool:
+        ocr_slice = self._filter_ocr_extraction_for_subchapter(
+            ocr_extraction_data, subchapter_name
+        )
+        return self._ocr_slice_has_table_extractions(ocr_slice)
+
+    def _ocr_topic_has_table_extractions(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+        topic_name: str,
+    ) -> bool:
+        stage4_topic = (topic_name or "").strip() or "(بدون مبحث)"
+        ocr_topic_filter = "" if stage4_topic == "(بدون مبحث)" else stage4_topic
+        topic_slice = self._filter_ocr_extraction_for_subchapter_topic(
+            ocr_extraction_data, subchapter_name, ocr_topic_filter
+        )
+        return self._ocr_slice_has_table_extractions(topic_slice)
+
+    def _mark_subchapter_topic_units_skipped(
+        self,
+        *,
+        topic_names: List[str],
+        persian_subchapter_name: str,
+        filtered_points: List[Dict[str, Any]],
+        unit_hooks: Optional[Any],
+        topic_unit_map: Optional[Dict[str, Dict[str, Any]]],
+    ) -> None:
+        """Mark manifest units skipped when a subchapter/topic has no OCR pic content to process."""
+        if not unit_hooks:
+            return
+        for topic_name in topic_names:
+            unit_info = (topic_unit_map or {}).get(topic_name)
+            if not unit_info:
+                continue
+            pts = [
+                p
+                for p in filtered_points
+                if isinstance(p, dict) and (p.get("topic") or "").strip() == topic_name
+            ]
+            ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
+            sub = unit_info.get("subchapter") or persian_subchapter_name
+            unit_hooks.after_unit(
+                int(unit_info["unit_index"]),
+                str(ch or ""),
+                str(sub or ""),
+                topic_name,
+                [],
+                int(unit_info["unit_index"]),
+                status="skipped",
+            )
+
     def save_json_file(self, data: List[Dict], file_path: str, 
                       metadata: Dict, stage_name: str) -> bool:
         """

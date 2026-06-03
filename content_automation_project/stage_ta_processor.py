@@ -98,6 +98,21 @@ class StageTAProcessor(BaseStageProcessor):
             if (t.get("topic") or "").strip() == topic_name
         ]
 
+    def _split_topic_groups_by_subchapter_tables(
+        self,
+        topic_groups: List[Tuple[str, List[Dict[str, Any]]]],
+        subchapter_tables: List[Dict[str, Any]],
+    ) -> Tuple[List[Tuple[str, List[Dict[str, Any]]]], List[str]]:
+        """Keep only topics with OCR tables in this subchapter; return skipped topic names."""
+        with_tables: List[Tuple[str, List[Dict[str, Any]]]] = []
+        skipped_topics: List[str] = []
+        for topic_name, pts in topic_groups:
+            if self._tables_for_topic(subchapter_tables, topic_name):
+                with_tables.append((topic_name, pts))
+            else:
+                skipped_topics.append(topic_name)
+        return with_tables, skipped_topics
+
     def _build_stage_ta_prompt(
         self,
         *,
@@ -660,8 +675,30 @@ class StageTAProcessor(BaseStageProcessor):
             _progress(f"Found {len(subchapter_tables)} tables for subchapter '{persian_subchapter_name}'")
             
             if not subchapter_tables:
-                self.logger.warning(f"No tables found for subchapter '{persian_subchapter_name}'. Skipping this subchapter.")
-                _progress(f"Warning: No tables found for subchapter '{persian_subchapter_name}'. Skipping...")
+                topic_names = list(
+                    dict.fromkeys(
+                        (p.get("topic") or "").strip()
+                        for p in filtered_stage_e_points
+                        if isinstance(p, dict) and (p.get("topic") or "").strip()
+                    )
+                )
+                self._mark_subchapter_topic_units_skipped(
+                    topic_names=topic_names,
+                    persian_subchapter_name=persian_subchapter_name,
+                    filtered_points=filtered_stage_e_points,
+                    unit_hooks=unit_hooks,
+                    topic_unit_map=topic_unit_map,
+                )
+                self.logger.warning(
+                    "No OCR tables for subchapter %r — skipping table notes "
+                    "(%s Stage E point(s) remain lesson-only).",
+                    persian_subchapter_name,
+                    len(filtered_stage_e_points),
+                )
+                _progress(
+                    f"Warning: No tables in OCR for subchapter '{persian_subchapter_name}'. "
+                    f"Skipping table notes ({len(filtered_stage_e_points)} Stage E point(s) are text-only)."
+                )
                 continue
 
             prompt_with_subchapter = prompt.replace("{SUBCHAPTER_NAME}", persian_subchapter_name)
@@ -671,6 +708,39 @@ class StageTAProcessor(BaseStageProcessor):
             if not topic_groups:
                 self.logger.warning("No topic buckets for subchapter %r", persian_subchapter_name)
                 _progress(f"Warning: No topic buckets for '{persian_subchapter_name}'. Skipping...")
+                continue
+
+            topic_groups, table_skipped_topics = self._split_topic_groups_by_subchapter_tables(
+                topic_groups,
+                subchapter_tables,
+            )
+            if table_skipped_topics:
+                self._mark_subchapter_topic_units_skipped(
+                    topic_names=table_skipped_topics,
+                    persian_subchapter_name=persian_subchapter_name,
+                    filtered_points=filtered_stage_e_points,
+                    unit_hooks=unit_hooks,
+                    topic_unit_map=topic_unit_map,
+                )
+                for tn in table_skipped_topics:
+                    self.logger.warning(
+                        "No OCR tables for subchapter %r topic %r — skipping table notes.",
+                        persian_subchapter_name,
+                        tn,
+                    )
+                    _progress(
+                        f"Warning: No OCR tables for topic «{tn}» in '{persian_subchapter_name}'. Skipping..."
+                    )
+
+            if not topic_groups:
+                self.logger.warning(
+                    "No topics with OCR tables for subchapter %r — skipping table notes.",
+                    persian_subchapter_name,
+                )
+                _progress(
+                    f"Warning: No OCR tables for any topic in '{persian_subchapter_name}'. "
+                    f"Skipping table notes ({len(filtered_stage_e_points)} Stage E point(s) are text-only)."
+                )
                 continue
 
             _progress(
@@ -692,7 +762,16 @@ class StageTAProcessor(BaseStageProcessor):
             )
 
             if not subchapter_tablepic_records:
-                detail = "; ".join(topic_errs) if topic_errs else "no topic returned usable rows"
+                if not topic_errs:
+                    self.logger.warning(
+                        "No table rows for subchapter %r after topic-parallel (no API/parse errors) — skipping.",
+                        persian_subchapter_name,
+                    )
+                    _progress(
+                        f"Warning: No table notes produced for '{persian_subchapter_name}'. Skipping..."
+                    )
+                    continue
+                detail = "; ".join(topic_errs)
                 subchapter_errors.append(
                     f"{persian_subchapter_name}: topic-parallel produced no rows ({detail})"
                 )
@@ -970,9 +1049,9 @@ class StageTAProcessor(BaseStageProcessor):
                         if not isinstance(extraction, dict):
                             continue
                         
-                        # Only extract tables (type="table")
-                        extraction_type = extraction.get("type", "").lower()
-                        if extraction_type == "table":
+                        if self._ocr_extraction_type_is_table(
+                            str(extraction.get("type", ""))
+                        ):
                             table_data = {
                                 "chapter": chapter_name,
                                 "subchapter": subchapter_name,

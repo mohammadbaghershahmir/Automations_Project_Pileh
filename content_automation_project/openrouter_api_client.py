@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Optional, Dict, Any, Callable, List
 
 import requests
@@ -46,6 +47,48 @@ class OpenRouterAPIError(Exception):
 def _rough_token_estimate_from_chars(char_count: int) -> int:
     """Very rough token estimate (~4 chars/token for Latin/mixed text)."""
     return max(1, char_count // 4)
+
+
+_AFFORDABLE_MAX_TOKENS_RE = re.compile(r"can only afford (\d+)", re.IGNORECASE)
+
+
+def _parse_openrouter_affordable_max_tokens(api_message: str) -> Optional[int]:
+    """Parse 'can only afford N' from OpenRouter HTTP 402 credit errors."""
+    if not api_message:
+        return None
+    match = _AFFORDABLE_MAX_TOKENS_RE.search(api_message)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _is_openrouter_insufficient_credits_error(
+    status_code: Optional[int], api_message: str
+) -> bool:
+    if status_code == 402:
+        return True
+    msg = (api_message or "").lower()
+    return "requires more credits" in msg or "fewer max_tokens" in msg
+
+
+def _reduce_max_tokens_for_credit_cap(requested: int, api_message: str) -> Optional[int]:
+    """
+    Return a lower max_tokens for retry after OpenRouter 402, or None if no reduction applies.
+    Leaves headroom below the provider-reported affordable cap.
+    """
+    affordable = _parse_openrouter_affordable_max_tokens(api_message)
+    if affordable is not None:
+        capped = max(1024, min(requested, affordable - 256))
+        if capped < requested:
+            return capped
+        return None
+    halved = max(1024, requested // 2)
+    if halved < requested:
+        return halved
+    return None
 
 
 def _parse_openrouter_error_body(resp: requests.Response) -> str:
@@ -340,25 +383,45 @@ class OpenRouterAPIClient:
 
         if cancel_check():
             raise OpenRouterRequestAborted()
+        effective_max_tokens = max_tokens
         try:
-            resp = self.session.post(
-                self.base_url, headers=headers, json=payload, stream=True, timeout=timeout_s
-            )
-            if resp.status_code >= 400:
-                _log_openrouter_request_context(
-                    self.logger,
-                    model_name=model_name,
-                    prompt_char_len=prompt_char_len,
-                    max_tokens=max_tokens,
+            for credit_retry in range(2):
+                payload["max_tokens"] = effective_max_tokens
+                resp = self.session.post(
+                    self.base_url, headers=headers, json=payload, stream=True, timeout=timeout_s
                 )
-                full, api_msg = _build_openrouter_error_message(resp=resp)
-                self.logger.error(full)
-                raise OpenRouterAPIError(
-                    full,
-                    status_code=resp.status_code,
-                    api_message=api_msg,
-                    model_name=model_name,
-                )
+                if resp.status_code >= 400:
+                    _log_openrouter_request_context(
+                        self.logger,
+                        model_name=model_name,
+                        prompt_char_len=prompt_char_len,
+                        max_tokens=effective_max_tokens,
+                    )
+                    full, api_msg = _build_openrouter_error_message(resp=resp)
+                    reduced = (
+                        _reduce_max_tokens_for_credit_cap(effective_max_tokens, api_msg)
+                        if _is_openrouter_insufficient_credits_error(resp.status_code, api_msg)
+                        else None
+                    )
+                    if reduced is not None and credit_retry == 0:
+                        self.logger.warning(
+                            "%s HTTP %s credit cap: retrying with max_tokens=%s (was %s): %s",
+                            OPENROUTER_LOG_PREFIX,
+                            resp.status_code,
+                            reduced,
+                            effective_max_tokens,
+                            api_msg,
+                        )
+                        effective_max_tokens = reduced
+                        continue
+                    self.logger.error(full)
+                    raise OpenRouterAPIError(
+                        full,
+                        status_code=resp.status_code,
+                        api_message=api_msg,
+                        model_name=model_name,
+                    )
+                break
             resp.raise_for_status()
             # text/event-stream often has no charset; requests defaults to ISO-8859-1 and mojibakes UTF-8
             # (e.g. Persian) before json.loads. Force UTF-8 for iter_lines decode.
@@ -508,23 +571,43 @@ class OpenRouterAPIClient:
                 payload.get("response_format"),
             )
 
+        effective_max_tokens = max_tokens
         try:
-            resp = self.session.post(self.base_url, headers=headers, json=payload, timeout=timeout_s)
-            if resp.status_code >= 400:
-                _log_openrouter_request_context(
-                    self.logger,
-                    model_name=model_name,
-                    prompt_char_len=prompt_char_len,
-                    max_tokens=max_tokens,
-                )
-                full, api_msg = _build_openrouter_error_message(resp=resp)
-                self.logger.error(full)
-                raise OpenRouterAPIError(
-                    full,
-                    status_code=resp.status_code,
-                    api_message=api_msg,
-                    model_name=model_name,
-                )
+            for credit_retry in range(2):
+                payload["max_tokens"] = effective_max_tokens
+                resp = self.session.post(self.base_url, headers=headers, json=payload, timeout=timeout_s)
+                if resp.status_code >= 400:
+                    _log_openrouter_request_context(
+                        self.logger,
+                        model_name=model_name,
+                        prompt_char_len=prompt_char_len,
+                        max_tokens=effective_max_tokens,
+                    )
+                    full, api_msg = _build_openrouter_error_message(resp=resp)
+                    reduced = (
+                        _reduce_max_tokens_for_credit_cap(effective_max_tokens, api_msg)
+                        if _is_openrouter_insufficient_credits_error(resp.status_code, api_msg)
+                        else None
+                    )
+                    if reduced is not None and credit_retry == 0:
+                        self.logger.warning(
+                            "%s HTTP %s credit cap: retrying with max_tokens=%s (was %s): %s",
+                            OPENROUTER_LOG_PREFIX,
+                            resp.status_code,
+                            reduced,
+                            effective_max_tokens,
+                            api_msg,
+                        )
+                        effective_max_tokens = reduced
+                        continue
+                    self.logger.error(full)
+                    raise OpenRouterAPIError(
+                        full,
+                        status_code=resp.status_code,
+                        api_message=api_msg,
+                        model_name=model_name,
+                    )
+                break
             resp.raise_for_status()
             data = resp.json()
             if not isinstance(data, dict):

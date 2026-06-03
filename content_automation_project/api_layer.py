@@ -94,9 +94,11 @@ class APIConfig:
     # gemini-1.5-flash: up to 8192 tokens
     DEFAULT_MAX_TOKENS = 16384  # Maximum for gemini-2.5 models
     DEFAULT_DEEPSEEK_MAX_TOKENS = 65536  # DeepSeek Reasoner: max 64K (docs); DeepSeek Chat: max 8K
-    # OpenRouter (e.g. z-ai/glm-5): higher advertised limits exist, but requests with very large
-    # max_tokens can return HTTP 400 (provider cap or prompt+max exceeding context). Stage V uses this cap.
-    DEFAULT_OPENROUTER_MAX_TOKENS = 65536
+    # OpenRouter (e.g. z-ai/glm-5): very large max_tokens can fail with HTTP 400/402 (context or
+    # credit reservation). Client retries 402 with provider "can only afford N"; override via env.
+    DEFAULT_OPENROUTER_MAX_TOKENS = int(
+        os.environ.get("OPENROUTER_MAX_TOKENS", "32768")
+    )
 
 
 class APIKeyManager:
