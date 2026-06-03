@@ -163,17 +163,33 @@ def auto_pair_stage_v_files(
     return pairs
 
 
-def auto_pair_voice_class_files(tagged_paths: List[str]) -> List[Dict[str, Any]]:
-    """One pair per Importance & Type JSON (a*.json)."""
-    return [
-        {
+def auto_pair_voice_class_files(
+    tagged_paths: List[str],
+    filepic_paths: Optional[List[str]] = None,
+    tablepic_paths: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Pair Importance & Type JSON (a*.json) with optional filepic/tablepic sidecars.
+
+    When filepic/tablepic lists are provided, lengths must match tagged_paths (sorted by filename).
+    """
+    pairs: List[Dict[str, Any]] = []
+    use_media = filepic_paths is not None and tablepic_paths is not None
+    fp_list = filepic_paths or []
+    tp_list = tablepic_paths or []
+
+    for i, tagged_path in enumerate(tagged_paths):
+        entry: Dict[str, Any] = {
             "stage_j_path": tagged_path,
             "status": "pending",
             "output_path": None,
             "error": None,
         }
-        for tagged_path in tagged_paths
-    ]
+        if use_media:
+            entry["filepic_path"] = fp_list[i]
+            entry["tablepic_path"] = tp_list[i]
+        pairs.append(entry)
+    return pairs
 
 
 def extract_book_chapter_from_stage_f_filename_for_h(stage_f_path: str) -> Tuple[Optional[int], Optional[int]]:

@@ -2139,6 +2139,8 @@ def create_app() -> FastAPI:
             user: CurrentUser,
             db: Session = Depends(get_db),
             tagged_json_files: List[UploadFile] = File(...),
+            filepic_json_files: List[UploadFile] = File(...),
+            tablepic_json_files: List[UploadFile] = File(...),
             prompt_1: str = Form(""),
             tts_instruction: str = Form(""),
             provider_1: str = Form(DEFAULT_TEST_BANK_PROVIDER),
@@ -2158,20 +2160,44 @@ def create_app() -> FastAPI:
 
             tmp = tempfile.mkdtemp(prefix="voiceclass_upload_")
             try:
-                j_paths: List[str] = []
-                for uf in tagged_json_files:
-                    if not uf.filename:
-                        continue
-                    dest = os.path.join(tmp, os.path.basename(uf.filename))
-                    content = await uf.read()
-                    with open(dest, "wb") as f:
-                        f.write(content)
-                    j_paths.append(dest)
 
-                if not j_paths:
+                async def _collect(files: List[UploadFile], subdir: str) -> List[str]:
+                    paths: List[str] = []
+                    for uf in files:
+                        if not uf.filename:
+                            continue
+                        dest = os.path.join(tmp, subdir, os.path.basename(uf.filename))
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        content = await uf.read()
+                        with open(dest, "wb") as f:
+                            f.write(content)
+                        paths.append(dest)
+                    return paths
+
+                j_paths = await _collect(tagged_json_files, "tagged")
+                fp_paths = await _collect(filepic_json_files, "filepic")
+                tp_paths = await _collect(tablepic_json_files, "tablepic")
+
+                tagged_sorted = _sorted_nonempty_paths(j_paths)
+                fp_sorted = _sorted_nonempty_paths(fp_paths)
+                tp_sorted = _sorted_nonempty_paths(tp_paths)
+                n_tagged, n_fp, n_tp = len(tagged_sorted), len(fp_sorted), len(tp_sorted)
+
+                if not tagged_sorted:
                     raise HTTPException(400, "Upload at least one tagged JSON (a*.json from Importance & Type).")
+                if not fp_sorted or not tp_sorted:
+                    raise HTTPException(
+                        400,
+                        "Upload matching filepic and tablepic JSON files for each chapter.",
+                    )
+                if n_tagged != n_fp or n_tagged != n_tp:
+                    raise HTTPException(
+                        400,
+                        f"File counts must match: tagged ({n_tagged}), filepic ({n_fp}), tablepic ({n_tp}). "
+                        "Sort order is by filename within each group.",
+                    )
 
-                pairs_spec = auto_pair_voice_class_files(j_paths)
+                pairs_spec = auto_pair_voice_class_files(tagged_sorted, fp_sorted, tp_sorted)
                 if not pairs_spec:
                     raise HTTPException(400, "No pairable tagged JSON files (check PointId / filenames).")
 
@@ -2195,6 +2221,32 @@ def create_app() -> FastAPI:
                     raise HTTPException(400, "Invalid OpenRouter model.")
                 provider_1_eff = normalize_test_bank_provider(provider_1)
 
+                pair_media: dict = {}
+                job_id = str(uuid.uuid4())
+                root = job_root(job_id)
+                os.makedirs(root, exist_ok=True)
+
+                for pair_index, p in enumerate(pairs_spec):
+                    tagged = p["stage_j_path"]
+                    fp = p["filepic_path"]
+                    tp = p["tablepic_path"]
+                    ensure_dirs(job_id, pair_index)
+                    tagged_name = os.path.basename(tagged)
+                    fp_name = os.path.basename(fp)
+                    tp_name = os.path.basename(tp)
+                    rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
+                    rel_fp = f"pair_{pair_index}/inputs/{fp_name}"
+                    rel_tp = f"pair_{pair_index}/inputs/{tp_name}"
+                    shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
+                    shutil.copy2(fp, os.path.join(root, rel_fp.replace("/", os.sep)))
+                    shutil.copy2(tp, os.path.join(root, rel_tp.replace("/", os.sep)))
+                    pair_media[str(pair_index)] = {
+                        "filepic_relpath": rel_fp,
+                        "tablepic_relpath": rel_tp,
+                        "filepic_basename": fp_name,
+                        "tablepic_basename": tp_name,
+                    }
+
                 cfg = {
                     "display_name": name_stripped,
                     "prompt_1": prompt_1_eff,
@@ -2206,11 +2258,8 @@ def create_app() -> FastAPI:
                     "max_segment_seconds": max_seg_val,
                     "chars_per_second": cps_val,
                     "delay_seconds": delay_val,
+                    "pair_media": pair_media,
                 }
-                job_id = str(uuid.uuid4())
-                root = job_root(job_id)
-                os.makedirs(root, exist_ok=True)
-
                 job = Job(
                     id=job_id,
                     type="voice_class",
@@ -2222,11 +2271,8 @@ def create_app() -> FastAPI:
                 db.flush()
 
                 for pair_index, p in enumerate(pairs_spec):
-                    tagged = p["stage_j_path"]
-                    ensure_dirs(job_id, pair_index)
-                    tagged_name = os.path.basename(tagged)
+                    tagged_name = os.path.basename(p["stage_j_path"])
                     rel_tagged = f"pair_{pair_index}/inputs/{tagged_name}"
-                    shutil.copy2(tagged, os.path.join(root, rel_tagged.replace("/", os.sep)))
                     db.add(
                         JobPair(
                             job_id=job_id,
@@ -2239,6 +2285,12 @@ def create_app() -> FastAPI:
                         )
                     )
                     register_input_artifact(db, job_id, pair_index, root, rel_tagged, "upload_tagged_json")
+                    register_input_artifact(
+                        db, job_id, pair_index, root, pair_media[str(pair_index)]["filepic_relpath"], "upload_filepic_json"
+                    )
+                    register_input_artifact(
+                        db, job_id, pair_index, root, pair_media[str(pair_index)]["tablepic_relpath"], "upload_tablepic_json"
+                    )
 
                 db.commit()
             finally:

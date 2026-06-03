@@ -8,10 +8,12 @@ import json
 import logging
 import os
 import time
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from api_layer import APIConfig, GeminiAPIClient
 from base_stage_processor import BaseStageProcessor
+from stage_j_processor import _sj_build_topic_key
 from webapp.audio_merge import merge_voice_tracks, wav_duration_seconds
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,47 @@ class StageVoiceProcessor(BaseStageProcessor):
         top = str(topic or "").strip() or "(بدون مبحث)"
         return ch, sub, top
 
+    @staticmethod
+    def _index_pic_captions_by_topic(
+        pic_records: List[Dict[str, Any]],
+    ) -> Dict[Tuple[str, str, str], List[Dict[str, str]]]:
+        by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = defaultdict(list)
+        for row in pic_records:
+            if not isinstance(row, dict):
+                continue
+            key = _sj_build_topic_key(row.get("chapter", ""), row.get("subchapter", ""), row.get("topic", ""))
+            by_topic[key].append(
+                {
+                    "point_text": str(row.get("point_text", "") or ""),
+                    "caption": str(row.get("caption", "") or ""),
+                }
+            )
+        return dict(by_topic)
+
+    @staticmethod
+    def _topic_captions_context(
+        chapter: str,
+        subchapter: str,
+        topic: str,
+        table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+        image_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    ) -> Optional[Dict[str, Any]]:
+        key = _sj_build_topic_key(chapter, subchapter, topic)
+        tabs = table_by_topic.get(key)
+        imgs = image_by_topic.get(key)
+        if not tabs and not imgs:
+            return None
+        ctx: Dict[str, Any] = {
+            "chapter": chapter,
+            "subchapter": subchapter,
+            "topic": topic,
+        }
+        if tabs:
+            ctx["topic_table_captions"] = tabs
+        if imgs:
+            ctx["topic_image_captions"] = imgs
+        return ctx
+
     def _group_lesson_context_by_topic(
         self, lesson_rows: List[Dict[str, Any]]
     ) -> List[Tuple[str, str, str, List[Dict[str, Any]]]]:
@@ -141,13 +184,22 @@ class StageVoiceProcessor(BaseStageProcessor):
         topic_rows: List[Dict[str, Any]],
         topic_index: int,
         total_topics: int,
+        *,
+        topics_context: Optional[Dict[str, Any]] = None,
     ) -> str:
         scope = (
             f"\n\n[مبحث {topic_index}/{total_topics}: «{topic}» — "
             f"زیرفصل «{subchapter}» — فصل «{chapter}». "
             f"فقط از نکات همین مبحث در JSON زیر اسکریپت بنویس.]\n"
         )
-        return f"""{prompt}{scope}
+        captions_block = ""
+        if topics_context:
+            captions_block = (
+                "\n\nImage and table captions for THIS TOPIC "
+                "(use these to explain figures and tables naturally in the spoken script):\n"
+                f"{json.dumps(topics_context, ensure_ascii=False, indent=2)}\n"
+            )
+        return f"""{prompt}{scope}{captions_block}
 
 Tagged lesson JSON for THIS TOPIC ONLY (Imp 1 and 2 points only):
 {json.dumps(topic_rows, ensure_ascii=False, indent=2)}
@@ -216,6 +268,8 @@ Use paragraph_id starting at 1 within this topic response."""
         model_name: str,
         output_dir: str,
         *,
+        filepic_json_path: Optional[str] = None,
+        tablepic_json_path: Optional[str] = None,
         max_segment_seconds: float = 60.0,
         chars_per_second: float = 13.0,
         delay_seconds: float = 0.0,
@@ -251,6 +305,26 @@ Use paragraph_id starting at 1 within this topic response."""
         book_id, chapter_id = self.extract_book_chapter_from_pointid(str(first_pid))
         metadata_chapter_name = records[0].get("chapter") or records[0].get("Chapter") or ""
 
+        table_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = {}
+        image_by_topic: Dict[Tuple[str, str, str], List[Dict[str, str]]] = {}
+        if filepic_json_path or tablepic_json_path:
+            if tablepic_json_path:
+                tp_data = self.load_json_file(tablepic_json_path)
+                tablepic_records = self.get_data_from_json(tp_data) if tp_data else []
+                table_by_topic = self._index_pic_captions_by_topic(
+                    [r for r in tablepic_records if isinstance(r, dict)]
+                )
+            if filepic_json_path:
+                fp_data = self.load_json_file(filepic_json_path)
+                filepic_records = self.get_data_from_json(fp_data) if fp_data else []
+                image_by_topic = self._index_pic_captions_by_topic(
+                    [r for r in filepic_records if isinstance(r, dict)]
+                )
+            _progress(
+                f"Loaded captions: filepic topics={len(image_by_topic)}, "
+                f"tablepic topics={len(table_by_topic)}"
+            )
+
         lesson_context = self._build_lesson_context(records)
         topic_groups = self._group_lesson_context_by_topic(lesson_context)
         if not topic_groups:
@@ -277,6 +351,13 @@ Use paragraph_id starting at 1 within this topic response."""
                 f"calling OpenRouter ({model_name})..."
             )
 
+            topics_context = self._topic_captions_context(
+                chapter_name,
+                subchapter_name,
+                topic_name,
+                table_by_topic,
+                image_by_topic,
+            )
             full_prompt = self._build_topic_script_prompt(
                 prompt,
                 chapter_name,
@@ -285,6 +366,7 @@ Use paragraph_id starting at 1 within this topic response."""
                 topic_rows,
                 topic_index,
                 total_topics,
+                topics_context=topics_context,
             )
             response = self.api_client.process_text(
                 text=full_prompt,
@@ -342,6 +424,8 @@ Use paragraph_id starting at 1 within this topic response."""
                 "chapter_id": chapter_id,
                 "chapter_name": metadata_chapter_name,
                 "source_tagged_json": os.path.basename(tagged_json_path),
+                "source_filepic_json": os.path.basename(filepic_json_path) if filepic_json_path else None,
+                "source_tablepic_json": os.path.basename(tablepic_json_path) if tablepic_json_path else None,
                 "total_paragraphs": len(paragraphs),
                 "total_segments": len(segments),
                 "total_topics": len(topic_groups),

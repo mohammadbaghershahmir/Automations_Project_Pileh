@@ -12,7 +12,7 @@
 {% if multipart_ok is defined and not multipart_ok %}
 <p style="color:#f87171;">File uploads are disabled: install <code>python-multipart</code> on the server, then restart the API.</p>
 {% endif %}
-<p class="muted"><strong>Two-step job:</strong> Step&nbsp;1 generates a reviewable script JSON via OpenRouter from Importance &amp; Type output. Step&nbsp;2 runs Gemini TTS (≤1&nbsp;min per segment), then merges intro + speech + outro into one MP3 per chapter. Upload one or more <code>a*.json</code> files (one pair per file).</p>
+<p class="muted"><strong>Two-step job:</strong> Step&nbsp;1 generates a reviewable script JSON via OpenRouter from Importance &amp; Type output plus image/table captions. Step&nbsp;2 runs Gemini TTS (≤1&nbsp;min per segment), then merges intro + speech + outro into one MP3 per chapter. Upload matching sets of <code>a*.json</code>, <code>*_filepic.json</code>, and <code>*_tablepic.json</code> (same count per group; sorted by filename).</p>
 {% if request.query_params.get('prompt_saved') %}
 <p class="muted" style="margin:0 0 12px;color:var(--accent);font-size:13px;">System default prompts saved.</p>
 {% endif %}
@@ -26,6 +26,16 @@
     <h2 style="margin-top:0;font-size:1rem;">Tagged JSON (Importance &amp; Type)</h2>
     <p class="muted" style="margin-top:0;font-size:13px;"><code>a*.json</code> with Imp and Type columns — one file per chapter pair.</p>
     <input type="file" name="tagged_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Filepic JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Image captions keyed by topic (<code>*_filepic.json</code> from Image notes). Same number of files as tagged JSON; sorted by filename.</p>
+    <input type="file" name="filepic_json_files" multiple accept=".json,application/json" required/>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;">Tablepic JSON</h2>
+    <p class="muted" style="margin-top:0;font-size:13px;">Table captions keyed by topic (<code>*_tablepic.json</code> from Table notes). Same number of files as tagged JSON; sorted by filename.</p>
+    <input type="file" name="tablepic_json_files" multiple accept=".json,application/json" required/>
   </div>
   <div class="card">
     <h2 style="margin-top:0;font-size:1rem;">Step 1 — Script (OpenRouter)</h2>

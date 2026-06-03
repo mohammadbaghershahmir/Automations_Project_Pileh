@@ -105,16 +105,26 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                 _finalize_step1_cancelled(db, job_id, pairs)
                 return
 
-            if not pair.stage_j_relpath:
+            pm = (cfg.get("pair_media") or {}).get(str(pair.pair_index), {})
+            rel_fp = (pm.get("filepic_relpath") or "").strip()
+            rel_tp = (pm.get("tablepic_relpath") or "").strip()
+
+            if not pair.stage_j_relpath or not rel_fp or not rel_tp:
                 pair.step1_status = "failed"
-                pair.step1_error = "Missing tagged JSON (Importance & Type output)"
+                pair.step1_error = "Missing tagged JSON, filepic, or tablepic path"
                 db.commit()
                 continue
 
             abs_tagged = os.path.join(base, pair.stage_j_relpath.replace("/", os.sep))
-            if not os.path.isfile(abs_tagged):
+            abs_filepic = os.path.join(base, rel_fp.replace("/", os.sep))
+            abs_tablepic = os.path.join(base, rel_tp.replace("/", os.sep))
+            if (
+                not os.path.isfile(abs_tagged)
+                or not os.path.isfile(abs_filepic)
+                or not os.path.isfile(abs_tablepic)
+            ):
                 pair.step1_status = "failed"
-                pair.step1_error = "Tagged JSON file missing on disk"
+                pair.step1_error = "Tagged JSON, filepic, or tablepic file missing on disk"
                 db.commit()
                 continue
 
@@ -142,6 +152,8 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                     prompt=prompt,
                     model_name=model_name,
                     output_dir=out_dir,
+                    filepic_json_path=abs_filepic,
+                    tablepic_json_path=abs_tablepic,
                     max_segment_seconds=max_seg,
                     chars_per_second=cps,
                     delay_seconds=delay_seconds,
