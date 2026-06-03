@@ -589,11 +589,15 @@ def run_image_notes_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                     pair.step1_status = "failed"
                     pair.step1_error = "Image Notes returned no output"
                     append_log(db, job_id, f"pair {pair.pair_index}: Image Notes failed", pair.pair_index)
+                    if hasattr(unit_hooks, "finalize_stale_units"):
+                        unit_hooks.finalize_stale_units("failed")
             except Exception as e:
                 logger.exception("Image Notes error")
                 pair.step1_status = "failed"
                 pair.step1_error = str(e)
                 append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+                if hasattr(unit_hooks, "finalize_stale_units"):
+                    unit_hooks.finalize_stale_units("failed")
 
             db.commit()
 

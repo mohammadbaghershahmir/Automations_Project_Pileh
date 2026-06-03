@@ -695,6 +695,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "image_notes", "prompt"),
+                "default_model": DEFAULT_TEST_BANK_MODEL,
             },
         )
 

@@ -145,6 +145,22 @@ class DocumentProcessingUnitHooks:
             )
         save_manifest(self.job_id, self.pair_index, m)
 
+    def finalize_stale_units(self, final_status: str = "skipped") -> int:
+        """
+        Mark units still pending/running after a job ends (crash, cancel, or partial run).
+        Returns how many units were updated.
+        """
+        m = self._ensure_manifest()
+        updated = 0
+        for u in m.get("units") or []:
+            st = (u.get("status") or "").strip().lower()
+            if st in ("pending", "running"):
+                u["status"] = final_status
+                updated += 1
+        if updated:
+            save_manifest(self.job_id, self.pair_index, m)
+        return updated
+
 
 def hooks_for_pair(
     db: Session,

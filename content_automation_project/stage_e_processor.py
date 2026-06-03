@@ -231,6 +231,38 @@ class StageEProcessor(BaseStageProcessor):
                 skipped_topics.append(topic_name)
         return with_figures, skipped_topics
 
+    @classmethod
+    def _slim_stage4_points_for_image_notes(
+        cls, pts: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        One representative row per (subtopic, subsubtopic) for hierarchy placement.
+        Avoids sending hundreds of bullets per topic (reduces timeouts on large topics).
+        """
+        slim: List[Dict[str, Any]] = []
+        seen: set[Tuple[str, str]] = set()
+        for p in pts:
+            if not isinstance(p, dict):
+                continue
+            st = (p.get("subtopic") or "").strip()
+            sst = (p.get("subsubtopic") or "").strip()
+            key = (st, sst)
+            if key in seen:
+                continue
+            seen.add(key)
+            sample = cls._stage4_row_primary_text(p)
+            slim.append(
+                {
+                    "chapter": p.get("chapter", ""),
+                    "subchapter": p.get("subchapter", ""),
+                    "topic": p.get("topic", ""),
+                    "subtopic": st,
+                    "subsubtopic": sst,
+                    "points": sample or "(نمونه)",
+                }
+            )
+        return slim if slim else [p for p in pts if isinstance(p, dict)][:80]
+
     @staticmethod
     def _stage4_points_grouped_by_topic_in_order(
         points: List[Dict[str, Any]],
@@ -446,9 +478,11 @@ class StageEProcessor(BaseStageProcessor):
         topic_ocr_extraction_json_str = self._topic_ocr_json_for_stage_e(
             ocr_extraction_data, persian_subchapter_name, topic_name
         )
+        slim_pts = self._slim_stage4_points_for_image_notes(pts)
         scope = (
             f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
-            f"تعداد نقاط Stage 4 در این درخواست: {len(pts)}. "
+            f"تعداد نقاط Stage 4 در این مبحث: {len(pts)} "
+            f"(نمای hierarchy: {len(slim_pts)} ردیف). "
             "برای هر figure/e-figure موجود در OCR همین مبحث دقیقاً یک ردیف خروجی بده؛ "
             "از Stage 4 فقط برای تعیین جایگاه سلسله‌مراتب استفاده کن.]"
         )
@@ -456,10 +490,10 @@ class StageEProcessor(BaseStageProcessor):
             prompt_with_subchapter,
             topic_ocr_extraction_json_str,
             persian_subchapter_name,
-            pts,
+            slim_pts,
             scope_note=scope,
         )
-        label = f"topic «{topic_name}» ({len(pts)} Stage 4 row(s))"
+        label = f"topic «{topic_name}» ({len(pts)} Stage 4 row(s), {len(slim_pts)} hierarchy row(s))"
         response_text, filepic_data, ctx_hit = self._call_image_notes_llm_with_retries(
             full_prompt,
             model_name,
@@ -603,7 +637,10 @@ class StageEProcessor(BaseStageProcessor):
                     if unit_hooks and unit_info:
                         ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
                         sub = unit_info.get("subchapter") or persian_subchapter_name
-                        status = "failed" if err else ("skipped" if not rows and not err else "succeeded")
+                        if err or not rows:
+                            status = "failed"
+                        else:
+                            status = "succeeded"
                         unit_hooks.after_unit(
                             int(unit_info["unit_index"]),
                             str(ch or ""),
@@ -833,6 +870,18 @@ class StageEProcessor(BaseStageProcessor):
             self.api_client.set_stage("stage_e")
         
         _progress("Starting Stage E processing...")
+        _progress(
+            "Stage E scheduling: all non-table topics per subchapter with OCR figures "
+            "(slim Stage 4 hierarchy rows in prompts)."
+        )
+
+        def _finalize_unit_manifest(stale_status: str) -> None:
+            if unit_hooks and hasattr(unit_hooks, "finalize_stale_units"):
+                n = unit_hooks.finalize_stale_units(stale_status)
+                if n:
+                    _progress(
+                        f"Marked {n} unit(s) still pending/running as {stale_status} in repair manifest."
+                    )
         
         # Load OCR Extraction JSON (Stage 1) - contains figure and table descriptions
         _progress("Loading OCR Extraction JSON (Stage 1)...")
@@ -1146,11 +1195,13 @@ class StageEProcessor(BaseStageProcessor):
                 "Error: Stage E incomplete — one or more subchapters failed (job not saved as success). "
                 f"Failures: {summary}"
             )
+            _finalize_unit_manifest("failed")
             return None
         
         if not all_filepic_records:
             self.logger.error("No filepic records found from any subchapter")
             _progress("Error: No records found in model responses.")
+            _finalize_unit_manifest("failed")
             return None
         
         _progress(f"Total extracted {len(all_filepic_records)} image note records from all subchapters")
@@ -1280,10 +1331,12 @@ class StageEProcessor(BaseStageProcessor):
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(current_data, f, ensure_ascii=False, indent=2)
             
+            _finalize_unit_manifest("skipped")
             _progress(f"Stage E completed successfully: {output_path}")
             return output_path
         except Exception as e:
             self.logger.error(f"Failed to finalize Stage E output: {e}", exc_info=True)
+            _finalize_unit_manifest("failed")
             return None
     
     def _convert_chapters_to_rows(self, chapters: List[Dict]) -> List[Dict]:
