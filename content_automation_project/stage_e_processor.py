@@ -17,6 +17,35 @@ from typing import Optional, Dict, List, Any, Callable, Tuple
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
 
+_DEBUG_LOG_PATH = os.path.join(
+    os.path.dirname(__file__), ".cursor", "debug-2faab5.log"
+)
+
+
+def _agent_debug_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: Optional[Dict[str, Any]] = None,
+    run_id: str = "pre-fix",
+) -> None:
+    # #region agent log
+    try:
+        payload = {
+            "sessionId": "2faab5",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+            "runId": run_id,
+        }
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
+
 
 class StageEProcessor(BaseStageProcessor):
     """Process Stage E: Generate image notes (topic-parallel LLM calls) and merge with Stage 4."""
@@ -338,6 +367,7 @@ class StageEProcessor(BaseStageProcessor):
         response_text: Optional[str] = None
         filepic_data: Optional[Any] = None
 
+        _lock_wait_start = time.monotonic()
         for attempt in range(1, max_attempts + 1):
             if attempt > 1:
                 backoff = min(
@@ -352,7 +382,24 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Retrying model call (attempt {attempt}/{max_attempts}) [{attempt_label}]...")
 
             try:
+                _lock_acquired_at = time.monotonic()
                 with self._stage_e_api_lock:
+                    _lock_wait_ms = int((_lock_acquired_at - _lock_wait_start) * 1000)
+                    _api_start = time.monotonic()
+                    # #region agent log
+                    _agent_debug_log(
+                        "H1",
+                        "stage_e_processor.py:_call_image_notes_llm_with_retries",
+                        "api_lock_acquired_call_start",
+                        {
+                            "attempt_label": attempt_label,
+                            "attempt": attempt,
+                            "lock_wait_ms": _lock_wait_ms,
+                            "prompt_chars": len(full_prompt),
+                            "max_tokens": max_tokens,
+                        },
+                    )
+                    # #endregion
                     response_text = self.api_client.process_text(
                         text=full_prompt,
                         system_prompt=None,
@@ -361,6 +408,20 @@ class StageEProcessor(BaseStageProcessor):
                         max_tokens=max_tokens,
                         timeout_s=self.SUBCHAPTER_MODEL_TIMEOUT_S,
                     )
+                    # #region agent log
+                    _agent_debug_log(
+                        "H2",
+                        "stage_e_processor.py:_call_image_notes_llm_with_retries",
+                        "api_call_finished",
+                        {
+                            "attempt_label": attempt_label,
+                            "attempt": attempt,
+                            "api_duration_ms": int((time.monotonic() - _api_start) * 1000),
+                            "response_chars": len(response_text or ""),
+                        },
+                    )
+                    # #endregion
+                _lock_wait_start = time.monotonic()
             except Exception as e:
                 if self._is_openrouter_context_limit_error(e):
                     self.logger.warning(
@@ -475,6 +536,7 @@ class StageEProcessor(BaseStageProcessor):
         if not pts:
             return topic_index, topic_name, [], None
 
+        _topic_t0 = time.monotonic()
         topic_ocr_extraction_json_str = self._topic_ocr_json_for_stage_e(
             ocr_extraction_data, persian_subchapter_name, topic_name
         )
@@ -494,6 +556,23 @@ class StageEProcessor(BaseStageProcessor):
             scope_note=scope,
         )
         label = f"topic «{topic_name}» ({len(pts)} Stage 4 row(s), {len(slim_pts)} hierarchy row(s))"
+        full_prompt_len = len(full_prompt)
+        # #region agent log
+        _agent_debug_log(
+            "H3",
+            "stage_e_processor.py:_run_stage_e_single_topic",
+            "topic_llm_start",
+            {
+                "topic_index": topic_index,
+                "topic_name": topic_name,
+                "subchapter": persian_subchapter_name,
+                "stage4_points": len(pts),
+                "slim_points": len(slim_pts),
+                "prompt_chars": full_prompt_len,
+                "ocr_json_chars": len(topic_ocr_extraction_json_str),
+            },
+        )
+        # #endregion
         response_text, filepic_data, ctx_hit = self._call_image_notes_llm_with_retries(
             full_prompt,
             model_name,
@@ -535,6 +614,19 @@ class StageEProcessor(BaseStageProcessor):
                     e,
                     exc_info=True,
                 )
+            # #region agent log
+            _agent_debug_log(
+                "H2",
+                "stage_e_processor.py:_run_stage_e_single_topic",
+                "topic_llm_done_ok",
+                {
+                    "topic_index": topic_index,
+                    "topic_name": topic_name,
+                    "duration_ms": int((time.monotonic() - _topic_t0) * 1000),
+                    "rows": len(rows),
+                },
+            )
+            # #endregion
             return topic_index, topic_name, rows, None
 
         if ctx_hit:
@@ -547,6 +639,20 @@ class StageEProcessor(BaseStageProcessor):
 
         msg = f"topic «{topic_name}» ({len(pts)} rows): no model response / JSON after retries"
         self.logger.error("Stage E topic call: %s", msg)
+        # #region agent log
+        _agent_debug_log(
+            "H5",
+            "stage_e_processor.py:_run_stage_e_single_topic",
+            "topic_llm_done_fail",
+            {
+                "topic_index": topic_index,
+                "topic_name": topic_name,
+                "duration_ms": int((time.monotonic() - _topic_t0) * 1000),
+                "ctx_hit": bool(ctx_hit),
+                "msg": msg,
+            },
+        )
+        # #endregion
         return topic_index, topic_name, [], msg
 
     def _process_subchapter_image_topics_parallel(
@@ -584,6 +690,21 @@ class StageEProcessor(BaseStageProcessor):
                 f"Stage E topic batch {batch_num}/{total_batches}: {bw} topic(s) "
                 f"(concurrency={bw}) for '{persian_subchapter_name}'..."
             )
+            # #region agent log
+            _batch_t0 = time.monotonic()
+            _agent_debug_log(
+                "H1",
+                "stage_e_processor.py:_process_subchapter_image_topics_parallel",
+                "batch_start",
+                {
+                    "subchapter": persian_subchapter_name,
+                    "batch_num": batch_num,
+                    "total_batches": total_batches,
+                    "batch_size": bw,
+                    "topic_names": [tn for tn, _ in batch],
+                },
+            )
+            # #endregion
             with ThreadPoolExecutor(max_workers=bw) as executor:
                 future_to_idx: Dict[Any, int] = {}
                 for rel_i, (topic_name, pts) in enumerate(batch):
@@ -658,6 +779,19 @@ class StageEProcessor(BaseStageProcessor):
                             f"  ✓ Topic call (topic_parallel): {len(rows)} image row(s) for "
                             f"«{tn}» ({len(pts)} Stage 4 point(s))"
                         )
+            # #region agent log
+            _agent_debug_log(
+                "H1",
+                "stage_e_processor.py:_process_subchapter_image_topics_parallel",
+                "batch_done",
+                {
+                    "subchapter": persian_subchapter_name,
+                    "batch_num": batch_num,
+                    "duration_ms": int((time.monotonic() - _batch_t0) * 1000),
+                    "completed_indices": sorted(results_by_idx.keys()),
+                },
+            )
+            # #endregion
 
         merged: List[Dict[str, Any]] = []
         for i in range(n_topics):
