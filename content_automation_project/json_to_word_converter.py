@@ -337,8 +337,13 @@ def _format_rtl_segment(text: str, *, follows_ltr: bool) -> str:
     return text
 
 
-def _set_paragraph_rtl(paragraph: Any) -> None:
-    """Mark a paragraph as right-to-left (``w:bidi`` + right alignment on ``w:pPr``)."""
+def _apply_paragraph_rtl_layout(paragraph: Any) -> None:
+    """
+    Mark a paragraph RTL and align it to the physical right edge.
+
+    With ``w:bidi`` enabled, ``w:jc="right"`` mirrors to the *left* side in Word.
+    Use ``start`` (leading edge) so RTL paragraphs begin on the right.
+    """
     if OxmlElement is None or qn is None:
         return
 
@@ -362,14 +367,7 @@ def _set_paragraph_rtl(paragraph: Any) -> None:
             "w:sectPr",
             "w:pPrChange",
         )
-    justification.set(qn("w:val"), "right")
-
-    try:
-        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-
-        paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-    except ImportError:
-        pass
+    justification.set(qn("w:val"), "start")
 
 
 def _apply_run_font(run: Any, font_name: str = DEFAULT_WORD_FONT) -> None:
@@ -450,7 +448,7 @@ def _populate_paragraph_with_bidi_text(
         _apply_run_font(run, font_name)
         return
 
-    _set_paragraph_rtl(paragraph)
+    _apply_paragraph_rtl_layout(paragraph)
     segments = _split_bidi_segments(normalized_text)
     if not segments:
         segments = [(normalized_text, True)]
@@ -474,6 +472,8 @@ def _populate_paragraph_with_bidi_text(
         run.italic = False
         previous_is_rtl = is_rtl
 
+    _apply_paragraph_rtl_layout(paragraph)
+
 
 def _add_bidi_paragraph(doc: Any, text: str) -> Any:
     paragraph = doc.add_paragraph()
@@ -481,8 +481,24 @@ def _add_bidi_paragraph(doc: Any, text: str) -> Any:
     return paragraph
 
 
+def _apply_style_rtl_paragraph_defaults(style: Any) -> None:
+    """Default Normal / Heading styles to RTL + start alignment for Persian documents."""
+    if OxmlElement is None or qn is None:
+        return
+
+    style_properties = style._element.get_or_add_pPr()
+    if style_properties.find(qn("w:bidi")) is None:
+        style_properties.append(OxmlElement("w:bidi"))
+
+    justification = style_properties.find(qn("w:jc"))
+    if justification is None:
+        justification = OxmlElement("w:jc")
+        style_properties.append(justification)
+    justification.set(qn("w:val"), "start")
+
+
 def _configure_document_defaults(doc: Any) -> None:
-    """Use a complex-script-safe font for Normal and heading styles."""
+    """Use a complex-script-safe font and RTL paragraph defaults for Persian output."""
     style_names = ["Normal", "Heading 1", "Heading 2", "Heading 3", "Heading 4"]
     for style_name in style_names:
         try:
@@ -491,6 +507,7 @@ def _configure_document_defaults(doc: Any) -> None:
             continue
         style.font.name = DEFAULT_WORD_FONT
         style.font.italic = False
+        _apply_style_rtl_paragraph_defaults(style)
 
 
 def _disable_heading_italic_styles(doc: Any) -> None:
