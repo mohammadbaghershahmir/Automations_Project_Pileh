@@ -236,7 +236,12 @@ def _split_mixed_script(text: str) -> List[Tuple[str, bool]]:
 
 
 def _wrap_parenthetical(inner_segments: List[Tuple[str, bool]]) -> List[Tuple[str, bool]]:
-    """Attach opening/closing parentheses to the correct script runs."""
+    """
+    Attach parentheses to runs with the correct direction.
+
+    Mixed content such as ``(سیفلیس و HIV)`` keeps ``(`` and ``)`` in RTL runs so Word
+    does not mirror the closing parenthesis next to an English acronym.
+    """
     if not inner_segments:
         return [("()", True)]
 
@@ -244,15 +249,9 @@ def _wrap_parenthetical(inner_segments: List[Tuple[str, bool]]) -> List[Tuple[st
         segment_text, is_rtl = inner_segments[0]
         return [(f"({segment_text})", is_rtl)]
 
-    wrapped: List[Tuple[str, bool]] = []
-    last_index = len(inner_segments) - 1
-    for index, (segment_text, is_rtl) in enumerate(inner_segments):
-        if index == 0:
-            wrapped.append(("(" + segment_text, is_rtl))
-        elif index == last_index:
-            wrapped.append((segment_text + ")", is_rtl))
-        else:
-            wrapped.append((segment_text, is_rtl))
+    wrapped: List[Tuple[str, bool]] = [("(", True)]
+    wrapped.extend(inner_segments)
+    wrapped.append((")", True))
     return wrapped
 
 
