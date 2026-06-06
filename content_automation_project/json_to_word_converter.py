@@ -35,6 +35,12 @@ _PAREN_NORMALIZATION = str.maketrans(
     }
 )
 
+# Unicode BiDi isolates — more reliable in Word than multiple runs + LRE/PDF.
+_LRI = "\u2066"  # Left-to-Right Isolate
+_RLI = "\u2067"  # Right-to-Left Isolate
+_PDI = "\u2069"  # Pop Directional Isolate
+_RLM = "\u200f"  # Right-to-Left Mark (paragraph lead-in)
+
 _BIDI_LANG_FA = "fa-IR"
 _BIDI_LANG_EN = "en-US"
 
@@ -314,51 +320,19 @@ def _split_bidi_segments(text: str) -> List[Tuple[str, bool]]:
     return _merge_adjacent_bidi_segments(segments)
 
 
-def _add_bidi_run(
-    paragraph: Any,
-    segment_text: str,
-    *,
-    is_rtl: bool,
-    font_name: str,
-    size_pt: Optional[int],
-    bold: bool,
-) -> None:
-    """Append one run with plain text (no Unicode control chars) and correct OOXML direction."""
-    run = paragraph.add_run(segment_text)
-    _apply_run_font(run, font_name, size_pt=size_pt)
-    _set_run_rtl(run, is_rtl=is_rtl)
-    _set_run_language(run, is_rtl=is_rtl)
-    run.bold = bold
-    run.italic = False
-
-
-def _set_paragraph_jc_right(paragraph: Any) -> None:
-    """Set physical right alignment (same as Word's Right Align toolbar button)."""
-    if OxmlElement is None or qn is None:
-        return
-
-    paragraph_properties = paragraph._element.get_or_add_pPr()
-    justification = paragraph_properties.find(qn("w:jc"))
-    if justification is None:
-        justification = OxmlElement("w:jc")
-        paragraph_properties.insert_element_before(
-            justification,
-            "w:rPr",
-            "w:sectPr",
-            "w:pPrChange",
-        )
-    justification.set(qn("w:val"), "right")
-
-    try:
-        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-
-        paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-    except ImportError:
-        pass
+def _build_isolated_bidi_text(segments: List[Tuple[str, bool]]) -> str:
+    """Wrap each segment in Unicode isolates so Word lays out mixed text correctly."""
+    chunks: List[str] = []
+    for segment_text, is_rtl in segments:
+        if is_rtl:
+            chunks.append(f"{_RLI}{segment_text}{_PDI}")
+        else:
+            chunks.append(f"{_LRI}{segment_text}{_PDI}")
+    return "".join(chunks)
 
 
 def _set_paragraph_rtl(paragraph: Any) -> None:
-    """Mark a paragraph RTL (``w:bidi``) and right-align it."""
+    """Mark a paragraph RTL (``w:bidi``) with logical start alignment."""
     if OxmlElement is None or qn is None:
         return
 
@@ -373,7 +347,17 @@ def _set_paragraph_rtl(paragraph: Any) -> None:
             "w:pPrChange",
         )
 
-    _set_paragraph_jc_right(paragraph)
+    # "start" resolves to the right edge in RTL paragraphs (physical "right" can conflict).
+    justification = paragraph_properties.find(qn("w:jc"))
+    if justification is None:
+        justification = OxmlElement("w:jc")
+        paragraph_properties.insert_element_before(
+            justification,
+            "w:rPr",
+            "w:sectPr",
+            "w:pPrChange",
+        )
+    justification.set(qn("w:val"), "start")
 
     default_run = paragraph_properties.find(qn("w:rPr"))
     if default_run is None:
@@ -387,6 +371,13 @@ def _set_paragraph_rtl(paragraph: Any) -> None:
         default_run.append(default_lang)
     default_lang.set(qn("w:bidi"), _BIDI_LANG_FA)
     default_lang.set(qn("w:val"), _BIDI_LANG_FA)
+
+    try:
+        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+
+        paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    except ImportError:
+        pass
 
 
 def _apply_run_font(run: Any, font_name: str = DEFAULT_WORD_FONT, *, size_pt: Optional[int] = None) -> None:
@@ -423,8 +414,8 @@ def _apply_run_font(run: Any, font_name: str = DEFAULT_WORD_FONT, *, size_pt: Op
             size_element.set(qn("w:val"), size_value)
 
 
-def _set_run_rtl(run: Any, *, is_rtl: bool) -> None:
-    """Toggle ``w:rtl`` on a run. LTR islands (English) must not carry this flag."""
+def _set_run_rtl(run: Any, is_rtl: bool = True) -> None:
+    """Set ``w:rtl`` on a run (default True for Persian body/headings)."""
     if OxmlElement is None or qn is None:
         return
 
@@ -439,7 +430,7 @@ def _set_run_rtl(run: Any, *, is_rtl: bool) -> None:
         run_properties.remove(rtl_element)
 
 
-def _set_run_language(run: Any, *, is_rtl: bool) -> None:
+def _set_run_language(run: Any, *, is_rtl: bool = True) -> None:
     """Set complex-script / Latin language tags on a run."""
     if OxmlElement is None or qn is None:
         return
@@ -473,8 +464,8 @@ def _populate_paragraph_with_bidi_text(
     """
     Fill a paragraph with BiDi-aware Persian text.
 
-    Uses separate OOXML runs (``w:rtl`` on/off per segment). Do not embed Unicode
-    BiDi control characters — Word may show them as visible ``RLI``/``PDI`` boxes.
+    Uses one RTL run with Unicode isolates (RLI/LRI/PDI) per segment instead of
+    multiple runs, which Word renders more reliably for parenthetical English.
     """
     normalized_text = _normalize_text_for_word(text)
     _clear_paragraph_runs(paragraph)
@@ -482,7 +473,6 @@ def _populate_paragraph_with_bidi_text(
     if not normalized_text.strip():
         run = paragraph.add_run(normalized_text)
         _apply_run_font(run, font_name, size_pt=size_pt)
-        _set_paragraph_jc_right(paragraph)
         return
 
     if not _text_contains_rtl_script(normalized_text):
@@ -490,7 +480,6 @@ def _populate_paragraph_with_bidi_text(
         _apply_run_font(run, font_name, size_pt=size_pt)
         run.bold = bold
         run.italic = False
-        _set_paragraph_jc_right(paragraph)
         return
 
     _set_paragraph_rtl(paragraph)
@@ -498,17 +487,13 @@ def _populate_paragraph_with_bidi_text(
     if not segments:
         segments = [(normalized_text, True)]
 
-    for segment_text, is_rtl in segments:
-        if not segment_text:
-            continue
-        _add_bidi_run(
-            paragraph,
-            segment_text,
-            is_rtl=is_rtl,
-            font_name=font_name,
-            size_pt=size_pt,
-            bold=bold,
-        )
+    run_text = _RLM + _build_isolated_bidi_text(segments)
+    run = paragraph.add_run(run_text)
+    _apply_run_font(run, font_name, size_pt=size_pt)
+    _set_run_rtl(run, is_rtl=True)
+    _set_run_language(run, is_rtl=True)
+    run.bold = bold
+    run.italic = False
 
 
 def _add_bidi_paragraph(doc: Any, text: str) -> Any:
@@ -559,19 +544,6 @@ def _configure_document_defaults(doc: Any) -> None:
         style_run.append(style_lang)
     style_lang.set(qn("w:bidi"), _BIDI_LANG_FA)
     style_lang.set(qn("w:val"), _BIDI_LANG_FA)
-
-    style_jc = style_paragraph.find(qn("w:jc"))
-    if style_jc is None:
-        style_jc = OxmlElement("w:jc")
-        style_paragraph.append(style_jc)
-    style_jc.set(qn("w:val"), "right")
-
-    try:
-        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-
-        normal.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-    except ImportError:
-        pass
 
 
 def _disable_heading_italic_styles(doc: Any) -> None:
