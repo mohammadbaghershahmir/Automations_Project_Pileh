@@ -44,10 +44,9 @@ _PDF = "\u202c"  # Pop Directional Formatting
 _BIDI_LANG_FA = "fa-IR"
 _BIDI_LANG_EN = "en-US"
 
-# English/Latin islands inside Persian text: "(Data Structures)", "B6", "A ", "1.75".
-_LTR_PAREN_PATTERN = r"\([^()]*[A-Za-z0-9][^()]*\)"
+# English/Latin token islands in plain text (outside parentheses): "B6", "1.75".
 _LTR_TOKEN_PATTERN = r"[A-Za-z0-9][A-Za-z0-9\s\-\./\+]*"
-_LTR_ISLAND_RE = re.compile(rf"(?:{_LTR_PAREN_PATTERN}|{_LTR_TOKEN_PATTERN})")
+_LTR_TOKEN_RE = re.compile(_LTR_TOKEN_PATTERN)
 
 # field_name → Word heading level (1–4)
 HIERARCHY_HEADINGS: List[Tuple[str, int]] = [
@@ -194,19 +193,77 @@ def _char_script_direction(char: str) -> Optional[str]:
     return None
 
 
-def _split_bidi_segments(text: str) -> List[Tuple[str, bool]]:
-    """
-    Split mixed Persian/English text into ordered (segment, is_rtl) pairs.
+def _split_mixed_script(text: str) -> List[Tuple[str, bool]]:
+    """Split text by script changes, keeping neutral punctuation with its neighbors."""
+    if not text:
+        return []
 
-    Persian-only parentheticals such as ``(درماتوسکوپی)`` stay in RTL runs.
-    Latin islands such as ``(Data Structures)`` or ``B6`` become LTR runs.
-    """
+    segments: List[Tuple[str, bool]] = []
+    buffer: List[str] = []
+    buffer_rtl: Optional[bool] = None
+
+    def flush() -> None:
+        nonlocal buffer, buffer_rtl
+        if not buffer:
+            return
+        is_rtl = buffer_rtl if buffer_rtl is not None else True
+        segments.append(("".join(buffer), is_rtl))
+        buffer = []
+        buffer_rtl = None
+
+    for char in text:
+        direction = _char_script_direction(char)
+        if direction is None:
+            buffer.append(char)
+            continue
+
+        is_rtl = direction == "rtl"
+        if buffer_rtl is None:
+            buffer_rtl = is_rtl
+            buffer.append(char)
+            continue
+
+        if is_rtl == buffer_rtl:
+            buffer.append(char)
+            continue
+
+        flush()
+        buffer_rtl = is_rtl
+        buffer.append(char)
+
+    flush()
+    return segments
+
+
+def _wrap_parenthetical(inner_segments: List[Tuple[str, bool]]) -> List[Tuple[str, bool]]:
+    """Attach opening/closing parentheses to the correct script runs."""
+    if not inner_segments:
+        return [("()", True)]
+
+    if len(inner_segments) == 1:
+        segment_text, is_rtl = inner_segments[0]
+        return [(f"({segment_text})", is_rtl)]
+
+    wrapped: List[Tuple[str, bool]] = []
+    last_index = len(inner_segments) - 1
+    for index, (segment_text, is_rtl) in enumerate(inner_segments):
+        if index == 0:
+            wrapped.append(("(" + segment_text, is_rtl))
+        elif index == last_index:
+            wrapped.append((segment_text + ")", is_rtl))
+        else:
+            wrapped.append((segment_text, is_rtl))
+    return wrapped
+
+
+def _split_plain_ltr_islands(text: str) -> List[Tuple[str, bool]]:
+    """Split non-parenthetical text into RTL chunks and LTR Latin/number islands."""
     if not text:
         return []
 
     segments: List[Tuple[str, bool]] = []
     cursor = 0
-    for match in _LTR_ISLAND_RE.finditer(text):
+    for match in _LTR_TOKEN_RE.finditer(text):
         if match.start() > cursor:
             segments.append((text[cursor : match.start()], True))
         segments.append((match.group(0), False))
@@ -215,6 +272,55 @@ def _split_bidi_segments(text: str) -> List[Tuple[str, bool]]:
     if cursor < len(text):
         segments.append((text[cursor:], True))
     return segments
+
+
+def _merge_adjacent_bidi_segments(segments: List[Tuple[str, bool]]) -> List[Tuple[str, bool]]:
+    if not segments:
+        return []
+
+    merged: List[Tuple[str, bool]] = [segments[0]]
+    for segment_text, is_rtl in segments[1:]:
+        previous_text, previous_rtl = merged[-1]
+        if is_rtl == previous_rtl:
+            merged[-1] = (previous_text + segment_text, is_rtl)
+        else:
+            merged.append((segment_text, is_rtl))
+    return merged
+
+
+def _split_bidi_segments(text: str) -> List[Tuple[str, bool]]:
+    """
+    Split mixed Persian/English text into ordered (segment, is_rtl) pairs.
+
+    Parentheses are handled explicitly:
+    - ``(اتوزومال غالب)`` → one RTL run
+    - ``(Family history)`` → one LTR run
+    - ``(HIV سیفلیس و)`` / ``(مغلوب X مرتبط با)`` → split inside the parentheses
+    """
+    if not text:
+        return []
+
+    segments: List[Tuple[str, bool]] = []
+    cursor = 0
+    while cursor < len(text):
+        if text[cursor] != "(":
+            next_paren = text.find("(", cursor)
+            chunk_end = len(text) if next_paren == -1 else next_paren
+            segments.extend(_split_plain_ltr_islands(text[cursor:chunk_end]))
+            cursor = chunk_end
+            continue
+
+        closing_paren = text.find(")", cursor + 1)
+        if closing_paren == -1:
+            segments.extend(_split_plain_ltr_islands(text[cursor:]))
+            break
+
+        inner_text = text[cursor + 1 : closing_paren]
+        inner_segments = _split_mixed_script(inner_text)
+        segments.extend(_wrap_parenthetical(inner_segments))
+        cursor = closing_paren + 1
+
+    return _merge_adjacent_bidi_segments(segments)
 
 
 def _format_ltr_segment(text: str, *, follows_rtl: bool) -> str:
@@ -258,6 +364,13 @@ def _set_paragraph_rtl(paragraph: Any) -> None:
             "w:pPrChange",
         )
     justification.set(qn("w:val"), "right")
+
+    try:
+        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+
+        paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    except ImportError:
+        pass
 
 
 def _apply_run_font(run: Any, font_name: str = DEFAULT_WORD_FONT) -> None:
