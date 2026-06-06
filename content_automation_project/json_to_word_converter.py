@@ -35,6 +35,15 @@ _PAREN_NORMALIZATION = str.maketrans(
     }
 )
 
+# Unicode BiDi controls — Word often misorders parenthetical English without these.
+_LRM = "\u200e"  # Left-to-Right Mark
+_RLM = "\u200f"  # Right-to-Left Mark
+_LRE = "\u202a"  # Left-to-Right Embedding
+_PDF = "\u202c"  # Pop Directional Formatting
+
+_BIDI_LANG_FA = "fa-IR"
+_BIDI_LANG_EN = "en-US"
+
 # English/Latin islands inside Persian text: "(Data Structures)", "B6", "A ", "1.75".
 _LTR_PAREN_PATTERN = r"\([^()]*[A-Za-z0-9][^()]*\)"
 _LTR_TOKEN_PATTERN = r"[A-Za-z0-9][A-Za-z0-9\s\-\./\+]*"
@@ -208,23 +217,47 @@ def _split_bidi_segments(text: str) -> List[Tuple[str, bool]]:
     return segments
 
 
+def _format_ltr_segment(text: str, *, follows_rtl: bool) -> str:
+    """Wrap an LTR island so Word keeps it in place inside an RTL paragraph."""
+    embedded = f"{_LRE}{text}{_PDF}"
+    if follows_rtl:
+        return f"{_LRM}{embedded}"
+    return embedded
+
+
+def _format_rtl_segment(text: str, *, follows_ltr: bool) -> str:
+    """Prefix RTL text after an LTR island so Word resumes RTL in the right place."""
+    if follows_ltr:
+        return f"{_RLM}{text}"
+    return text
+
+
 def _set_paragraph_rtl(paragraph: Any) -> None:
-    """Mark a paragraph as right-to-left (``w:bidi`` on ``w:pPr``)."""
+    """Mark a paragraph as right-to-left (``w:bidi`` + right alignment on ``w:pPr``)."""
     if OxmlElement is None or qn is None:
         return
 
     paragraph_properties = paragraph._element.get_or_add_pPr()
-    if paragraph_properties.find(qn("w:bidi")) is not None:
-        return
+    if paragraph_properties.find(qn("w:bidi")) is None:
+        bidi = OxmlElement("w:bidi")
+        paragraph_properties.insert_element_before(
+            bidi,
+            "w:jc",
+            "w:rPr",
+            "w:sectPr",
+            "w:pPrChange",
+        )
 
-    bidi = OxmlElement("w:bidi")
-    paragraph_properties.insert_element_before(
-        bidi,
-        "w:jc",
-        "w:rPr",
-        "w:sectPr",
-        "w:pPrChange",
-    )
+    justification = paragraph_properties.find(qn("w:jc"))
+    if justification is None:
+        justification = OxmlElement("w:jc")
+        paragraph_properties.insert_element_before(
+            justification,
+            "w:rPr",
+            "w:sectPr",
+            "w:pPrChange",
+        )
+    justification.set(qn("w:val"), "right")
 
 
 def _apply_run_font(run: Any, font_name: str = DEFAULT_WORD_FONT) -> None:
@@ -255,6 +288,24 @@ def _set_run_rtl(run: Any, is_rtl: bool) -> None:
 
     if rtl_element is not None:
         run_properties.remove(rtl_element)
+
+
+def _set_run_language(run: Any, *, is_rtl: bool) -> None:
+    """Set complex-script / Latin language tags so Word applies the correct BiDi rules."""
+    if OxmlElement is None or qn is None:
+        return
+
+    run_properties = run._element.get_or_add_rPr()
+    for existing in run_properties.findall(qn("w:lang")):
+        run_properties.remove(existing)
+
+    language = OxmlElement("w:lang")
+    if is_rtl:
+        language.set(qn("w:bidi"), _BIDI_LANG_FA)
+        language.set(qn("w:val"), _BIDI_LANG_FA)
+    else:
+        language.set(qn("w:val"), _BIDI_LANG_EN)
+    run_properties.append(language)
 
 
 def _clear_paragraph_runs(paragraph: Any) -> None:
@@ -292,13 +343,24 @@ def _populate_paragraph_with_bidi_text(
     if not segments:
         segments = [(normalized_text, True)]
 
+    previous_is_rtl: Optional[bool] = None
     for segment_text, is_rtl in segments:
         if not segment_text:
             continue
-        run = paragraph.add_run(segment_text)
+
+        if is_rtl:
+            follows_ltr = previous_is_rtl is False
+            run_text = _format_rtl_segment(segment_text, follows_ltr=follows_ltr)
+        else:
+            follows_rtl = previous_is_rtl is True
+            run_text = _format_ltr_segment(segment_text, follows_rtl=follows_rtl)
+
+        run = paragraph.add_run(run_text)
         _apply_run_font(run, font_name)
         _set_run_rtl(run, is_rtl)
+        _set_run_language(run, is_rtl=is_rtl)
         run.italic = False
+        previous_is_rtl = is_rtl
 
 
 def _add_bidi_paragraph(doc: Any, text: str) -> Any:
