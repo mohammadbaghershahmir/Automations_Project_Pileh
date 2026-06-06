@@ -55,6 +55,10 @@
   </tbody>
 </table>
 
+<div id="jobs-show-more-wrap" style="margin-top:16px;text-align:center;"{% if not jobs_has_more %} hidden{% endif %}>
+  <button type="button" id="jobs-show-more" class="secondary">Show more</button>
+</div>
+
 <div id="job-delete-modal" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(0,0,0,0.65);">
   <div role="dialog" aria-modal="true" aria-labelledby="job-delete-title" style="max-width:480px;margin:12vh auto 0;background:var(--card);border:1px solid var(--border-strong);border-radius:10px;padding:18px 18px 14px;box-shadow:var(--panel-shadow);">
     <h2 id="job-delete-title" style="margin:0 0 10px;font-size:1.1rem;">Delete job?</h2>
@@ -74,7 +78,81 @@
   var activeNote = document.getElementById("job-delete-active-note");
   var btnCancel = document.getElementById("job-delete-cancel");
   var btnConfirm = document.getElementById("job-delete-confirm");
+  var tbody = document.getElementById("jobs-table-body");
+  var btnShowMore = document.getElementById("jobs-show-more");
+  var wrapShowMore = document.getElementById("jobs-show-more-wrap");
+  var jobsOffset = {{ jobs_loaded }};
+  var jobsPageSize = {{ jobs_page_size }};
   var pending = null;
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function badgeClass(listStatus) {
+    if (listStatus === "succeeded") return "ok";
+    if (listStatus === "failed") return "fail";
+    if (listStatus === "running" || listStatus === "queued") return "run";
+    if (listStatus === "cancelled") return "cancelled";
+    if (listStatus === "pending" || listStatus === "draft") return "pending";
+    return "";
+  }
+
+  function appendJobRow(item) {
+    if (!tbody) return;
+    var tr = document.createElement("tr");
+    tr.setAttribute("data-job-id", item.id);
+    if (item.list_status === "running" || item.list_status === "queued") {
+      tr.className = "job-row-active";
+    }
+    var badgeCls = badgeClass(item.list_status);
+    var deleteBtn = "";
+    if (item.can_delete) {
+      deleteBtn =
+        '<button type="button" class="btn-danger btn-delete-job"' +
+        ' data-job-id="' + escapeHtml(item.id) + '"' +
+        ' data-display-name="' + escapeHtml(item.display_name || "Test Bank") + '"' +
+        ' data-list-status="' + escapeHtml(item.list_status || "") + '"' +
+        ' data-job-status="' + escapeHtml(item.job_status || "") + '">Delete</button>';
+    }
+    tr.innerHTML =
+      "<td><strong>" + escapeHtml(item.display_name || "Test Bank") + "</strong>" +
+      '<span class="muted" style="font-size:11px;margin-left:6px;"><code>' +
+      escapeHtml((item.id || "").slice(0, 8)) + "</code></span></td>" +
+      '<td style="font-size:13px;">' + escapeHtml(item.creator_email || "—") + "</td>" +
+      "<td>" + escapeHtml(item.stage_label || "") + "</td>" +
+      '<td><span class="badge' + (badgeCls ? " " + badgeCls : "") + '">' +
+      escapeHtml(item.list_status || "") + "</span></td>" +
+      "<td>" + escapeHtml(item.created_at || "") + "</td>" +
+      '<td class="jobs-actions"><a href="/jobs/' + encodeURIComponent(item.id) + '">Open</a> ' +
+      deleteBtn + "</td>";
+    tbody.appendChild(tr);
+  }
+
+  async function loadMoreJobs() {
+    if (!btnShowMore) return;
+    btnShowMore.disabled = true;
+    btnShowMore.textContent = "Loading…";
+    try {
+      var url = "/api/jobs?offset=" + encodeURIComponent(jobsOffset) +
+        "&limit=" + encodeURIComponent(jobsPageSize);
+      var r = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
+      if (!r.ok) throw new Error(parseError(await r.text()));
+      var data = await r.json();
+      (data.items || []).forEach(appendJobRow);
+      jobsOffset = data.next_offset != null ? data.next_offset : jobsOffset + (data.items || []).length;
+      if (!data.has_more && wrapShowMore) wrapShowMore.hidden = true;
+    } catch (e) {
+      window.alert(e && e.message ? e.message : String(e));
+    } finally {
+      btnShowMore.disabled = false;
+      btnShowMore.textContent = "Show more";
+    }
+  }
 
   function isListStatusActive(listStatus, jobStatus) {
     if (listStatus === "running" || listStatus === "queued") return true;
@@ -201,9 +279,13 @@
     }
   }
 
-  document.querySelectorAll(".btn-delete-job").forEach(function (btn) {
-    btn.addEventListener("click", function () { openModal(btn); });
-  });
+  if (tbody) {
+    tbody.addEventListener("click", function (ev) {
+      var btn = ev.target.closest(".btn-delete-job");
+      if (btn) openModal(btn);
+    });
+  }
+  if (btnShowMore) btnShowMore.addEventListener("click", loadMoreJobs);
   if (btnCancel) btnCancel.addEventListener("click", closeModal);
   if (btnConfirm) btnConfirm.addEventListener("click", confirmDelete);
   if (modal) {

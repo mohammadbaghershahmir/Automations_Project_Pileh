@@ -297,9 +297,48 @@ JOB_STAGE_LABELS = {
 }
 
 
+JOBS_LIST_PAGE_SIZE = 50
+
+
 def job_stage_label(job: Job) -> str:
     t = (job.type or "").strip() or "test_bank"
     return JOB_STAGE_LABELS.get(t, t.replace("_", " ").title())
+
+
+def _query_jobs_page(db: Session, offset: int, limit: int) -> tuple[List[Job], bool]:
+    rows = (
+        db.query(Job)
+        .options(joinedload(Job.pairs), joinedload(Job.created_by_user))
+        .order_by(Job.created_at.desc())
+        .offset(max(0, offset))
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    return rows[:limit], has_more
+
+
+def _job_row_for_template(job: Job, user: CurrentUser) -> dict:
+    return {
+        "job": job,
+        "list_status": effective_job_list_status(job, list(job.pairs)),
+        "stage_label": job_stage_label(job),
+        "can_delete": user_can_edit_job(job, user),
+    }
+
+
+def _job_row_for_api(job: Job, user: CurrentUser) -> dict:
+    cfg = json.loads(job.config_json or "{}")
+    return {
+        "id": job.id,
+        "display_name": cfg.get("display_name", "Test Bank"),
+        "creator_email": job.created_by_user.email if job.created_by_user else "—",
+        "stage_label": job_stage_label(job),
+        "list_status": effective_job_list_status(job, list(job.pairs)),
+        "created_at": format_tehran_shamsi(job.created_at),
+        "can_delete": user_can_edit_job(job, user),
+        "job_status": job.status or "",
+    }
 
 
 def job_active_for_delete(job: Job, pairs: List[JobPair]) -> bool:
@@ -550,28 +589,37 @@ def create_app() -> FastAPI:
         db.commit()
         return {"ok": True}
 
+    @app.get("/api/jobs")
+    def api_jobs_list(
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+        offset: int = Query(0, ge=0),
+        limit: int = Query(JOBS_LIST_PAGE_SIZE, ge=1, le=200),
+    ) -> dict:
+        jobs, has_more = _query_jobs_page(db, offset, limit)
+        return {
+            "items": [_job_row_for_api(j, user) for j in jobs],
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+            "next_offset": offset + len(jobs),
+        }
+
     @app.get("/jobs", response_class=HTMLResponse)
     def jobs_list(request: Request, user: CurrentUser, db: Session = Depends(get_db)) -> Any:
-        jobs = (
-            db.query(Job)
-            .options(joinedload(Job.pairs), joinedload(Job.created_by_user))
-            .order_by(Job.created_at.desc())
-            .limit(100)
-            .all()
-        )
-        job_rows = [
-            {
-                "job": j,
-                "list_status": effective_job_list_status(j, list(j.pairs)),
-                "stage_label": job_stage_label(j),
-                "can_delete": user_can_edit_job(j, user),
-            }
-            for j in jobs
-        ]
+        jobs, has_more = _query_jobs_page(db, 0, JOBS_LIST_PAGE_SIZE)
+        job_rows = [_job_row_for_template(j, user) for j in jobs]
         return templates.TemplateResponse(
             request,
             "jobs_list.html",
-            {"user": user, "job_rows": job_rows, "is_admin": is_admin_user(user)},
+            {
+                "user": user,
+                "job_rows": job_rows,
+                "is_admin": is_admin_user(user),
+                "jobs_loaded": len(job_rows),
+                "jobs_page_size": JOBS_LIST_PAGE_SIZE,
+                "jobs_has_more": has_more,
+            },
         )
 
     @app.get("/test-bank/new", response_class=HTMLResponse)
