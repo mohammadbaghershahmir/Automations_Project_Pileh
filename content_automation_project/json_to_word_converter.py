@@ -13,7 +13,32 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+except ImportError:  # pragma: no cover - exercised only when python-docx is missing
+    OxmlElement = None  # type: ignore[misc, assignment]
+    qn = None  # type: ignore[misc, assignment]
+
 logger = logging.getLogger(__name__)
+
+# Font that renders Persian and Latin parentheses reliably in Word.
+DEFAULT_WORD_FONT = "Tahoma"
+
+# Map decorative / full-width parentheses to ASCII so Word does not mirror them oddly.
+_PAREN_NORMALIZATION = str.maketrans(
+    {
+        "\uFF08": "(",  # fullwidth left parenthesis
+        "\uFF09": ")",  # fullwidth right parenthesis
+        "\uFD3E": "(",  # ornate left parenthesis
+        "\uFD3F": ")",  # ornate right parenthesis
+    }
+)
+
+# English/Latin islands inside Persian text: "(Data Structures)", "B6", "A ", "1.75".
+_LTR_PAREN_PATTERN = r"\([^()]*[A-Za-z0-9][^()]*\)"
+_LTR_TOKEN_PATTERN = r"[A-Za-z0-9][A-Za-z0-9\s\-\./\+]*"
+_LTR_ISLAND_RE = re.compile(rf"(?:{_LTR_PAREN_PATTERN}|{_LTR_TOKEN_PATTERN})")
 
 # field_name → Word heading level (1–4)
 HIERARCHY_HEADINGS: List[Tuple[str, int]] = [
@@ -132,19 +157,176 @@ def _row_body(row: Dict[str, Any]) -> str:
     return _row_field(row, "points", "Points")
 
 
+def _normalize_text_for_word(text: str) -> str:
+    """Normalize punctuation that Word may render incorrectly in RTL paragraphs."""
+    return text.translate(_PAREN_NORMALIZATION)
+
+
+def _text_contains_rtl_script(text: str) -> bool:
+    for char in text:
+        if _char_script_direction(char) == "rtl":
+            return True
+    return False
+
+
+def _char_script_direction(char: str) -> Optional[str]:
+    code_point = ord(char)
+    if (
+        0x0590 <= code_point <= 0x05FF
+        or 0x0600 <= code_point <= 0x06FF
+        or 0x0750 <= code_point <= 0x077F
+        or 0x08A0 <= code_point <= 0x08FF
+        or 0xFB50 <= code_point <= 0xFDFF
+        or 0xFE70 <= code_point <= 0xFEFF
+    ):
+        return "rtl"
+    if ("A" <= char <= "Z") or ("a" <= char <= "z") or ("0" <= char <= "9"):
+        return "ltr"
+    return None
+
+
+def _split_bidi_segments(text: str) -> List[Tuple[str, bool]]:
+    """
+    Split mixed Persian/English text into ordered (segment, is_rtl) pairs.
+
+    Persian-only parentheticals such as ``(درماتوسکوپی)`` stay in RTL runs.
+    Latin islands such as ``(Data Structures)`` or ``B6`` become LTR runs.
+    """
+    if not text:
+        return []
+
+    segments: List[Tuple[str, bool]] = []
+    cursor = 0
+    for match in _LTR_ISLAND_RE.finditer(text):
+        if match.start() > cursor:
+            segments.append((text[cursor : match.start()], True))
+        segments.append((match.group(0), False))
+        cursor = match.end()
+
+    if cursor < len(text):
+        segments.append((text[cursor:], True))
+    return segments
+
+
+def _set_paragraph_rtl(paragraph: Any) -> None:
+    """Mark a paragraph as right-to-left (``w:bidi`` on ``w:pPr``)."""
+    if OxmlElement is None or qn is None:
+        return
+
+    paragraph_properties = paragraph._element.get_or_add_pPr()
+    if paragraph_properties.find(qn("w:bidi")) is not None:
+        return
+
+    bidi = OxmlElement("w:bidi")
+    paragraph_properties.insert_element_before(
+        bidi,
+        "w:jc",
+        "w:rPr",
+        "w:sectPr",
+        "w:pPrChange",
+    )
+
+
+def _apply_run_font(run: Any, font_name: str = DEFAULT_WORD_FONT) -> None:
+    """Apply the same font to Latin and complex-script (Persian) text in a run."""
+    run.font.name = font_name
+    if qn is None:
+        return
+
+    run_properties = run._element.get_or_add_rPr()
+    font_element = run_properties.get_or_add_rFonts()
+    font_element.set(qn("w:ascii"), font_name)
+    font_element.set(qn("w:hAnsi"), font_name)
+    font_element.set(qn("w:cs"), font_name)
+    font_element.set(qn("w:hint"), "cs")
+
+
+def _set_run_rtl(run: Any, is_rtl: bool) -> None:
+    """Toggle ``w:rtl`` on a run. Only RTL segments should carry this flag."""
+    if OxmlElement is None or qn is None:
+        return
+
+    run_properties = run._element.get_or_add_rPr()
+    rtl_element = run_properties.find(qn("w:rtl"))
+    if is_rtl:
+        if rtl_element is None:
+            run_properties.append(OxmlElement("w:rtl"))
+        return
+
+    if rtl_element is not None:
+        run_properties.remove(rtl_element)
+
+
+def _clear_paragraph_runs(paragraph: Any) -> None:
+    for run in list(paragraph.runs):
+        paragraph._element.remove(run._element)
+
+
+def _populate_paragraph_with_bidi_text(
+    paragraph: Any,
+    text: str,
+    *,
+    font_name: str = DEFAULT_WORD_FONT,
+) -> None:
+    """
+    Fill an empty paragraph with BiDi-aware runs.
+
+    Without separate RTL/LTR runs, Word scrambles mixed Persian/English sentences
+    and may mirror parentheses so they look like square brackets.
+    """
+    normalized_text = _normalize_text_for_word(text)
+    _clear_paragraph_runs(paragraph)
+
+    if not normalized_text.strip():
+        run = paragraph.add_run(normalized_text)
+        _apply_run_font(run, font_name)
+        return
+
+    if not _text_contains_rtl_script(normalized_text):
+        run = paragraph.add_run(normalized_text)
+        _apply_run_font(run, font_name)
+        return
+
+    _set_paragraph_rtl(paragraph)
+    segments = _split_bidi_segments(normalized_text)
+    if not segments:
+        segments = [(normalized_text, True)]
+
+    for segment_text, is_rtl in segments:
+        if not segment_text:
+            continue
+        run = paragraph.add_run(segment_text)
+        _apply_run_font(run, font_name)
+        _set_run_rtl(run, is_rtl)
+        run.italic = False
+
+
+def _add_bidi_paragraph(doc: Any, text: str) -> Any:
+    paragraph = doc.add_paragraph()
+    _populate_paragraph_with_bidi_text(paragraph, text)
+    return paragraph
+
+
+def _configure_document_defaults(doc: Any) -> None:
+    """Use a complex-script-safe font for Normal and heading styles."""
+    style_names = ["Normal", "Heading 1", "Heading 2", "Heading 3", "Heading 4"]
+    for style_name in style_names:
+        try:
+            style = doc.styles[style_name]
+        except KeyError:
+            continue
+        style.font.name = DEFAULT_WORD_FONT
+        style.font.italic = False
+
+
 def _disable_heading_italic_styles(doc: Any) -> None:
     """Word's built-in Heading 4 (and sometimes others) use italic; breaks Persian text."""
-    for level in range(1, 5):
-        try:
-            doc.styles[f"Heading {level}"].font.italic = False
-        except KeyError:
-            pass
+    _configure_document_defaults(doc)
 
 
 def _add_heading_no_italic(doc: Any, text: str, level: int) -> None:
-    paragraph = doc.add_heading(text, level=level)
-    for run in paragraph.runs:
-        run.italic = False
+    paragraph = doc.add_heading("", level=level)
+    _populate_paragraph_with_bidi_text(paragraph, text)
 
 
 def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bool:
@@ -174,7 +356,7 @@ def convert_points_to_docx(points: List[Dict[str, Any]], output_path: str) -> bo
         body = _row_body(row)
         if not body:
             continue
-        doc.add_paragraph(body)
+        _add_bidi_paragraph(doc, body)
         paragraphs_added += 1
 
     if paragraphs_added == 0:
