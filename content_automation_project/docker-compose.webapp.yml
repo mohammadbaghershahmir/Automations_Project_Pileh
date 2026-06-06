@@ -17,8 +17,8 @@
 services:
   redis:
     image: ${REDIS_IMAGE:-public.ecr.aws/docker/library/redis:7-alpine}
-    ports:
-      - "6379:6379"
+    # No host port mapping: api/worker reach redis://redis:6379 on the internal Compose network.
+    # Exposing 6379 publicly (0.0.0.0) lets anyone run REPLICAOF and turn Redis read-only.
 
   api:
     build:
