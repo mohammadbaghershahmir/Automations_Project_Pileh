@@ -167,7 +167,9 @@ class StageEProcessor(BaseStageProcessor):
                     for ex in extractions:
                         if not isinstance(ex, dict):
                             continue
-                        if self._ocr_extraction_is_figure(str(ex.get("type", ""))):
+                        if self._ocr_extraction_is_figure(
+                            self._ocr_extraction_item_type(ex)
+                        ):
                             n += 1
                     if n > 0:
                         counts[topic_key] = counts.get(topic_key, 0) + n
@@ -329,7 +331,10 @@ class StageEProcessor(BaseStageProcessor):
         with self._stage_e_raw_lock:
             with open(output_path, "r", encoding="utf-8") as f:
                 current_data = json.load(f)
+            if "raw_responses" not in current_data:
+                current_data["raw_responses"] = []
             current_data["raw_responses"].append(entry)
+            current_data.setdefault("metadata", {})
             current_data["metadata"]["subchapters_processed"] = len(current_data["raw_responses"])
             current_data["metadata"]["processed_at"] = datetime.now().isoformat()
             with open(output_path, "w", encoding="utf-8") as f:
@@ -538,6 +543,13 @@ class StageEProcessor(BaseStageProcessor):
             },
             "D",
         )
+        self.logger.info(
+            "Stage E OCR slice topic=%r subchapter=%r figures=%s json_chars=%s",
+            topic_name,
+            persian_subchapter_name,
+            _agent_count_ocr_figures_in_slice(_ocr_preview),
+            len(topic_ocr_extraction_json_str),
+        )
         # #endregion
         slim_pts = self._slim_stage4_points_for_image_notes(pts)
         scope = (
@@ -625,6 +637,8 @@ class StageEProcessor(BaseStageProcessor):
         topic_unit_map: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Run topic calls in bounded parallel batches; preserve topic order in merged rows."""
+        from webapp.unit_repair.table_notes import resolve_topic_unit
+
         n_topics = len(topic_groups)
         if n_topics == 0:
             return [], []
@@ -649,7 +663,10 @@ class StageEProcessor(BaseStageProcessor):
                 future_to_idx: Dict[Any, int] = {}
                 for rel_i, (topic_name, pts) in enumerate(batch):
                     tidx = start + rel_i
-                    unit_info = (topic_unit_map or {}).get(topic_name)
+                    ch0 = (pts[0].get("chapter") if pts else "") or ""
+                    unit_info = resolve_topic_unit(
+                        topic_unit_map, str(ch0), persian_subchapter_name, topic_name
+                    )
                     if unit_hooks and unit_info:
                         ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
                         sub = unit_info.get("subchapter") or persian_subchapter_name
@@ -694,7 +711,10 @@ class StageEProcessor(BaseStageProcessor):
                         continue
                     results_by_idx[ti] = (tn, rows, err)
                     pts = topic_groups[ti][1]
-                    unit_info = (topic_unit_map or {}).get(tn)
+                    ch0 = (pts[0].get("chapter") if pts else "") or ""
+                    unit_info = resolve_topic_unit(
+                        topic_unit_map, str(ch0), persian_subchapter_name, tn
+                    )
                     if unit_hooks and unit_info:
                         ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
                         sub = unit_info.get("subchapter") or persian_subchapter_name

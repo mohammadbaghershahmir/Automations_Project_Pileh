@@ -404,10 +404,15 @@ class StageTAProcessor(BaseStageProcessor):
                 f"(concurrency={bw}) for '{persian_subchapter_name}'..."
             )
             with ThreadPoolExecutor(max_workers=bw) as executor:
+                from webapp.unit_repair.table_notes import resolve_topic_unit
+
                 future_to_idx: Dict[Any, int] = {}
                 for rel_i, (topic_name, pts) in enumerate(batch):
                     tidx = start + rel_i
-                    unit_info = (topic_unit_map or {}).get(topic_name)
+                    ch0 = (pts[0].get("chapter") if pts else "") or ""
+                    unit_info = resolve_topic_unit(
+                        topic_unit_map, str(ch0), persian_subchapter_name, topic_name
+                    )
                     if unit_hooks and unit_info:
                         ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
                         sub = unit_info.get("subchapter") or persian_subchapter_name
@@ -456,7 +461,10 @@ class StageTAProcessor(BaseStageProcessor):
                         continue
                     results_by_idx[ti] = (tn, rows, err)
                     pts = topic_groups[ti][1]
-                    unit_info = (topic_unit_map or {}).get(tn)
+                    ch0 = (pts[0].get("chapter") if pts else "") or ""
+                    unit_info = resolve_topic_unit(
+                        topic_unit_map, str(ch0), persian_subchapter_name, tn
+                    )
                     if unit_hooks and unit_info:
                         ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
                         sub = unit_info.get("subchapter") or persian_subchapter_name

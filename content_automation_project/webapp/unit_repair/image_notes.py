@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 
 from webapp.job_files import job_root, register_artifacts_under
 from webapp.unit_repair.docproc import DocumentProcessingUnitHooks, hooks_for_pair
-from webapp.unit_repair.manifest import load_manifest, save_manifest
+from webapp.unit_repair.manifest import get_unit, load_manifest, save_manifest
 from webapp.unit_repair.renumber import mark_renumber_applied, renumber_points_in_rows
 from webapp.unit_repair.table_notes import (
     _sync_status_from_prompts,
+    filter_points_for_unit,
     topic_unit_map,
     topic_units_from_points,
 )
@@ -163,40 +164,41 @@ def regenerate_unit(
         raise FileNotFoundError("Missing Stage 4 or OCR JSON")
 
     stage4_points = processor.get_data_from_json(stage4_data)
-    units = topic_units_from_points(stage4_points or [])
-    if unit_index < 1 or unit_index > len(units):
-        raise ValueError(f"unit_index {unit_index} out of range")
-    unit = units[unit_index - 1]
-    topic_name = unit["topic"]
-    pts = [p for p in stage4_points if isinstance(p, dict) and (p.get("topic") or "").strip() == topic_name]
-    sub = (pts[0].get("subchapter") or "").strip() if pts else unit.get("subchapter") or ""
+    manifest = ensure_manifest(db, job_id, pair_index, cfg)
+    unit = get_unit(manifest, unit_index)
+    if not unit:
+        raise ValueError(f"Unknown unit_index {unit_index}")
+    topic_name = (unit.get("topic") or "").strip()
+    pts = filter_points_for_unit(stage4_points or [], unit)
+    sub = (unit.get("subchapter") or "").strip() or (
+        (pts[0].get("subchapter") or "").strip() if pts else ""
+    )
+    ch = (unit.get("chapter") or "").strip() or (
+        (pts[0].get("chapter") or "").strip() if pts else ""
+    )
 
     # #region agent log
     from base_stage_processor import _agent_debug_log
 
-    unit_subchapters = sorted(
-        {
-            (p.get("subchapter") or "").strip()
-            for p in pts
-            if isinstance(p, dict) and (p.get("subchapter") or "").strip()
-        }
-    )
     _agent_debug_log(
         "webapp/unit_repair/image_notes.py:regenerate_unit",
         "Regenerate unit context",
         {
             "unit_index": unit_index,
             "topic_name": topic_name,
-            "manifest_subchapter": (unit.get("subchapter") or "").strip(),
-            "resolved_subchapter": sub,
+            "manifest_chapter": ch,
+            "manifest_subchapter": sub,
             "stage4_pts_count": len(pts),
-            "stage4_subchapters_in_pts": unit_subchapters,
-            "subchapter_mismatch": len(unit_subchapters) > 1
-            or (unit_subchapters and unit_subchapters[0] != (unit.get("subchapter") or "").strip()),
         },
         "C",
     )
     # #endregion
+
+    if not pts:
+        raise ValueError(
+            f"No Stage 4 points for unit {unit_index} "
+            f"({ch} > {sub} > {topic_name})"
+        )
 
     prompt = resolve_prompt_for_job(db, "image_notes", cfg, "prompt")
     model = (cfg.get("model") or "z-ai/glm-5").strip()
@@ -220,6 +222,12 @@ def regenerate_unit(
     )
     if err:
         raise RuntimeError(err)
+    if not rows:
+        raise RuntimeError(
+            f"Regenerate unit {unit_index} produced no image rows for "
+            f"«{topic_name}» in subchapter «{sub}» — OCR slice likely has no figures "
+            f"for this topic (check worker log line 'Stage E OCR slice')."
+        )
 
     filepic_path = _filepic_path(abs_stage4)
     apply_regenerate_to_merged_files(
@@ -236,8 +244,8 @@ def regenerate_unit(
         pic_meta_prefix="filepic",
     )
 
-    rel = os.path.relpath(out_path, base).replace("\\", "/")
     manifest = ensure_manifest(db, job_id, pair_index, cfg)
+    rel = os.path.relpath(out_path, base).replace("\\", "/")
     manifest["output_relpath"] = rel
     manifest.setdefault("renumber", {})["ids_provisional"] = True
     save_manifest(job_id, pair_index, manifest)

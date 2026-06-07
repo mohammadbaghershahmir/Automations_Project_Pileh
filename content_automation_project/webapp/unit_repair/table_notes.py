@@ -15,19 +15,29 @@ from webapp.unit_repair.manifest import load_manifest, save_manifest
 from webapp.unit_repair.renumber import mark_renumber_applied, renumber_points_in_rows
 
 
+def topic_unit_key(chapter: str, subchapter: str, topic: str) -> str:
+    """Stable lookup key — one unit per (chapter, subchapter, topic), not topic alone."""
+    return "\x1f".join(
+        [(chapter or "").strip(), (subchapter or "").strip(), (topic or "").strip()]
+    )
+
+
 def topic_units_from_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """One unit per unique topic name, in first-seen order (matches regenerate_unit)."""
+    """One unit per unique (chapter, subchapter, topic), in first-seen order."""
     units: List[Dict[str, Any]] = []
     seen: set[str] = set()
     for row in points:
         if not isinstance(row, dict):
             continue
         topic = (row.get("topic") or "").strip()
-        if not topic or topic in seen:
+        if not topic:
             continue
-        seen.add(topic)
         chapter = (row.get("chapter") or "").strip()
         subchapter = (row.get("subchapter") or "").strip()
+        key = topic_unit_key(chapter, subchapter, topic)
+        if key in seen:
+            continue
+        seen.add(key)
         units.append(
             {
                 "unit_index": len(units) + 1,
@@ -42,7 +52,52 @@ def topic_units_from_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
 
 def topic_unit_map(units: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    return {(u.get("topic") or "").strip(): u for u in units if (u.get("topic") or "").strip()}
+    out: Dict[str, Dict[str, Any]] = {}
+    for u in units:
+        key = topic_unit_key(
+            u.get("chapter") or "",
+            u.get("subchapter") or "",
+            u.get("topic") or "",
+        )
+        if key.strip("\x1f"):
+            out[key] = u
+    return out
+
+
+def resolve_topic_unit(
+    unit_map: Optional[Dict[str, Dict[str, Any]]],
+    chapter: str,
+    subchapter: str,
+    topic: str,
+) -> Optional[Dict[str, Any]]:
+    """Resolve a manifest unit; falls back to legacy topic-only keys for old manifests."""
+    if not unit_map:
+        return None
+    key = topic_unit_key(chapter, subchapter, topic)
+    hit = unit_map.get(key)
+    if hit:
+        return hit
+    legacy = (topic or "").strip()
+    if legacy:
+        return unit_map.get(legacy)
+    return None
+
+
+def filter_points_for_unit(
+    points: List[Dict[str, Any]], unit: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Stage rows belonging to one manifest unit (chapter + subchapter + topic)."""
+    ch = (unit.get("chapter") or "").strip()
+    sub = (unit.get("subchapter") or "").strip()
+    top = (unit.get("topic") or "").strip()
+    return [
+        p
+        for p in points
+        if isinstance(p, dict)
+        and (p.get("chapter") or "").strip() == ch
+        and (p.get("subchapter") or "").strip() == sub
+        and (p.get("topic") or "").strip() == top
+    ]
 
 
 def _stage_e_path(job_id: str, stage_e_relpath: str) -> str:
@@ -205,8 +260,10 @@ def regenerate_unit(
         raise ValueError(f"unit_index {unit_index} out of range")
     unit = units[unit_index - 1]
     topic_name = unit["topic"]
-    pts = [p for p in e_points if isinstance(p, dict) and (p.get("topic") or "").strip() == topic_name]
-    sub = (pts[0].get("subchapter") or "").strip() if pts else unit.get("subchapter") or ""
+    pts = filter_points_for_unit(e_points, unit)
+    sub = (unit.get("subchapter") or "").strip() or (
+        (pts[0].get("subchapter") or "").strip() if pts else ""
+    )
 
     prompt = resolve_prompt_for_job(db, "table_notes", cfg, "prompt")
     model = (cfg.get("model") or "z-ai/glm-5").strip()
@@ -280,6 +337,9 @@ __all__ = [
     "hooks_for_pair",
     "regenerate_unit",
     "renumber_pair",
+    "filter_points_for_unit",
+    "resolve_topic_unit",
+    "topic_unit_key",
     "topic_unit_map",
     "topic_units_from_points",
 ]

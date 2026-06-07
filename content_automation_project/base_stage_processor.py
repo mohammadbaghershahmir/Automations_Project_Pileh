@@ -87,6 +87,27 @@ from txt_stage_json_utils import load_stage_txt_as_json
 
 class BaseStageProcessor:
     """Base class providing common functionality for all stage processors"""
+
+    @staticmethod
+    def _normalize_topic_label(label: str) -> str:
+        return re.sub(r"\s+", " ", (label or "").strip())
+
+    @classmethod
+    def _ocr_topic_labels_match(cls, ocr_topic: Any, stage4_topic: str) -> bool:
+        """Match OCR topic objects to Stage 4 topic names (incl. empty / بدون مبحث)."""
+        ocr_label = cls._normalize_topic_label(str(ocr_topic or ""))
+        stage_label = cls._normalize_topic_label(stage4_topic or "")
+        if not stage_label or stage_label == "(بدون مبحث)":
+            return not ocr_label
+        if ocr_label == stage_label:
+            return True
+        return re.sub(r"\s+", "", ocr_label) == re.sub(r"\s+", "", stage_label)
+
+    @staticmethod
+    def _ocr_extraction_item_type(item: Dict[str, Any]) -> str:
+        if not isinstance(item, dict):
+            return ""
+        return str(item.get("type") or item.get("Type") or "")
     
     def __init__(self, api_client):
         """
@@ -537,9 +558,9 @@ class BaseStageProcessor:
         Used by context-window fallback paths to minimize input tokens.
         """
         sub_target = (subchapter_name or "").strip()
-        topic_target = (topic_name or "").strip()
-        if not sub_target or not topic_target:
+        if not sub_target:
             return {"chapters": []}
+        topic_target = (topic_name or "").strip()
 
         out_chapters: List[Dict[str, Any]] = []
         for chapter_obj in ocr_extraction_data.get("chapters", []) or []:
@@ -556,7 +577,8 @@ class BaseStageProcessor:
                 topic_matches = [
                     t
                     for t in sub.get("topics", []) or []
-                    if isinstance(t, dict) and (t.get("topic", "") or "").strip() == topic_target
+                    if isinstance(t, dict)
+                    and self._ocr_topic_labels_match(t.get("topic", ""), topic_target)
                 ]
                 if not topic_matches:
                     continue
@@ -620,7 +642,8 @@ class BaseStageProcessor:
                 return [
                     item
                     for item in extractions
-                    if isinstance(item, dict) and _ocr_type_is_image_only(str(item.get("type", "")))
+                    if isinstance(item, dict)
+                    and _ocr_type_is_image_only(BaseStageProcessor._ocr_extraction_item_type(item))
                 ]
             if isinstance(extractions, dict):
                 out: Dict[str, Any] = {}
@@ -792,14 +815,19 @@ class BaseStageProcessor:
         if not unit_hooks:
             return
         for topic_name in topic_names:
-            unit_info = (topic_unit_map or {}).get(topic_name)
-            if not unit_info:
-                continue
             pts = [
                 p
                 for p in filtered_points
                 if isinstance(p, dict) and (p.get("topic") or "").strip() == topic_name
             ]
+            ch = (pts[0].get("chapter") if pts else "") or ""
+            from webapp.unit_repair.table_notes import resolve_topic_unit
+
+            unit_info = resolve_topic_unit(
+                topic_unit_map, str(ch or ""), persian_subchapter_name, topic_name
+            )
+            if not unit_info:
+                continue
             ch = unit_info.get("chapter") or (pts[0].get("chapter") if pts else "")
             sub = unit_info.get("subchapter") or persian_subchapter_name
             unit_hooks.after_unit(
