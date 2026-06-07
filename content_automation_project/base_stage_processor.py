@@ -8,8 +8,79 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from typing import Optional, Dict, List, Any
+
+# #region agent log
+_AGENT_DEBUG_LOG_PATH = "/Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/.cursor/debug-24d820.log"
+
+
+def _agent_debug_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:
+    try:
+        payload = {
+            "sessionId": "24d820",
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(_AGENT_DEBUG_LOG_PATH, "a", encoding="utf-8") as _df:
+            _df.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def _agent_count_ocr_figures_in_slice(ocr_slice: Dict[str, Any]) -> dict:
+    list_figs = 0
+    dict_figs = 0
+    topics_seen: List[str] = []
+    for chapter_obj in ocr_slice.get("chapters", []) or []:
+        if not isinstance(chapter_obj, dict):
+            continue
+        for sub in chapter_obj.get("subchapters", []) or []:
+            if not isinstance(sub, dict):
+                continue
+            for topic_obj in sub.get("topics", []) or []:
+                if not isinstance(topic_obj, dict):
+                    continue
+                tname = (topic_obj.get("topic") or "").strip()
+                if tname:
+                    topics_seen.append(tname)
+                ex = topic_obj.get("extractions")
+                if isinstance(ex, list):
+                    for item in ex:
+                        if isinstance(item, dict):
+                            type_val = str(item.get("type") or item.get("Type") or "")
+                            x = type_val.strip().lower().replace(" ", "")
+                            if x in ("figure", "e-figure", "efigure", "fig", "image", "e-image", "eimage") or (
+                                x.startswith("e-") and "fig" in x
+                            ):
+                                list_figs += 1
+                elif isinstance(ex, dict):
+                    for key in ("figs", "figures", "images"):
+                        vals = ex.get(key)
+                        if isinstance(vals, list):
+                            dict_figs += len(vals)
+    return {
+        "list_figure_extractions": list_figs,
+        "dict_figure_extractions": dict_figs,
+        "ocr_topics_in_slice": topics_seen[:20],
+        "subchapters_in_slice": len(
+            [
+                s
+                for c in ocr_slice.get("chapters", []) or []
+                if isinstance(c, dict)
+                for s in c.get("subchapters", []) or []
+                if isinstance(s, dict)
+            ]
+        ),
+    }
+
+
+# #endregion
 from third_stage_converter import ThirdStageConverter
 from txt_stage_json_utils import load_stage_txt_as_json
 
@@ -510,6 +581,19 @@ class BaseStageProcessor:
                 subchapter_name,
                 topic_name,
             )
+        # #region agent log
+        _agent_debug_log(
+            "base_stage_processor.py:_filter_ocr_extraction_for_subchapter_topic",
+            "OCR topic slice built",
+            {
+                "subchapter_name": sub_target,
+                "topic_name": topic_target,
+                "matched_chapters": len(out_chapters),
+                **_agent_count_ocr_figures_in_slice(result),
+            },
+            "A",
+        )
+        # #endregion
         return result
 
     def _slim_ocr_for_stage_e_image_notes(self, ocr_slice: Dict[str, Any]) -> Dict[str, Any]:
@@ -618,7 +702,30 @@ class BaseStageProcessor:
             ocr_extraction_data, subchapter_name, ocr_topic_filter
         )
         slim = self._slim_ocr_for_stage_e_image_notes(topic_slice)
-        return self._ocr_slim_slice_has_figure_extractions(slim)
+        has_figs = self._ocr_slim_slice_has_figure_extractions(slim)
+        # #region agent log
+        _agent_debug_log(
+            "base_stage_processor.py:_ocr_topic_has_figure_extractions",
+            "OCR figure presence check",
+            {
+                "subchapter_name": (subchapter_name or "").strip(),
+                "topic_name": stage4_topic,
+                "has_figures_after_slim": has_figs,
+                **_agent_count_ocr_figures_in_slice(topic_slice),
+                "slim_subchapters": len(
+                    [
+                        s
+                        for c in slim.get("chapters", []) or []
+                        if isinstance(c, dict)
+                        for s in c.get("subchapters", []) or []
+                        if isinstance(s, dict)
+                    ]
+                ),
+            },
+            "B",
+        )
+        # #endregion
+        return has_figs
 
     @staticmethod
     def _ocr_extraction_type_is_table(type_str: str) -> bool:

@@ -223,9 +223,25 @@ class StageEProcessor(BaseStageProcessor):
         with_figures: List[Tuple[str, List[Dict[str, Any]]]] = []
         skipped_topics: List[str] = []
         for topic_name, pts in topic_groups:
-            if self._ocr_topic_has_figure_extractions(
+            has_figs = self._ocr_topic_has_figure_extractions(
                 ocr_extraction_data, persian_subchapter_name, topic_name
-            ):
+            )
+            # #region agent log
+            from base_stage_processor import _agent_debug_log
+
+            _agent_debug_log(
+                "stage_e_processor.py:_split_topic_groups_by_ocr_figures",
+                "Topic OCR figure split decision",
+                {
+                    "persian_subchapter_name": persian_subchapter_name,
+                    "topic_name": topic_name,
+                    "has_figures": has_figs,
+                    "stage4_pts_in_topic": len(pts),
+                },
+                "E",
+            )
+            # #endregion
+            if has_figs:
                 with_figures.append((topic_name, pts))
             else:
                 skipped_topics.append(topic_name)
@@ -475,9 +491,54 @@ class StageEProcessor(BaseStageProcessor):
         if not pts:
             return topic_index, topic_name, [], None
 
+        # #region agent log
+        from base_stage_processor import _agent_debug_log, _agent_count_ocr_figures_in_slice
+
+        unit_subchapters = sorted(
+            {
+                (p.get("subchapter") or "").strip()
+                for p in pts
+                if isinstance(p, dict) and (p.get("subchapter") or "").strip()
+            }
+        )
+        _agent_debug_log(
+            "stage_e_processor.py:_run_stage_e_single_topic",
+            "Single topic LLM call starting",
+            {
+                "topic_name": topic_name,
+                "persian_subchapter_name": persian_subchapter_name,
+                "stage4_pts_count": len(pts),
+                "stage4_subchapters_in_pts": unit_subchapters,
+                "subchapter_mismatch": len(unit_subchapters) > 1
+                or (
+                    unit_subchapters
+                    and unit_subchapters[0] != (persian_subchapter_name or "").strip()
+                ),
+            },
+            "C",
+        )
+        # #endregion
+
         topic_ocr_extraction_json_str = self._topic_ocr_json_for_stage_e(
             ocr_extraction_data, persian_subchapter_name, topic_name
         )
+        # #region agent log
+        try:
+            _ocr_preview = json.loads(topic_ocr_extraction_json_str)
+        except json.JSONDecodeError:
+            _ocr_preview = {}
+        _agent_debug_log(
+            "stage_e_processor.py:_run_stage_e_single_topic",
+            "OCR JSON prepared for prompt",
+            {
+                "topic_name": topic_name,
+                "persian_subchapter_name": persian_subchapter_name,
+                "ocr_json_chars": len(topic_ocr_extraction_json_str),
+                **_agent_count_ocr_figures_in_slice(_ocr_preview),
+            },
+            "D",
+        )
+        # #endregion
         slim_pts = self._slim_stage4_points_for_image_notes(pts)
         scope = (
             f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "

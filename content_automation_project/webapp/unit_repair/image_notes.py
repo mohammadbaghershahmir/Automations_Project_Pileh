@@ -171,6 +171,33 @@ def regenerate_unit(
     pts = [p for p in stage4_points if isinstance(p, dict) and (p.get("topic") or "").strip() == topic_name]
     sub = (pts[0].get("subchapter") or "").strip() if pts else unit.get("subchapter") or ""
 
+    # #region agent log
+    from base_stage_processor import _agent_debug_log
+
+    unit_subchapters = sorted(
+        {
+            (p.get("subchapter") or "").strip()
+            for p in pts
+            if isinstance(p, dict) and (p.get("subchapter") or "").strip()
+        }
+    )
+    _agent_debug_log(
+        "webapp/unit_repair/image_notes.py:regenerate_unit",
+        "Regenerate unit context",
+        {
+            "unit_index": unit_index,
+            "topic_name": topic_name,
+            "manifest_subchapter": (unit.get("subchapter") or "").strip(),
+            "resolved_subchapter": sub,
+            "stage4_pts_count": len(pts),
+            "stage4_subchapters_in_pts": unit_subchapters,
+            "subchapter_mismatch": len(unit_subchapters) > 1
+            or (unit_subchapters and unit_subchapters[0] != (unit.get("subchapter") or "").strip()),
+        },
+        "C",
+    )
+    # #endregion
+
     prompt = resolve_prompt_for_job(db, "image_notes", cfg, "prompt")
     model = (cfg.get("model") or "z-ai/glm-5").strip()
     prompt_sub = prompt.replace("{SUBCHAPTER_NAME}", sub).replace("{Subchapter_Name}", sub)
