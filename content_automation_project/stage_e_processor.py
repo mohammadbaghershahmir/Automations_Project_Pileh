@@ -220,13 +220,23 @@ class StageEProcessor(BaseStageProcessor):
         topic_groups: List[Tuple[str, List[Dict[str, Any]]]],
         ocr_extraction_data: Dict[str, Any],
         persian_subchapter_name: str,
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
     ) -> Tuple[List[Tuple[str, List[Dict[str, Any]]]], List[str]]:
         """Keep only topics whose OCR slice contains figures; return skipped topic names."""
+        if stage4_topics_in_subchapter is None:
+            stage4_topics_in_subchapter = {
+                (topic_name or "").strip()
+                for topic_name, _pts in topic_groups
+                if (topic_name or "").strip()
+            }
         with_figures: List[Tuple[str, List[Dict[str, Any]]]] = []
         skipped_topics: List[str] = []
         for topic_name, pts in topic_groups:
             has_figs = self._ocr_topic_has_figure_extractions(
-                ocr_extraction_data, persian_subchapter_name, topic_name
+                ocr_extraction_data,
+                persian_subchapter_name,
+                topic_name,
+                stage4_topics_in_subchapter,
             )
             # #region agent log
             from base_stage_processor import _agent_debug_log
@@ -462,16 +472,16 @@ class StageEProcessor(BaseStageProcessor):
         ocr_extraction_data: Dict[str, Any],
         persian_subchapter_name: str,
         stage4_topic_bucket: str,
-    ) -> str:
-        # Stage 4 uses "(بدون مبحث)" for missing topic; OCR JSON often uses "" on topic objects.
-        ocr_topic_filter = "" if stage4_topic_bucket == "(بدون مبحث)" else stage4_topic_bucket
-        topic_ocr_slice = self._filter_ocr_extraction_for_subchapter_topic(
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
+    ) -> tuple[str, str]:
+        """Return (ocr_json_str, slice_mode) for Stage E prompts."""
+        slim, mode = self._ocr_image_slice_for_stage_e_topic(
             ocr_extraction_data,
             persian_subchapter_name,
-            ocr_topic_filter,
+            stage4_topic_bucket,
+            stage4_topics_in_subchapter,
         )
-        topic_ocr_slice = self._slim_ocr_for_stage_e_image_notes(topic_ocr_slice)
-        return json.dumps(topic_ocr_slice, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(slim, ensure_ascii=False, separators=(",", ":")), mode
 
     def _run_stage_e_single_topic(
         self,
@@ -487,6 +497,7 @@ class StageEProcessor(BaseStageProcessor):
         part_num: int,
         _progress: Callable[[str], None],
         raw_response_kind: str = "topic_parallel",
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
     ) -> Tuple[int, str, List[Dict[str, Any]], Optional[str]]:
         """
         One LLM call for a single Stage-4 topic bucket (topic-scoped OCR + topic points).
@@ -524,8 +535,16 @@ class StageEProcessor(BaseStageProcessor):
         )
         # #endregion
 
-        topic_ocr_extraction_json_str = self._topic_ocr_json_for_stage_e(
-            ocr_extraction_data, persian_subchapter_name, topic_name
+        if stage4_topics_in_subchapter is None:
+            stage4_topics_in_subchapter = {
+                (topic_name or "").strip(),
+            } if (topic_name or "").strip() else set()
+
+        topic_ocr_extraction_json_str, ocr_slice_mode = self._topic_ocr_json_for_stage_e(
+            ocr_extraction_data,
+            persian_subchapter_name,
+            topic_name,
+            stage4_topics_in_subchapter,
         )
         # #region agent log
         try:
@@ -539,26 +558,39 @@ class StageEProcessor(BaseStageProcessor):
                 "topic_name": topic_name,
                 "persian_subchapter_name": persian_subchapter_name,
                 "ocr_json_chars": len(topic_ocr_extraction_json_str),
+                "ocr_slice_mode": ocr_slice_mode,
                 **_agent_count_ocr_figures_in_slice(_ocr_preview),
             },
             "D",
         )
         self.logger.info(
-            "Stage E OCR slice topic=%r subchapter=%r figures=%s json_chars=%s",
+            "Stage E OCR slice topic=%r subchapter=%r mode=%s figures=%s json_chars=%s",
             topic_name,
             persian_subchapter_name,
+            ocr_slice_mode,
             _agent_count_ocr_figures_in_slice(_ocr_preview),
             len(topic_ocr_extraction_json_str),
         )
         # #endregion
         slim_pts = self._slim_stage4_points_for_image_notes(pts)
-        scope = (
-            f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
-            f"تعداد نقاط Stage 4 در این مبحث: {len(pts)} "
-            f"(نمای hierarchy: {len(slim_pts)} ردیف). "
-            "برای هر figure/e-figure موجود در OCR همین مبحث دقیقاً یک ردیف خروجی بده؛ "
-            "از Stage 4 فقط برای تعیین جایگاه سلسله‌مراتب استفاده کن.]"
-        )
+        if ocr_slice_mode == "subchapter_fallback":
+            scope = (
+                f"[محدوده مرجع: مبحث «{topic_name}» در زیرفصل «{persian_subchapter_name}». "
+                f"تصاویر OCR زیر از کل این زیرفصل آمده‌اند (برچسب topic در OCR ممکن است "
+                f"با نام مبحث Stage 4 یکی نباشد). "
+                f"تعداد نقاط Stage 4 در این مبحث: {len(pts)} "
+                f"(نمای hierarchy: {len(slim_pts)} ردیف). "
+                "برای هر figure/e-figure در OCR دقیقاً یک ردیف خروجی بده و جایگاه را "
+                "فقط از Stage 4 همین مبحث تعیین کن.]"
+            )
+        else:
+            scope = (
+                f"[محدوده مرجع: فقط مبحث «{topic_name}» در همین زیرفصل. "
+                f"تعداد نقاط Stage 4 در این مبحث: {len(pts)} "
+                f"(نمای hierarchy: {len(slim_pts)} ردیف). "
+                "برای هر figure/e-figure موجود در OCR همین مبحث دقیقاً یک ردیف خروجی بده؛ "
+                "از Stage 4 فقط برای تعیین جایگاه سلسله‌مراتب استفاده کن.]"
+            )
         full_prompt = self._build_image_notes_stage_e_prompt(
             prompt_with_subchapter,
             topic_ocr_extraction_json_str,
@@ -635,6 +667,7 @@ class StageEProcessor(BaseStageProcessor):
         _progress: Callable[[str], None],
         unit_hooks: Optional[Any] = None,
         topic_unit_map: Optional[Dict[str, Dict[str, Any]]] = None,
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Run topic calls in bounded parallel batches; preserve topic order in merged rows."""
         from webapp.unit_repair.table_notes import resolve_topic_unit
@@ -649,6 +682,13 @@ class StageEProcessor(BaseStageProcessor):
         def _progress_log_only(msg: str) -> None:
             """Workers must not touch the task's SQLAlchemy Session (see append_log / pair ORM)."""
             self.logger.info("%s", msg)
+
+        if stage4_topics_in_subchapter is None:
+            stage4_topics_in_subchapter = {
+                (topic_name or "").strip()
+                for topic_name, _pts in topic_groups
+                if (topic_name or "").strip()
+            }
 
         batch_size = self.STAGE_E_TOPIC_BATCH_SIZE
         total_batches = (n_topics + batch_size - 1) // batch_size
@@ -690,6 +730,7 @@ class StageEProcessor(BaseStageProcessor):
                         part_num=part_num,
                         _progress=_progress_log_only,
                         raw_response_kind="topic_parallel",
+                        stage4_topics_in_subchapter=stage4_topics_in_subchapter,
                     )
                     future_to_idx[fut] = tidx
 
@@ -1144,10 +1185,16 @@ class StageEProcessor(BaseStageProcessor):
                 _progress(f"Warning: No topic buckets for '{persian_subchapter_name}'. Skipping...")
                 continue
 
+            stage4_topics_in_subchapter = {
+                (p.get("topic") or "").strip()
+                for p in filtered_stage4_points
+                if isinstance(p, dict) and (p.get("topic") or "").strip()
+            }
             topic_groups, ocr_skipped_topics = self._split_topic_groups_by_ocr_figures(
                 topic_groups,
                 ocr_extraction_data,
                 persian_subchapter_name,
+                stage4_topics_in_subchapter,
             )
             if ocr_skipped_topics:
                 self._mark_subchapter_topic_units_skipped(
@@ -1181,7 +1228,20 @@ class StageEProcessor(BaseStageProcessor):
             ocr_figure_counts = self._ocr_figure_counts_by_topic(
                 ocr_extraction_data, persian_subchapter_name
             )
-            expected_ocr_rows = sum(ocr_figure_counts.get(tn, 0) for tn, _ in topic_groups)
+            expected_ocr_rows = 0
+            for tn, _ in topic_groups:
+                slim, _mode = self._ocr_image_slice_for_stage_e_topic(
+                    ocr_extraction_data,
+                    persian_subchapter_name,
+                    tn,
+                    stage4_topics_in_subchapter,
+                )
+                from base_stage_processor import _agent_count_ocr_figures_in_slice
+
+                fc = _agent_count_ocr_figures_in_slice(slim)
+                expected_ocr_rows += fc.get("list_figure_extractions", 0) + fc.get(
+                    "dict_figure_extractions", 0
+                )
             _progress(
                 f"Stage E topic-parallel: {len(topic_groups)} topic(s) for subchapter "
                 f"'{persian_subchapter_name}' (batch size {self.STAGE_E_TOPIC_BATCH_SIZE})..."
@@ -1197,6 +1257,7 @@ class StageEProcessor(BaseStageProcessor):
                 _progress=_progress,
                 unit_hooks=unit_hooks,
                 topic_unit_map=topic_unit_map,
+                stage4_topics_in_subchapter=stage4_topics_in_subchapter,
             )
 
             if not subchapter_filepic_records:

@@ -207,6 +207,14 @@ def regenerate_unit(
     if hasattr(prompt_client, "set_current_unit"):
         prompt_client.set_current_unit(unit_index, topic_name)
 
+    stage4_topics_in_subchapter = {
+        (p.get("topic") or "").strip()
+        for p in stage4_points
+        if isinstance(p, dict)
+        and (p.get("subchapter") or "").strip() == sub
+        and (p.get("topic") or "").strip()
+    }
+
     _ti, tn, rows, err = processor._run_stage_e_single_topic(
         unit_index - 1,
         topic_name,
@@ -219,6 +227,7 @@ def regenerate_unit(
         part_num=1,
         _progress=lambda _m: None,
         raw_response_kind="topic_parallel",
+        stage4_topics_in_subchapter=stage4_topics_in_subchapter,
     )
     if err:
         raise RuntimeError(err)

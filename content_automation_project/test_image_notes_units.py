@@ -127,5 +127,81 @@ class TestImageNotesUnits(unittest.TestCase):
         self.assertEqual(len(rows), 1)
 
 
+    def test_subchapter_fallback_when_ocr_topic_differs_from_stage4(self) -> None:
+        proc = BaseStageProcessor(FakeClient())
+        ocr = {
+            "chapters": [
+                {
+                    "chapter": "C",
+                    "subchapters": [
+                        {
+                            "subchapter": "S1",
+                            "topics": [
+                                {
+                                    "topic": "مقدمه",
+                                    "extractions": [{"type": "text", "content": "intro"}],
+                                },
+                                {
+                                    "topic": "ساختار پایه پوست",
+                                    "extractions": [
+                                        {"type": "figure", "content": "Fig 1.1"},
+                                        {"type": "e-figure", "content": "eFig 1.1"},
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        stage4_topics = {"مقدمه"}
+        self.assertTrue(
+            proc._should_use_subchapter_figure_fallback(
+                ocr, "S1", "مقدمه", stage4_topics
+            )
+        )
+        slim, mode = proc._ocr_image_slice_for_stage_e_topic(
+            ocr, "S1", "مقدمه", stage4_topics
+        )
+        self.assertEqual(mode, "subchapter_fallback")
+        self.assertTrue(proc._ocr_slim_slice_has_figure_extractions(slim))
+
+    def test_no_fallback_when_figures_belong_to_other_stage4_topic(self) -> None:
+        proc = BaseStageProcessor(FakeClient())
+        ocr = {
+            "chapters": [
+                {
+                    "chapter": "C",
+                    "subchapters": [
+                        {
+                            "subchapter": "S2",
+                            "topics": [
+                                {
+                                    "topic": "محافظت از DNA",
+                                    "extractions": [{"type": "text", "content": "dna"}],
+                                },
+                                {
+                                    "topic": "محافظت ایمونولوژیک",
+                                    "extractions": [{"type": "figure", "content": "Fig 1.7"}],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        stage4_topics = {"محافظت از DNA", "محافظت ایمونولوژیک"}
+        self.assertFalse(
+            proc._should_use_subchapter_figure_fallback(
+                ocr, "S2", "محافظت از DNA", stage4_topics
+            )
+        )
+        self.assertFalse(
+            proc._ocr_topic_has_figure_extractions(
+                ocr, "S2", "محافظت از DNA", stage4_topics
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

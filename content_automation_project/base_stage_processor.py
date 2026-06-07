@@ -712,38 +712,153 @@ class BaseStageProcessor:
         slim = self._slim_ocr_for_stage_e_image_notes(ocr_slice)
         return self._ocr_slim_slice_has_figure_extractions(slim)
 
-    def _ocr_topic_has_figure_extractions(
+    def _ocr_figure_counts_by_topic_in_subchapter(
+        self, ocr_extraction_data: Dict[str, Any], subchapter_name: str
+    ) -> Dict[str, int]:
+        """Count figure/e-figure extractions per OCR topic name within one subchapter."""
+        counts: Dict[str, int] = {}
+        ocr_slice = self._filter_ocr_extraction_for_subchapter(
+            ocr_extraction_data, subchapter_name
+        )
+        for chapter_obj in ocr_slice.get("chapters", []) or []:
+            if not isinstance(chapter_obj, dict):
+                continue
+            for sub in chapter_obj.get("subchapters", []) or []:
+                if not isinstance(sub, dict):
+                    continue
+                for topic_obj in sub.get("topics", []) or []:
+                    if not isinstance(topic_obj, dict):
+                        continue
+                    topic_key = (topic_obj.get("topic") or "").strip() or "(بدون مبحث)"
+                    extractions = topic_obj.get("extractions")
+                    n = 0
+                    if isinstance(extractions, list):
+                        for ex in extractions:
+                            if not isinstance(ex, dict):
+                                continue
+                            type_val = self._ocr_extraction_item_type(ex)
+                            x = type_val.strip().lower().replace(" ", "")
+                            if not x or x == "text":
+                                continue
+                            if x in ("table", "etable", "e-table", "e_table"):
+                                continue
+                            if x in (
+                                "figure",
+                                "e-figure",
+                                "efigure",
+                                "fig",
+                                "image",
+                                "e-image",
+                                "eimage",
+                            ) or (x.startswith("e-") and "fig" in x):
+                                n += 1
+                    elif isinstance(extractions, dict):
+                        for key in ("figs", "figures", "images"):
+                            vals = extractions.get(key)
+                            if isinstance(vals, list):
+                                n += len(vals)
+                    if n > 0:
+                        counts[topic_key] = counts.get(topic_key, 0) + n
+        return counts
+
+    def _should_use_subchapter_figure_fallback(
         self,
         ocr_extraction_data: Dict[str, Any],
         subchapter_name: str,
         topic_name: str,
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
     ) -> bool:
-        """True when OCR has figure/image extractions for one subchapter + topic pair."""
+        """
+        Use all figures in a subchapter when the Stage 4 topic name does not match the
+        OCR topic bucket that holds the figures (e.g. Stage 4 «مقدمه» vs OCR «ساختار پایه پوست»).
+        """
         stage4_topic = (topic_name or "").strip() or "(بدون مبحث)"
         ocr_topic_filter = "" if stage4_topic == "(بدون مبحث)" else stage4_topic
         topic_slice = self._filter_ocr_extraction_for_subchapter_topic(
             ocr_extraction_data, subchapter_name, ocr_topic_filter
         )
-        slim = self._slim_ocr_for_stage_e_image_notes(topic_slice)
-        has_figs = self._ocr_slim_slice_has_figure_extractions(slim)
+        topic_slim = self._slim_ocr_for_stage_e_image_notes(topic_slice)
+        if self._ocr_slim_slice_has_figure_extractions(topic_slim):
+            return False
+
+        sub_slice = self._filter_ocr_extraction_for_subchapter(
+            ocr_extraction_data, subchapter_name
+        )
+        sub_slim = self._slim_ocr_for_stage_e_image_notes(sub_slice)
+        if not self._ocr_slim_slice_has_figure_extractions(sub_slim):
+            return False
+
+        stage4_topics = stage4_topics_in_subchapter or set()
+        fig_counts = self._ocr_figure_counts_by_topic_in_subchapter(
+            ocr_extraction_data, subchapter_name
+        )
+        topic_norm = self._normalize_topic_label(stage4_topic)
+        stage4_norm = {
+            self._normalize_topic_label(t) for t in stage4_topics if (t or "").strip()
+        }
+        for ocr_topic, n in fig_counts.items():
+            if n <= 0:
+                continue
+            ocr_norm = self._normalize_topic_label(ocr_topic)
+            if ocr_norm == topic_norm:
+                continue
+            if ocr_norm in stage4_norm or ocr_topic in stage4_topics:
+                return False
+        return True
+
+    def _ocr_image_slice_for_stage_e_topic(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+        topic_name: str,
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
+    ) -> tuple[Dict[str, Any], str]:
+        """Return (slim OCR slice, mode) where mode is topic | subchapter_fallback | empty."""
+        stage4_topic = (topic_name or "").strip() or "(بدون مبحث)"
+        ocr_topic_filter = "" if stage4_topic == "(بدون مبحث)" else stage4_topic
+        topic_slice = self._filter_ocr_extraction_for_subchapter_topic(
+            ocr_extraction_data, subchapter_name, ocr_topic_filter
+        )
+        topic_slim = self._slim_ocr_for_stage_e_image_notes(topic_slice)
+        if self._ocr_slim_slice_has_figure_extractions(topic_slim):
+            return topic_slim, "topic"
+        if self._should_use_subchapter_figure_fallback(
+            ocr_extraction_data,
+            subchapter_name,
+            topic_name,
+            stage4_topics_in_subchapter,
+        ):
+            sub_slice = self._filter_ocr_extraction_for_subchapter(
+                ocr_extraction_data, subchapter_name
+            )
+            return self._slim_ocr_for_stage_e_image_notes(sub_slice), "subchapter_fallback"
+        return topic_slim, "empty"
+
+    def _ocr_topic_has_figure_extractions(
+        self,
+        ocr_extraction_data: Dict[str, Any],
+        subchapter_name: str,
+        topic_name: str,
+        stage4_topics_in_subchapter: Optional[set[str]] = None,
+    ) -> bool:
+        """True when OCR has figure/image extractions for this Stage 4 topic bucket."""
+        slim, mode = self._ocr_image_slice_for_stage_e_topic(
+            ocr_extraction_data,
+            subchapter_name,
+            topic_name,
+            stage4_topics_in_subchapter,
+        )
+        has_figs = mode != "empty" and self._ocr_slim_slice_has_figure_extractions(slim)
         # #region agent log
         _agent_debug_log(
             "base_stage_processor.py:_ocr_topic_has_figure_extractions",
             "OCR figure presence check",
             {
                 "subchapter_name": (subchapter_name or "").strip(),
-                "topic_name": stage4_topic,
+                "topic_name": (topic_name or "").strip() or "(بدون مبحث)",
                 "has_figures_after_slim": has_figs,
-                **_agent_count_ocr_figures_in_slice(topic_slice),
-                "slim_subchapters": len(
-                    [
-                        s
-                        for c in slim.get("chapters", []) or []
-                        if isinstance(c, dict)
-                        for s in c.get("subchapters", []) or []
-                        if isinstance(s, dict)
-                    ]
-                ),
+                "ocr_slice_mode": mode,
+                **_agent_count_ocr_figures_in_slice(slim),
             },
             "B",
         )
