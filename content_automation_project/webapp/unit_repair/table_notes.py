@@ -264,6 +264,9 @@ def regenerate_unit(
     sub = (unit.get("subchapter") or "").strip() or (
         (pts[0].get("subchapter") or "").strip() if pts else ""
     )
+    ch = (unit.get("chapter") or "").strip() or (
+        (pts[0].get("chapter") or "").strip() if pts else ""
+    )
 
     prompt = resolve_prompt_for_job(db, "table_notes", cfg, "prompt")
     model = (cfg.get("model") or "z-ai/glm-5").strip()
@@ -303,6 +306,19 @@ def regenerate_unit(
         source_count_key="stage_e_total_points",
         first_note_id_key="first_table_point_id",
         pic_meta_prefix="tablepic",
+        chapter=ch,
+        subchapter=sub,
+    )
+
+    hooks = hooks_for_pair(db, job_id, pair_index, "table_notes", cfg, prompt_client)
+    hooks.after_unit(
+        unit_index,
+        ch,
+        sub,
+        topic_name,
+        rows or [],
+        int(unit.get("prompt_seq") or unit_index),
+        status="succeeded" if rows else "failed",
     )
 
     rel = os.path.relpath(out_path, base).replace("\\", "/")

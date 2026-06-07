@@ -251,7 +251,29 @@ def regenerate_unit(
         source_count_key="stage4_total_points",
         first_note_id_key="first_image_point_id",
         pic_meta_prefix="filepic",
+        chapter=ch,
+        subchapter=sub,
     )
+
+    hooks = hooks_for_pair(db, job_id, pair_index, "image_notes", cfg, prompt_client)
+    hooks.after_unit(
+        unit_index,
+        ch,
+        sub,
+        topic_name,
+        rows,
+        int(unit.get("prompt_seq") or unit_index),
+        status="succeeded",
+    )
+
+    # #region agent log
+    _agent_debug_log(
+        "webapp/unit_repair/image_notes.py:regenerate_unit",
+        "after_unit wrote unit artifact",
+        {"unit_index": unit_index, "row_count": len(rows), "topic_name": topic_name},
+        "D",
+    )
+    # #endregion
 
     manifest = ensure_manifest(db, job_id, pair_index, cfg)
     rel = os.path.relpath(out_path, base).replace("\\", "/")

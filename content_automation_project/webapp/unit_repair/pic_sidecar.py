@@ -11,16 +11,34 @@ def replace_topic_rows(
     rows: List[Dict[str, Any]],
     topic_name: str,
     new_rows: List[Dict[str, Any]],
+    *,
+    chapter: str = "",
+    subchapter: str = "",
 ) -> List[Dict[str, Any]]:
-    """Replace all rows for one topic in place (keeps order of other topics)."""
+    """Replace rows for one unit (chapter+subchapter+topic) in place."""
     topic = (topic_name or "").strip()
+    ch = (chapter or "").strip()
+    sub = (subchapter or "").strip()
+    use_scope = bool(ch or sub)
+
+    def _matches(row: Dict[str, Any]) -> bool:
+        if (row.get("topic") or "").strip() != topic:
+            return False
+        if not use_scope:
+            return True
+        if ch and (row.get("chapter") or "").strip() != ch:
+            return False
+        if sub and (row.get("subchapter") or "").strip() != sub:
+            return False
+        return True
+
     result: List[Dict[str, Any]] = []
     inserted = False
     for row in rows:
         if not isinstance(row, dict):
             result.append(row)
             continue
-        if (row.get("topic") or "").strip() == topic:
+        if _matches(row):
             if not inserted:
                 result.extend(new_rows)
                 inserted = True
@@ -109,6 +127,8 @@ def apply_regenerate_to_merged_files(
     source_count_key: str,
     first_note_id_key: str,
     pic_meta_prefix: str,
+    chapter: str = "",
+    subchapter: str = "",
 ) -> None:
     """
     Update sidecar (filepic/tablepic), then rebuild merged main JSON (e*/ta*).
@@ -119,7 +139,13 @@ def apply_regenerate_to_merged_files(
     start_idx = notes_start_index(source_points)
 
     pic_meta, pic_rows = load_pic_sidecar(pic_path)
-    pic_rows = replace_topic_rows(pic_rows, topic_name, new_pic_rows)
+    pic_rows = replace_topic_rows(
+        pic_rows,
+        topic_name,
+        new_pic_rows,
+        chapter=chapter,
+        subchapter=subchapter,
+    )
     save_pic_sidecar(processor, pic_path, pic_rows, pic_meta, pic_stage_label)
 
     processed, last_idx = process_pic_records_to_notes(

@@ -6,6 +6,7 @@ import unittest
 
 from base_stage_processor import BaseStageProcessor
 from stage_e_processor import StageEProcessor
+from webapp.unit_repair.pic_sidecar import replace_topic_rows
 from webapp.unit_repair.table_notes import (
     filter_points_for_unit,
     topic_unit_key,
@@ -165,6 +166,19 @@ class TestImageNotesUnits(unittest.TestCase):
         )
         self.assertEqual(mode, "subchapter_fallback")
         self.assertTrue(proc._ocr_slim_slice_has_figure_extractions(slim))
+
+    def test_replace_topic_rows_scoped_by_subchapter(self) -> None:
+        existing = [
+            {"chapter": "C", "subchapter": "S1", "topic": "T", "point_text": "old1"},
+            {"chapter": "C", "subchapter": "S2", "topic": "T", "point_text": "keep"},
+        ]
+        new_rows = [{"chapter": "C", "subchapter": "S1", "topic": "T", "point_text": "new1"}]
+        out = replace_topic_rows(
+            existing, "T", new_rows, chapter="C", subchapter="S1"
+        )
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["point_text"], "new1")
+        self.assertEqual(out[1]["point_text"], "keep")
 
     def test_no_fallback_when_figures_belong_to_other_stage4_topic(self) -> None:
         proc = BaseStageProcessor(FakeClient())
