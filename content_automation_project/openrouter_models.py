@@ -46,8 +46,6 @@ OPENROUTER_MODEL_OPTIONS: tuple[OpenRouterModelOption, ...] = (
     OpenRouterModelOption("qwen/qwen3.6-plus", "qwen/qwen3.6-plus"),
     OpenRouterModelOption("qwen/qwen3.5-plus-20260420", "qwen/qwen3.5-plus-20260420"),
     OpenRouterModelOption("google/gemini-2.5-pro", "google/gemini-2.5-pro"),
-    OpenRouterModelOption("opencounter/opencounter", "opencounter/opencounter"),
-    OpenRouterModelOption("opencounter", "opencounter"),
 )
 
 OPENROUTER_MODEL_CHOICE_IDS: tuple[str, ...] = tuple(

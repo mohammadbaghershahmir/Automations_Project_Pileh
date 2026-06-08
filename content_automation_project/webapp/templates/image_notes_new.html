@@ -1,12 +1,5 @@
 {% extends "base.html" %}
 {% block title %}New Image Notes{% endblock %}
-{% block head %}
-<style>
-  .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
-  .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
-  .tb-row input[type="text"] { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); }
-</style>
-{% endblock %}
 {% block content %}
 <h1>Image Notes Generation</h1>
 {% if multipart_ok is defined and not multipart_ok %}
@@ -38,16 +31,7 @@
     <p class="muted" style="margin-top:0;font-size:13px;">{% if is_admin %}<strong>Submit</strong> saves the default for all future Image Notes jobs.{% else %}Only admins can change the system default on this page.{% endif %} Leave empty on <strong>Create job</strong> to use the system default.</p>
     <label>Prompt</label>
     <textarea name="prompt" dir="auto"{% if not is_admin %} readonly{% endif %}>{{ default_prompt }}</textarea>
-    <div class="tb-row">
-      <label>Provider <input type="text" name="provider" value="openrouter" autocomplete="off"/></label>
-      <label for="model">Model
-        <select name="model" id="model" required autocomplete="off">
-          {% for m in openrouter_model_choices %}
-          <option value="{{ m }}"{% if m == default_openrouter_model %} selected{% endif %}>{{ m }}</option>
-          {% endfor %}
-        </select>
-      </label>
-    </div>
+    {% include "partials/openrouter_provider_model_row.html" %}
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <input type="text" name="delay_seconds" value="5" style="width:100%;max-width:200px;padding:10px 12px;margin-top:8px;box-sizing:border-box;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--fg);"/>
     {% if is_admin %}

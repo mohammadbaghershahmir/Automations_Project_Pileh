@@ -149,6 +149,11 @@
     button.btn-stop:disabled { opacity: 0.45; cursor: not-allowed; }
     textarea { width: 100%; min-height: 120px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px; }
     textarea[dir="auto"] { unicode-bidi: plaintext; }
+    .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 140px; max-width: 100%; }
+    .tb-row.tb-row--provider-model label.tb-field--provider { flex: 0 0 200px; max-width: 220px; }
+    .tb-row.tb-row--provider-model label.tb-field--model { flex: 1 1 280px; min-width: 200px; }
+    .tb-row input[type="text"], .tb-row select { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 14px; }
     .card { background: var(--card); border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--border); }
     pre.log { background: var(--log-bg); padding: 12px; border-radius: 6px; overflow: auto; max-height: 280px; font-size: 12px; white-space: pre-wrap; border: 1px solid var(--border); }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; background: var(--badge-neutral-bg); color: var(--badge-neutral-fg); }

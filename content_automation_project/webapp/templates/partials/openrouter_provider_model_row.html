@@ -1,0 +1,21 @@
+{# Provider + OpenRouter model dropdown. Pass provider_field, model_field, model_choices, default_model. #}
+{% set _provider_name = provider_field|default("provider") %}
+{% set _model_name = model_field|default("model") %}
+{% set _provider_id = provider_id|default(_provider_name) %}
+{% set _model_id = model_id|default(_model_name) %}
+{% set _choices = model_choices|default(openrouter_model_choices|default(test_bank_model_choices)) %}
+{% set _default_model = default_model|default(default_openrouter_model|default(default_test_bank_model)) %}
+<div class="tb-row tb-row--provider-model">
+  <label class="tb-field--provider" for="{{ _provider_id }}">Provider
+    <select name="{{ _provider_name }}" id="{{ _provider_id }}" autocomplete="off">
+      <option value="openrouter" selected>openrouter</option>
+    </select>
+  </label>
+  <label class="tb-field--model" for="{{ _model_id }}">Model
+    <select name="{{ _model_name }}" id="{{ _model_id }}" required autocomplete="off">
+      {% for m in _choices %}
+      <option value="{{ m }}"{% if m == _default_model %} selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</div>

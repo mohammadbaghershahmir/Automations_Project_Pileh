@@ -1,12 +1,5 @@
 {% extends "base.html" %}
 {% block title %}New Image File Catalog{% endblock %}
-{% block head %}
-<style>
-  .tb-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
-  .tb-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); flex: 1; min-width: 160px; max-width: 100%; }
-  .tb-row input[type="text"] { width: 100%; padding: 8px 12px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); }
-</style>
-{% endblock %}
 {% block content %}
 <h1>Image File Catalog</h1>
 {% if multipart_ok is defined and not multipart_ok %}
