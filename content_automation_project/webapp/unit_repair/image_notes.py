@@ -177,23 +177,6 @@ def regenerate_unit(
         (pts[0].get("chapter") or "").strip() if pts else ""
     )
 
-    # #region agent log
-    from base_stage_processor import _agent_debug_log
-
-    _agent_debug_log(
-        "webapp/unit_repair/image_notes.py:regenerate_unit",
-        "Regenerate unit context",
-        {
-            "unit_index": unit_index,
-            "topic_name": topic_name,
-            "manifest_chapter": ch,
-            "manifest_subchapter": sub,
-            "stage4_pts_count": len(pts),
-        },
-        "C",
-    )
-    # #endregion
-
     if not pts:
         raise ValueError(
             f"No Stage 4 points for unit {unit_index} "
@@ -265,15 +248,6 @@ def regenerate_unit(
         int(unit.get("prompt_seq") or unit_index),
         status="succeeded",
     )
-
-    # #region agent log
-    _agent_debug_log(
-        "webapp/unit_repair/image_notes.py:regenerate_unit",
-        "after_unit wrote unit artifact",
-        {"unit_index": unit_index, "row_count": len(rows), "topic_name": topic_name},
-        "D",
-    )
-    # #endregion
 
     manifest = ensure_manifest(db, job_id, pair_index, cfg)
     rel = os.path.relpath(out_path, base).replace("\\", "/")

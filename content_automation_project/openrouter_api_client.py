@@ -16,6 +16,7 @@ from typing import Optional, Dict, Any, Callable, List
 import requests
 
 from api_layer import APIKeyManager, APIConfig
+from openrouter_models import merge_openrouter_payload_extras, resolve_openrouter_model_choice
 
 OPENROUTER_LOG_PREFIX = "[openrouter]"
 
@@ -308,6 +309,39 @@ class OpenRouterAPIClient:
         if key and key.strip():
             return key.strip()
         return (os.getenv("OPENROUTER_API_KEY") or "").strip() or None
+
+    def _resolve_request_model(
+        self,
+        model_choice: str,
+        *,
+        reasoning_effort_none: bool,
+        openrouter_payload_extra: Optional[Dict[str, Any]],
+    ) -> tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Map a job/UI model choice to the OpenRouter API model slug and optional payload extras.
+
+        When reasoning_effort_none is set by the caller (JSON-only stages), model-level reasoning
+        from the registry is not applied so effort=none remains in effect.
+        """
+        api_model, choice_payload_extra = resolve_openrouter_model_choice(
+            model_choice,
+            default_api_model=APIConfig.DEFAULT_OPENROUTER_MODEL,
+        )
+        if reasoning_effort_none:
+            return api_model, openrouter_payload_extra
+        merged_extra = merge_openrouter_payload_extras(
+            choice_payload_extra,
+            openrouter_payload_extra,
+        )
+        if api_model != model_choice or choice_payload_extra:
+            self.logger.info(
+                "%s model_choice=%s api_model=%s payload_extra_keys=%s",
+                OPENROUTER_LOG_PREFIX,
+                model_choice,
+                api_model,
+                sorted(merged_extra.keys()) if merged_extra else [],
+            )
+        return api_model, merged_extra
 
     def extract_from_code_block(self, text: str) -> str:
         """Compatibility helper shared by processors."""
@@ -688,8 +722,13 @@ class OpenRouterAPIClient:
         if not model_name:
             model_name = APIConfig.DEFAULT_OPENROUTER_MODEL
         self._current_model_name = model_name
+        api_model, effective_payload_extra = self._resolve_request_model(
+            model_name,
+            reasoning_effort_none=reasoning_effort_none,
+            openrouter_payload_extra=openrouter_payload_extra,
+        )
         return self._call_chat_completions(
-            model_name=model_name,
+            model_name=api_model,
             user_text=text,
             system_prompt=system_prompt,
             temperature=temperature,
@@ -699,7 +738,7 @@ class OpenRouterAPIClient:
             cancel_check=cancel_check,
             use_streaming=use_streaming,
             reasoning_effort_none=reasoning_effort_none,
-            openrouter_payload_extra=openrouter_payload_extra,
+            openrouter_payload_extra=effective_payload_extra,
             content_only=content_only,
         )
 

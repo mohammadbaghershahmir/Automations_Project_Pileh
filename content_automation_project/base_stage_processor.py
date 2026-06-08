@@ -8,32 +8,14 @@ import json
 import logging
 import os
 import re
-import time
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 
-# #region agent log
-_AGENT_DEBUG_LOG_PATH = "/Users/mehrad/MyData/Code/Automations_Project_Pileh/content_automation_project/.cursor/debug-24d820.log"
+from third_stage_converter import ThirdStageConverter
+from txt_stage_json_utils import load_stage_txt_as_json
 
 
-def _agent_debug_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:
-    try:
-        payload = {
-            "sessionId": "24d820",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(_AGENT_DEBUG_LOG_PATH, "a", encoding="utf-8") as _df:
-            _df.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
-def _agent_count_ocr_figures_in_slice(ocr_slice: Dict[str, Any]) -> dict:
+def _count_ocr_figures_in_slice(ocr_slice: Dict[str, Any]) -> dict:
     list_figs = 0
     dict_figs = 0
     topics_seen: List[str] = []
@@ -78,11 +60,6 @@ def _agent_count_ocr_figures_in_slice(ocr_slice: Dict[str, Any]) -> dict:
             ]
         ),
     }
-
-
-# #endregion
-from third_stage_converter import ThirdStageConverter
-from txt_stage_json_utils import load_stage_txt_as_json
 
 
 class BaseStageProcessor:
@@ -603,19 +580,6 @@ class BaseStageProcessor:
                 subchapter_name,
                 topic_name,
             )
-        # #region agent log
-        _agent_debug_log(
-            "base_stage_processor.py:_filter_ocr_extraction_for_subchapter_topic",
-            "OCR topic slice built",
-            {
-                "subchapter_name": sub_target,
-                "topic_name": topic_target,
-                "matched_chapters": len(out_chapters),
-                **_agent_count_ocr_figures_in_slice(result),
-            },
-            "A",
-        )
-        # #endregion
         return result
 
     def _slim_ocr_for_stage_e_image_notes(self, ocr_slice: Dict[str, Any]) -> Dict[str, Any]:
@@ -849,20 +813,6 @@ class BaseStageProcessor:
             stage4_topics_in_subchapter,
         )
         has_figs = mode != "empty" and self._ocr_slim_slice_has_figure_extractions(slim)
-        # #region agent log
-        _agent_debug_log(
-            "base_stage_processor.py:_ocr_topic_has_figure_extractions",
-            "OCR figure presence check",
-            {
-                "subchapter_name": (subchapter_name or "").strip(),
-                "topic_name": (topic_name or "").strip() or "(بدون مبحث)",
-                "has_figures_after_slim": has_figs,
-                "ocr_slice_mode": mode,
-                **_agent_count_ocr_figures_in_slice(slim),
-            },
-            "B",
-        )
-        # #endregion
         return has_figs
 
     @staticmethod

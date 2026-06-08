@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from openrouter_models import OPENROUTER_MODEL_CHOICE_IDS
+
 # Project root `content_automation_project/` (parent of `webapp/`)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,13 +22,8 @@ RUN_TASKS_INLINE = _run_inline in ("1", "true", "yes", "on")
 DEFAULT_TEST_BANK_PROVIDER = "openrouter"
 DEFAULT_TEST_BANK_MODEL = "z-ai/glm-5"
 
-# Web admin Test Bank model dropdown only. Does not change desktop api_layer model lists.
-TEST_BANK_OPENROUTER_MODEL_CHOICES = (
-    "z-ai/glm-5",
-    "qwen/qwen3.6-plus",
-    "qwen/qwen3.5-plus-20260420",
-    "google/gemini-2.5-pro",
-)
+# Web admin model dropdown for all job types. Shared with api_layer via openrouter_models.
+TEST_BANK_OPENROUTER_MODEL_CHOICES = OPENROUTER_MODEL_CHOICE_IDS
 
 
 def normalize_nonempty(value: object, default: str) -> str:

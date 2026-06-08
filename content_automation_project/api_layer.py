@@ -15,6 +15,8 @@ import threading
 from typing import Optional, Dict, List, Any, Callable
 from datetime import datetime
 
+from openrouter_models import OPENROUTER_MODEL_CHOICE_IDS
+
 try:
     import google.genai as genai_new
     GENAI_AVAILABLE = True
@@ -60,12 +62,8 @@ class APIConfig:
         "deepseek-reasoner-v2",    # نسخه V2 برای استدلال
     ]
     
-    # OpenRouter models (e.g. for Reference Change stage and Document Processing)
-    OPENROUTER_TEXT_MODELS = [
-        "z-ai/glm-5",
-        "opencounter/opencounter",
-        "opencounter",
-    ]
+    # OpenRouter models (shared registry — webapp job dropdowns use the same list)
+    OPENROUTER_TEXT_MODELS = list(OPENROUTER_MODEL_CHOICE_IDS)
     DEFAULT_OPENROUTER_MODEL = "z-ai/glm-5"
     
     # OpenRouter-only model list

@@ -459,6 +459,14 @@ def _prompt_for_new_job(
         raise HTTPException(500, str(exc)) from exc
 
 
+def _openrouter_model_form_vars() -> dict[str, Any]:
+    """Shared OpenRouter model dropdown context for new-job forms."""
+    return {
+        "default_openrouter_model": DEFAULT_TEST_BANK_MODEL,
+        "openrouter_model_choices": TEST_BANK_OPENROUTER_MODEL_CHOICES,
+    }
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Content Automation Admin", version="1.0")
 
@@ -678,6 +686,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "pre_ocr_topic", "prompt"),
+                **_openrouter_model_form_vars(),
             },
         )
 
@@ -695,6 +704,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "ocr_extraction", "prompt"),
+                **_openrouter_model_form_vars(),
             },
         )
 
@@ -731,6 +741,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "document_processing", "prompt"),
+                **_openrouter_model_form_vars(),
             },
         )
 
@@ -748,7 +759,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "image_notes", "prompt"),
-                "default_model": DEFAULT_TEST_BANK_MODEL,
+                **_openrouter_model_form_vars(),
             },
         )
 
@@ -766,6 +777,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "table_notes", "prompt"),
+                **_openrouter_model_form_vars(),
             },
         )
 
@@ -783,6 +795,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "importance_type", "prompt"),
+                **_openrouter_model_form_vars(),
             },
         )
 
@@ -800,6 +813,7 @@ def create_app() -> FastAPI:
                 "is_admin": is_admin_user(user),
                 "multipart_ok": HAS_MULTIPART,
                 "default_prompt": _system_prompt_for_ui(db, "flashcard", "prompt"),
+                **_openrouter_model_form_vars(),
             },
         )
 

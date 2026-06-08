@@ -238,21 +238,6 @@ class StageEProcessor(BaseStageProcessor):
                 topic_name,
                 stage4_topics_in_subchapter,
             )
-            # #region agent log
-            from base_stage_processor import _agent_debug_log
-
-            _agent_debug_log(
-                "stage_e_processor.py:_split_topic_groups_by_ocr_figures",
-                "Topic OCR figure split decision",
-                {
-                    "persian_subchapter_name": persian_subchapter_name,
-                    "topic_name": topic_name,
-                    "has_figures": has_figs,
-                    "stage4_pts_in_topic": len(pts),
-                },
-                "E",
-            )
-            # #endregion
             if has_figs:
                 with_figures.append((topic_name, pts))
             else:
@@ -507,34 +492,6 @@ class StageEProcessor(BaseStageProcessor):
         if not pts:
             return topic_index, topic_name, [], None
 
-        # #region agent log
-        from base_stage_processor import _agent_debug_log, _agent_count_ocr_figures_in_slice
-
-        unit_subchapters = sorted(
-            {
-                (p.get("subchapter") or "").strip()
-                for p in pts
-                if isinstance(p, dict) and (p.get("subchapter") or "").strip()
-            }
-        )
-        _agent_debug_log(
-            "stage_e_processor.py:_run_stage_e_single_topic",
-            "Single topic LLM call starting",
-            {
-                "topic_name": topic_name,
-                "persian_subchapter_name": persian_subchapter_name,
-                "stage4_pts_count": len(pts),
-                "stage4_subchapters_in_pts": unit_subchapters,
-                "subchapter_mismatch": len(unit_subchapters) > 1
-                or (
-                    unit_subchapters
-                    and unit_subchapters[0] != (persian_subchapter_name or "").strip()
-                ),
-            },
-            "C",
-        )
-        # #endregion
-
         if stage4_topics_in_subchapter is None:
             stage4_topics_in_subchapter = {
                 (topic_name or "").strip(),
@@ -546,32 +503,20 @@ class StageEProcessor(BaseStageProcessor):
             topic_name,
             stage4_topics_in_subchapter,
         )
-        # #region agent log
         try:
             _ocr_preview = json.loads(topic_ocr_extraction_json_str)
         except json.JSONDecodeError:
             _ocr_preview = {}
-        _agent_debug_log(
-            "stage_e_processor.py:_run_stage_e_single_topic",
-            "OCR JSON prepared for prompt",
-            {
-                "topic_name": topic_name,
-                "persian_subchapter_name": persian_subchapter_name,
-                "ocr_json_chars": len(topic_ocr_extraction_json_str),
-                "ocr_slice_mode": ocr_slice_mode,
-                **_agent_count_ocr_figures_in_slice(_ocr_preview),
-            },
-            "D",
-        )
+        from base_stage_processor import _count_ocr_figures_in_slice
+
         self.logger.info(
             "Stage E OCR slice topic=%r subchapter=%r mode=%s figures=%s json_chars=%s",
             topic_name,
             persian_subchapter_name,
             ocr_slice_mode,
-            _agent_count_ocr_figures_in_slice(_ocr_preview),
+            _count_ocr_figures_in_slice(_ocr_preview),
             len(topic_ocr_extraction_json_str),
         )
-        # #endregion
         slim_pts = self._slim_stage4_points_for_image_notes(pts)
         if ocr_slice_mode == "subchapter_fallback":
             scope = (
@@ -1236,9 +1181,9 @@ class StageEProcessor(BaseStageProcessor):
                     tn,
                     stage4_topics_in_subchapter,
                 )
-                from base_stage_processor import _agent_count_ocr_figures_in_slice
+                from base_stage_processor import _count_ocr_figures_in_slice
 
-                fc = _agent_count_ocr_figures_in_slice(slim)
+                fc = _count_ocr_figures_in_slice(slim)
                 expected_ocr_rows += fc.get("list_figure_extractions", 0) + fc.get(
                     "dict_figure_extractions", 0
                 )

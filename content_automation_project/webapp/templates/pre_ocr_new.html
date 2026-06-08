@@ -35,7 +35,13 @@
     <textarea name="prompt" dir="auto"{% if not is_admin %} readonly{% endif %}>{{ default_prompt }}</textarea>
     <div class="tb-row">
       <label>Provider <input type="text" name="provider" value="openrouter" autocomplete="off"/></label>
-      <label>Model <input type="text" name="model" value="z-ai/glm-5" autocomplete="off"/></label>
+      <label for="model">Model
+        <select name="model" id="model" required autocomplete="off">
+          {% for m in openrouter_model_choices %}
+          <option value="{{ m }}"{% if m == default_openrouter_model %} selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
     </div>
     <h3 style="margin:18px 0 8px;font-size:0.95rem;font-weight:600;">Delay between pairs</h3>
     <label class="muted" style="font-size:13px;">Seconds between each PDF (worker sleep)</label>
