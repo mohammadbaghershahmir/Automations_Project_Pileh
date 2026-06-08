@@ -24,7 +24,26 @@ class MultiPartPostProcessor:
         """
         self.api_client = api_client
         self.logger = logging.getLogger(__name__)
-    
+
+    @staticmethod
+    def _docproc_unit_json_payload(
+        chapter_name: str,
+        subchapter_name: str,
+        item_data: Dict[str, Any],
+        *,
+        use_paragraphs_key: bool,
+    ) -> Dict[str, Any]:
+        """LLM user JSON scoped to a single topic/paragraph unit (not the whole subchapter)."""
+        payload: Dict[str, Any] = {
+            "chapter": chapter_name,
+            "subchapter": subchapter_name,
+        }
+        if use_paragraphs_key:
+            payload["paragraphs"] = [item_data]
+        else:
+            payload["topics"] = [item_data]
+        return payload
+
     def load_chapter_pointid_mapping(self, txt_path: str) -> List[str]:
         """
         Load PointId mapping from TXT file.
@@ -1573,14 +1592,13 @@ class MultiPartPostProcessor:
                 paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
                 paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
                 paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
-                full_subchapter_items = subchapter_full_items.get(subchapter_name, []) or [paragraph_data]
-                paragraph_json = {
-                    "subchapter": subchapter_name,
-                    "chapter": chapter_name_for_paragraph,
-                    "paragraphs": full_subchapter_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
-                    "topics": full_subchapter_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None
-                }
-                paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
+                use_paragraphs_key = subchapter_has_paragraphs.get(subchapter_name, False)
+                paragraph_json = self._docproc_unit_json_payload(
+                    chapter_name_for_paragraph,
+                    subchapter_name,
+                    paragraph_data,
+                    use_paragraphs_key=use_paragraphs_key,
+                )
                 paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
             
             self.logger.info("")
@@ -1625,7 +1643,11 @@ class MultiPartPostProcessor:
             if is_ocr_extraction_paragraph:
                 self.logger.info(f"  Sending topic JSON to model (one topic, extractions as array)...")
             else:
-                self.logger.info(f"  Sending paragraph JSON to model (full subchapter context with {len(full_subchapter_items) if not is_ocr_extraction_paragraph else 0} items)...")
+                key = "paragraphs" if subchapter_has_paragraphs.get(subchapter_name, False) else "topics"
+                self.logger.info(
+                    f"  Sending unit JSON to model (one {key[:-1]} only, "
+                    f"{num_extractions} extraction(s))..."
+                )
             
             # Process with model (retry up to 3 times if response is empty)
             max_attempts = 3
@@ -1876,7 +1898,6 @@ class MultiPartPostProcessor:
             raise RuntimeError("Could not build document processing plan")
         process_list = plan["process_list"]
         is_ocr_extraction_paragraph = plan["is_ocr_extraction_paragraph"]
-        subchapter_full_items = plan["subchapter_full_items"]
         subchapter_has_paragraphs = plan["subchapter_has_paragraphs"]
         if unit_index < 1 or unit_index > len(process_list):
             raise ValueError(f"unit_index {unit_index} out of range 1..{len(process_list)}")
@@ -1895,18 +1916,12 @@ class MultiPartPostProcessor:
             paragraph_prompt = user_prompt.replace("{Subchapter_Name}", subchapter_name).replace("[SUBCHAPTER_NAME]", subchapter_name)
             paragraph_prompt = paragraph_prompt.replace("{Paragraph_NAME}", paragraph_name).replace("[TOPIC_NAME]", paragraph_name)
             paragraph_prompt = paragraph_prompt.replace("{Topic_NAME}", paragraph_name)
-            # Only keep this subchapter's items in memory for the LLM payload.
-            full_subchapter_items = {
-                subchapter_name: subchapter_full_items.get(subchapter_name, []) or [paragraph_data],
-            }
-            sc_items = full_subchapter_items[subchapter_name]
-            paragraph_json = {
-                "subchapter": subchapter_name,
-                "chapter": chapter_name_for_paragraph,
-                "paragraphs": sc_items if subchapter_has_paragraphs.get(subchapter_name, False) else None,
-                "topics": sc_items if not subchapter_has_paragraphs.get(subchapter_name, False) else None,
-            }
-            paragraph_json = {k: v for k, v in paragraph_json.items() if v is not None}
+            paragraph_json = self._docproc_unit_json_payload(
+                chapter_name_for_paragraph,
+                subchapter_name,
+                paragraph_data,
+                use_paragraphs_key=subchapter_has_paragraphs.get(subchapter_name, False),
+            )
             paragraph_json_text = json.dumps(paragraph_json, ensure_ascii=False, indent=2)
         # Drop cached plan before the (possibly large) LLM call.
         self._docproc_plan = None
