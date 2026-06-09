@@ -102,10 +102,11 @@ class APIConfig:
 class APIKeyManager:
     """Manages a single OpenRouter API key loaded from environment."""
     
-    def __init__(self):
+    def __init__(self, *, load_env: bool = True):
         self.api_keys: List[Dict[str, str]] = []
         self.current_index = 0
-        self.load_from_env()
+        if load_env:
+            self.load_from_env()
     
     @staticmethod
     def sanitize_error_message(error_msg: str, api_key: Optional[str] = None) -> str:

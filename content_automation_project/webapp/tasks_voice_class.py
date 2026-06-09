@@ -427,16 +427,51 @@ def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
 
     db = SessionLocal()
     try:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        pair = (
+            db.query(JobPair)
+            .filter(JobPair.job_id == job_id, JobPair.pair_index == pair_index)
+            .one_or_none()
+        )
+        if not job or not pair:
+            return
+
         base = job_root(job_id)
         script_path = _find_voice_script(base, pair_index)
         if not script_path:
+            pair.step2_status = "failed"
+            pair.step2_error = "Voice script JSON not found"
+            job.status = "failed"
+            job.error_summary = pair.step2_error
+            db.commit()
             return
+
         out_dir = pair_output(job_id, pair_index)
         intro, outro = get_voice_class_song_paths()
+        pair.step2_status = "running"
+        pair.step2_error = None
+        job.status = "running"
+        job.cancel_requested = False
+        db.commit()
+        append_log(db, job_id, f"Re-merging voice tracks for pair {pair_index}…", pair_index)
+
         processor = StageVoiceProcessor(None)
         result = processor.merge_existing_segments(script_path, out_dir, intro, outro)
         if result:
             _register_voice_artifacts(db, job_id, pair_index, base, out_dir)
-            db.commit()
+            pair.step2_status = "succeeded"
+            pair.step2_error = None
+            job.status = "succeeded"
+            job.error_summary = None
+            job.finished_at = datetime.utcnow()
+            append_log(db, job_id, f"Pair {pair_index}: final MP3 merged successfully.", pair_index)
+        else:
+            pair.step2_status = "failed"
+            pair.step2_error = "Merge failed — check worker log (ffmpeg / song files)."
+            job.status = "failed"
+            job.error_summary = pair.step2_error
+            job.finished_at = datetime.utcnow()
+            append_log(db, job_id, f"Pair {pair_index}: merge failed.", pair_index)
+        db.commit()
     finally:
         db.close()

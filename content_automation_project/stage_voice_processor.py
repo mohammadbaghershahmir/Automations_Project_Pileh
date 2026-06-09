@@ -647,6 +647,9 @@ class StageVoiceProcessor(BaseStageProcessor):
 
         mgr: GeminiTtsKeyManager = self._gemini_keys
         attempts = mgr.max_attempts()
+        from api_layer import APIKeyManager
+
+        client = GeminiAPIClient(api_key_manager=APIKeyManager(load_env=False))
 
         for attempt in range(attempts):
             key_row = mgr.get_next_available_key()
@@ -655,7 +658,6 @@ class StageVoiceProcessor(BaseStageProcessor):
                     progress_callback("No Gemini TTS API keys available")
                 return False
 
-            client = GeminiAPIClient()
             try:
                 ok = client.generate_tts(
                     text=text,

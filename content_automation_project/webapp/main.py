@@ -3360,13 +3360,34 @@ def create_app() -> FastAPI:
         require_job_owner(job, user)
         if (job.type or "").strip() != "voice_class":
             raise HTTPException(400, "Not a voice class job")
-        if job.status in ("running", "queued"):
-            raise HTTPException(409, "Job is still running")
 
         from webapp.tasks_voice_class import run_voice_class_merge_only
 
-        run_voice_class_merge_only(job_id, pair_index)
-        return {"ok": True, "job_id": job_id, "pair_index": pair_index}
+        # Recover jobs stuck "running" after a worker crash during merge (TTS WAVs already on disk).
+        if job.status in ("running", "queued"):
+            pair = (
+                db.query(JobPair)
+                .filter(JobPair.job_id == job_id, JobPair.pair_index == pair_index)
+                .one_or_none()
+            )
+            if not pair or pair.step2_status != "running":
+                raise HTTPException(409, "Job is still running")
+            append_log(
+                db,
+                job_id,
+                f"Recovering pair {pair_index} from interrupted Step 2 — re-merging only.",
+                pair_index,
+            )
+            db.commit()
+
+        import threading
+
+        threading.Thread(
+            target=run_voice_class_merge_only,
+            args=(job_id, pair_index),
+            daemon=True,
+        ).start()
+        return {"ok": True, "job_id": job_id, "pair_index": pair_index, "queued": True}
 
     @app.post("/jobs/{job_id}/pairs/{pair_index}/units/{unit_index}/regenerate")
     def post_regenerate_unit(
