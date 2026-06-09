@@ -996,9 +996,16 @@ def run_flashcard_step1_job(job_id: str, pair_indices: Optional[List[int]] = Non
             out_dir = pair_output(job_id, pair.pair_index)
             os.makedirs(out_dir, exist_ok=True)
 
-            processor = StageHProcessor(
-                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
-            )
+            cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            from webapp.unit_repair.flashcard import hooks_for_pair, topic_units_from_points
+
+            unit_hooks = hooks_for_pair(db, job_id, pair.pair_index, jt, cfg, cap)
+            processor = StageHProcessor(cap)
+            tagged_data = processor.load_json_file(abs_tagged)
+            tagged_rows = processor.get_data_from_json(tagged_data) if tagged_data else []
+            units = topic_units_from_points(tagged_rows or [])
+            if units:
+                unit_hooks.seed_units(units)
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -1021,6 +1028,7 @@ def run_flashcard_step1_job(job_id: str, pair_indices: Optional[List[int]] = Non
                         output_dir=out_dir,
                         progress_callback=progress,
                         cancel_check=cancel_check,
+                        unit_hooks=unit_hooks,
                     )
                 except JobCancelled:
                     _finalize_step1_cancelled(db, job_id, pairs)
@@ -1033,11 +1041,15 @@ def run_flashcard_step1_job(job_id: str, pair_indices: Optional[List[int]] = Non
                     pair.step1_status = "failed"
                     pair.step1_error = "Flashcard Generation returned no output"
                     append_log(db, job_id, f"pair {pair.pair_index}: Flashcard Generation failed", pair.pair_index)
+                    if hasattr(unit_hooks, "finalize_stale_units"):
+                        unit_hooks.finalize_stale_units("failed")
             except Exception as e:
                 logger.exception("Flashcard Generation error")
                 pair.step1_status = "failed"
                 pair.step1_error = str(e)
                 append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+                if hasattr(unit_hooks, "finalize_stale_units"):
+                    unit_hooks.finalize_stale_units("failed")
 
             db.commit()
 

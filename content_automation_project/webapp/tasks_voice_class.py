@@ -134,9 +134,17 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
 
             out_dir = pair_output(job_id, pair.pair_index)
             os.makedirs(out_dir, exist_ok=True)
-            processor = StageVoiceProcessor(
-                wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
-            )
+            cap = wrap_prompt_capture(client, db, job_id, pair.pair_index, jt, "step1")
+            from webapp.unit_repair.manifest import load_manifest
+            from webapp.unit_repair.voice_class import hooks_for_pair, topic_units_from_points
+
+            unit_hooks = hooks_for_pair(db, job_id, pair.pair_index, jt, cfg, cap)
+            processor = StageVoiceProcessor(cap)
+            records = processor._load_tagged_records(resolved.tagged_json)
+            lesson_context = processor._build_lesson_context(records or [])
+            units = topic_units_from_points(lesson_context)
+            if units:
+                unit_hooks.seed_units(units)
 
             def progress(msg: str) -> None:
                 append_log(db, job_id, msg, pair.pair_index)
@@ -157,13 +165,29 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                     delay_seconds=delay_seconds,
                     progress_callback=progress,
                     cancel_check=cancel_check,
+                    unit_hooks=unit_hooks,
                 )
                 if result and os.path.isfile(result):
-                    pair.step1_status = "succeeded"
+                    manifest = load_manifest(job_id, pair.pair_index)
+                    failed_units = [
+                        u
+                        for u in (manifest or {}).get("units") or []
+                        if (u.get("status") or "").strip().lower() == "failed"
+                    ]
+                    if failed_units:
+                        pair.step1_status = "failed"
+                        pair.step1_error = (
+                            f"{len(failed_units)} topic(s) failed — partial script saved; "
+                            f"regenerate failed units"
+                        )
+                    else:
+                        pair.step1_status = "succeeded"
                     _register_voice_artifacts(db, job_id, pair.pair_index, base, out_dir)
                 else:
                     pair.step1_status = "failed"
                     pair.step1_error = "Script generation returned no output"
+                    if hasattr(unit_hooks, "finalize_stale_units"):
+                        unit_hooks.finalize_stale_units("failed")
             except JobCancelled:
                 _finalize_step1_cancelled(db, job_id, pairs)
                 return
@@ -172,6 +196,8 @@ def run_voice_class_step1_job(job_id: str, pair_indices: Optional[List[int]] = N
                 pair.step1_status = "failed"
                 pair.step1_error = str(e)
                 append_log(db, job_id, f"pair {pair.pair_index}: ERROR {e}", pair.pair_index)
+                if hasattr(unit_hooks, "finalize_stale_units"):
+                    unit_hooks.finalize_stale_units("failed")
 
             db.commit()
             if _scalar_cancel_requested(db, job_id):

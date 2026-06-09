@@ -101,6 +101,14 @@ def run_regenerate_unit(db: Session, job_id: str, pair_index: int, unit_index: i
             from webapp.unit_repair import ocr_extraction as ocr_rep
 
             ocr_rep.regenerate_unit(db, job_id, pair_index, unit_index, cfg, cap)
+        elif jt == "flashcard":
+            from webapp.unit_repair import flashcard as fc_rep
+
+            fc_rep.regenerate_unit(db, job_id, pair_index, unit_index, cfg, cap)
+        elif jt == "voice_class":
+            from webapp.unit_repair import voice_class as vc_rep
+
+            vc_rep.regenerate_unit(db, job_id, pair_index, unit_index, cfg, cap)
         else:
             raise ValueError(f"No regenerate adapter for {jt}")
 
@@ -202,6 +210,14 @@ def _try_build_manifest(db: Session, job_id: str, pair_index: int, job_type: str
             from webapp.unit_repair import docproc
 
             return docproc.ensure_manifest(job_id, pair_index, cfg)
+        if jt == "flashcard":
+            from webapp.unit_repair import flashcard as fc
+
+            return fc.ensure_manifest(db, job_id, pair_index, cfg)
+        if jt == "voice_class":
+            from webapp.unit_repair import voice_class as vc
+
+            return vc.ensure_manifest(db, job_id, pair_index, cfg)
     except FileNotFoundError:
         return None
     except Exception:

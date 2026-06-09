@@ -10,7 +10,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Optional, Dict, List, Any, Callable
+from typing import Optional, Dict, List, Any, Callable, Tuple
 
 from base_stage_processor import BaseStageProcessor
 from api_layer import APIConfig
@@ -202,6 +202,83 @@ class StageHProcessor(BaseStageProcessor):
         )
         return None
 
+    @staticmethod
+    def _topic_unit_row_groups(
+        records: List[Dict[str, Any]],
+    ) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+        from webapp.unit_repair.table_notes import filter_points_for_unit, topic_units_from_points
+
+        units = topic_units_from_points([r for r in records if isinstance(r, dict)])
+        return [(u, filter_points_for_unit(records, u)) for u in units]
+
+    @staticmethod
+    def _flashcard_merge_records(
+        lesson_rows: List[Dict[str, Any]],
+        pointid_to_flashcard: Dict[str, Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        flashcard_records: List[Dict[str, Any]] = []
+        for record in lesson_rows:
+            if not isinstance(record, dict):
+                continue
+            point_id = str(record.get("PointId", "") or "")
+            fc = pointid_to_flashcard.get(point_id, {})
+            flashcard_records.append(
+                {
+                    "PointId": point_id,
+                    "chapter": record.get("chapter", ""),
+                    "subchapter": record.get("subchapter", ""),
+                    "topic": record.get("topic", ""),
+                    "subtopic": record.get("subtopic", ""),
+                    "subsubtopic": record.get("subsubtopic", ""),
+                    "Points": record.get("Points", record.get("points", "")),
+                    "Type": record.get("Type", ""),
+                    "Imp": record.get("Imp", ""),
+                    "Qtext": fc.get("Qtext", ""),
+                    "Choice1": fc.get("Choice1", ""),
+                    "Choice2": fc.get("Choice2", ""),
+                    "Choice3": fc.get("Choice3", ""),
+                    "Choice4": fc.get("Choice4", ""),
+                    "Correct": fc.get("Correct", ""),
+                    "Mainanswer": "زیرعنوان",
+                }
+            )
+        return flashcard_records
+
+    def _run_flashcards_for_lesson_rows(
+        self,
+        lesson_rows: List[Dict[str, Any]],
+        stage_f_json_str: str,
+        prompt_body: str,
+        model_name: str,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        chunk_size: Optional[int] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], int]:
+        """Run Stage H LLM for one unit's lesson rows (sub-chunked if large)."""
+        chunk_sz = chunk_size if chunk_size is not None else self.STAGE_H_WEB_CHUNK_SIZE
+        rows = [r for r in lesson_rows if isinstance(r, dict)]
+        if not rows:
+            return [], None, 0
+        sub_chunks = [rows[i : i + chunk_sz] for i in range(0, len(rows), chunk_sz)]
+        combined: List[Dict[str, Any]] = []
+        prompt_calls = 0
+        for idx, chunk in enumerate(sub_chunks):
+            if cancel_check and cancel_check():
+                return [], "cancelled", prompt_calls
+            part_rows = self._run_web_chunk_flashcards(
+                chunk,
+                stage_f_json_str,
+                idx + 1,
+                len(sub_chunks),
+                prompt_body,
+                model_name,
+                cancel_check,
+            )
+            prompt_calls += 1
+            if part_rows is None:
+                return [], f"chunk {idx + 1}/{len(sub_chunks)} failed", prompt_calls
+            combined.extend(part_rows)
+        return combined, None, prompt_calls
+
     def process_stage_h_web_two_json(
         self,
         tagged_json_path: str,
@@ -213,8 +290,9 @@ class StageHProcessor(BaseStageProcessor):
         cancel_check: Optional[Callable[[], bool]] = None,
         chunk_size: Optional[int] = None,
         max_parallel_chunks: Optional[int] = None,
+        unit_hooks: Any = None,
     ) -> Optional[str]:
-        """Web Stage H: tagged a*.json + image catalog f*.json → parallel chunks → ac*.json."""
+        """Web Stage H: tagged a*.json + image catalog f*.json → ac*.json."""
         chunk_sz = chunk_size if chunk_size is not None else self.STAGE_H_WEB_CHUNK_SIZE
         max_par = max_parallel_chunks if max_parallel_chunks is not None else self.STAGE_H_WEB_PARALLEL_CHUNKS
 
@@ -283,64 +361,128 @@ class StageHProcessor(BaseStageProcessor):
 
         _progress(f"Loaded tagged rows={len(stage_j_records)}, catalog rows={len(stage_f_records)}")
 
-        n_chunks = max(1, math.ceil(len(stage_j_records) / chunk_sz))
-        _progress(f"Chunk size={chunk_sz}, chunks={n_chunks}, parallel workers={min(max_par, n_chunks)}")
+        call_mode = "parallel_chunks"
+        nw = 1
+        combined_model_data: List[Dict[str, Any]] = []
 
-        chunks: List[List[Dict[str, Any]]] = []
-        for i in range(0, len(stage_j_records), chunk_sz):
-            chunks.append(stage_j_records[i : i + chunk_sz])
-
-        nw = min(max_par, len(chunks)) if chunks else 1
-        chunk_responses: Dict[int, Optional[List[Dict[str, Any]]]] = {}
-
-        with ThreadPoolExecutor(max_workers=nw) as executor:
-            future_to_idx: Dict[Any, int] = {}
-            for idx, chunk in enumerate(chunks):
+        if unit_hooks is not None:
+            call_mode = "topic_parallel"
+            unit_groups = self._topic_unit_row_groups(stage_j_records)
+            _progress(
+                f"Topic-parallel flashcards: {len(unit_groups)} unit(s), "
+                f"chunk_size={chunk_sz} within each unit"
+            )
+            prompt_seq = 0
+            for unit_meta, unit_rows in unit_groups:
+                if not unit_rows:
+                    continue
+                ui = int(unit_meta["unit_index"])
+                uch = str(unit_meta.get("chapter") or "")
+                usub = str(unit_meta.get("subchapter") or "")
+                utop = str(unit_meta.get("topic") or "")
                 if cancel_check and cancel_check():
-                    _progress("Cancelled before scheduling chunks.")
-                    break
-                chunk_rows = [r for r in chunk if isinstance(r, dict)]
-                fut = executor.submit(
-                    self._run_web_chunk_flashcards,
-                    chunk_rows,
+                    return None
+                unit_hooks.before_unit(ui, uch, usub, utop, prompt_seq + 1)
+                if hasattr(self.api_client, "set_current_unit"):
+                    self.api_client.set_current_unit(ui, utop)
+                _progress(
+                    f"Unit {ui}/{len(unit_groups)}: {uch} > {usub} > {utop} "
+                    f"({len(unit_rows)} row(s))"
+                )
+                fc_rows, err, n_calls = self._run_flashcards_for_lesson_rows(
+                    unit_rows,
                     stage_f_json_str,
-                    idx + 1,
-                    len(chunks),
                     prompt,
                     model_name,
                     cancel_check,
+                    chunk_sz,
                 )
-                future_to_idx[fut] = idx
+                prompt_seq += max(n_calls, 1)
+                if err or not fc_rows:
+                    unit_hooks.after_unit(
+                        ui, uch, usub, utop, [], prompt_seq, status="failed"
+                    )
+                    msg = (
+                        f"Flashcard unit {ui} «{utop}» failed"
+                        + (f": {err}" if err else " (no rows)")
+                    )
+                    sh_web_log(self.logger, f"job_fail unit_index={ui} err={err!r}")
+                    _progress(msg)
+                    self.logger.error("%s %s", STAGE_H_WEB_LOG_PREFIX, msg)
+                    return None
+                combined_model_data.extend(fc_rows)
+                pid_map = {
+                    str(r.get("PointId", "") or ""): r
+                    for r in fc_rows
+                    if isinstance(r, dict) and r.get("PointId")
+                }
+                unit_fc_records = self._flashcard_merge_records(unit_rows, pid_map)
+                unit_hooks.after_unit(
+                    ui, uch, usub, utop, unit_fc_records, prompt_seq, status="succeeded"
+                )
+                _progress(
+                    f"  ✓ Unit {ui}: {len(fc_rows)} flashcard row(s) for «{utop}»"
+                )
+        else:
+            n_chunks = max(1, math.ceil(len(stage_j_records) / chunk_sz))
+            _progress(f"Chunk size={chunk_sz}, chunks={n_chunks}, parallel workers={min(max_par, n_chunks)}")
 
-            for fut in as_completed(future_to_idx):
-                idx = future_to_idx[fut]
-                try:
-                    chunk_responses[idx] = fut.result()
-                except Exception as e:
-                    sh_web_log(self.logger, f"chunk_worker_crash part_index={idx} err={e!r}")
-                    self.logger.exception("%s chunk_worker_crash idx=%s", STAGE_H_WEB_LOG_PREFIX, idx)
-                    chunk_responses[idx] = None
+            chunks: List[List[Dict[str, Any]]] = []
+            for i in range(0, len(stage_j_records), chunk_sz):
+                chunks.append(stage_j_records[i : i + chunk_sz])
 
-        if cancel_check and cancel_check():
-            return None
+            nw = min(max_par, len(chunks)) if chunks else 1
+            chunk_responses: Dict[int, Optional[List[Dict[str, Any]]]] = {}
 
-        failed_parts = sorted(i + 1 for i, rows in chunk_responses.items() if rows is None)
-        if failed_parts:
-            msg = (
-                f"Flashcard generation stopped: chunk(s) {failed_parts} of {len(chunks)} failed. "
-                f"Search logs for {STAGE_H_WEB_LOG_PREFIX}."
-            )
-            sh_web_log(self.logger, f"job_fail failed_chunks={failed_parts} total_chunks={len(chunks)}")
-            _progress(msg)
-            self.logger.error("%s %s", STAGE_H_WEB_LOG_PREFIX, msg)
-            return None
+            with ThreadPoolExecutor(max_workers=nw) as executor:
+                future_to_idx: Dict[Any, int] = {}
+                for idx, chunk in enumerate(chunks):
+                    if cancel_check and cancel_check():
+                        _progress("Cancelled before scheduling chunks.")
+                        break
+                    chunk_rows = [r for r in chunk if isinstance(r, dict)]
+                    fut = executor.submit(
+                        self._run_web_chunk_flashcards,
+                        chunk_rows,
+                        stage_f_json_str,
+                        idx + 1,
+                        len(chunks),
+                        prompt,
+                        model_name,
+                        cancel_check,
+                    )
+                    future_to_idx[fut] = idx
 
-        combined_model_data: List[Dict[str, Any]] = []
-        for idx in sorted(chunk_responses.keys()):
-            part_rows = chunk_responses.get(idx)
-            if part_rows:
-                combined_model_data.extend(part_rows)
-                _progress(f"Chunk {idx + 1}/{len(chunks)}: collected {len(part_rows)} flashcard row(s)")
+                for fut in as_completed(future_to_idx):
+                    idx = future_to_idx[fut]
+                    try:
+                        chunk_responses[idx] = fut.result()
+                    except Exception as e:
+                        sh_web_log(self.logger, f"chunk_worker_crash part_index={idx} err={e!r}")
+                        self.logger.exception(
+                            "%s chunk_worker_crash idx=%s", STAGE_H_WEB_LOG_PREFIX, idx
+                        )
+                        chunk_responses[idx] = None
+
+            if cancel_check and cancel_check():
+                return None
+
+            failed_parts = sorted(i + 1 for i, rows in chunk_responses.items() if rows is None)
+            if failed_parts:
+                msg = (
+                    f"Flashcard generation stopped: chunk(s) {failed_parts} of {len(chunks)} failed. "
+                    f"Search logs for {STAGE_H_WEB_LOG_PREFIX}."
+                )
+                sh_web_log(self.logger, f"job_fail failed_chunks={failed_parts} total_chunks={len(chunks)}")
+                _progress(msg)
+                self.logger.error("%s %s", STAGE_H_WEB_LOG_PREFIX, msg)
+                return None
+
+            for idx in sorted(chunk_responses.keys()):
+                part_rows = chunk_responses.get(idx)
+                if part_rows:
+                    combined_model_data.extend(part_rows)
+                    _progress(f"Chunk {idx + 1}/{len(chunks)}: collected {len(part_rows)} flashcard row(s)")
 
         if not combined_model_data:
             sh_web_log(self.logger, "job_fail reason=no_rows_after_merge")
@@ -352,34 +494,12 @@ class StageHProcessor(BaseStageProcessor):
             if point_id:
                 pointid_to_flashcard[point_id] = record
 
-        matched_count = 0
-        flashcard_records: List[Dict[str, Any]] = []
-        for record in stage_j_records:
-            if not isinstance(record, dict):
-                continue
-            point_id = str(record.get("PointId", "") or "")
-            fc = pointid_to_flashcard.get(point_id, {})
-            flashcard_record = {
-                "PointId": point_id,
-                "chapter": record.get("chapter", ""),
-                "subchapter": record.get("subchapter", ""),
-                "topic": record.get("topic", ""),
-                "subtopic": record.get("subtopic", ""),
-                "subsubtopic": record.get("subsubtopic", ""),
-                "Points": record.get("Points", record.get("points", "")),
-                "Type": record.get("Type", ""),
-                "Imp": record.get("Imp", ""),
-                "Qtext": fc.get("Qtext", ""),
-                "Choice1": fc.get("Choice1", ""),
-                "Choice2": fc.get("Choice2", ""),
-                "Choice3": fc.get("Choice3", ""),
-                "Choice4": fc.get("Choice4", ""),
-                "Correct": fc.get("Correct", ""),
-                "Mainanswer": "زیرعنوان",
-            }
-            if fc.get("Qtext") or fc.get("Correct"):
-                matched_count += 1
-            flashcard_records.append(flashcard_record)
+        flashcard_records = self._flashcard_merge_records(stage_j_records, pointid_to_flashcard)
+        matched_count = sum(
+            1
+            for r in flashcard_records
+            if (r.get("Qtext") or r.get("Correct"))
+        )
 
         _progress(f"Merged {len(flashcard_records)} records; matched flashcards for {matched_count}")
 
@@ -403,7 +523,7 @@ class StageHProcessor(BaseStageProcessor):
             "source_stage_j": os.path.basename(tagged_json_path),
             "source_stage_f": os.path.basename(catalog_json_path),
             "model_used": model_name,
-            "stage_h_call_mode": "parallel_chunks",
+            "stage_h_call_mode": call_mode,
             "stage_h_web_strategy": "single_llm_call_per_chunk_parse_retries",
             "chunk_size": chunk_sz,
             "parallel_workers_used": nw,
@@ -414,9 +534,14 @@ class StageHProcessor(BaseStageProcessor):
         _progress(f"Saving flashcard output to: {output_path}")
         success = self.save_json_file(flashcard_records, output_path, output_metadata, "H")
         if success:
+            if unit_hooks and hasattr(unit_hooks, "set_output_relpath") and hasattr(unit_hooks, "job_id"):
+                from webapp.job_files import job_root
+
+                rel_out = os.path.relpath(output_path, job_root(unit_hooks.job_id)).replace("\\", "/")
+                unit_hooks.set_output_relpath(rel_out)
             sh_web_log(
                 self.logger,
-                f"job_ok path={os.path.basename(output_path)} chunks={len(chunks)} "
+                f"job_ok path={os.path.basename(output_path)} mode={call_mode} "
                 f"flashcard_rows={len(combined_model_data)} merged={len(flashcard_records)}",
             )
             _progress(f"Web Flashcard Generation completed: {output_path}")

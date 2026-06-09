@@ -25,7 +25,14 @@ Return ONLY valid JSON with this structure:
   ]
 }
 Each paragraph must be a self-contained spoken block in Farsi (complete sentences).
-Use paragraph_id starting at 1 within this topic response."""
+Use paragraph_id starting at 1 within this topic response.
+Escape double quotes inside text with backslash (\\"). No markdown fences. No trailing commas."""
+
+SCRIPT_JSON_RETRY_SUFFIX = (
+    "\n\nCRITICAL: Reply with raw JSON only — no markdown code fences, no commentary. "
+    "Escape every double quote inside string values with \\\". "
+    "Use valid JSON commas between array elements."
+)
 
 
 def build_topic_scope_instruction(

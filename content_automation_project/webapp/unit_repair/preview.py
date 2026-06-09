@@ -64,7 +64,26 @@ def _slice_from_output(job_type: str, output_path: str, unit: Dict[str, Any]) ->
         return raw[:80_000] if raw else None
 
     jt = (job_type or "").strip()
-    if jt == "document_processing" or jt in ("image_notes", "table_notes"):
+    if jt == "voice_class":
+        paragraphs = data.get("paragraphs") if isinstance(data, dict) else None
+        if not isinstance(paragraphs, list):
+            return None
+        ch = (unit.get("chapter") or "").strip()
+        sub = (unit.get("subchapter") or "").strip()
+        top = (unit.get("topic") or unit.get("paragraph") or "").strip()
+        matched = [
+            p
+            for p in paragraphs
+            if isinstance(p, dict)
+            and (p.get("chapter") or "").strip() == ch
+            and (p.get("subchapter") or "").strip() == sub
+            and (p.get("topic") or "").strip() == top
+        ]
+        if matched:
+            return json.dumps({"paragraphs": matched}, ensure_ascii=False, indent=2)
+        return None
+
+    if jt == "document_processing" or jt in ("image_notes", "table_notes", "flashcard"):
         points = data.get("points") if isinstance(data, dict) else None
         if not isinstance(points, list):
             return None

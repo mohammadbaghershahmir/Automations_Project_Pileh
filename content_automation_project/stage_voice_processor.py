@@ -17,7 +17,7 @@ from voice_class_captions import (
     build_topic_caption_context,
     load_topic_caption_indexes,
 )
-from voice_class_prompts import build_topic_script_prompt
+from voice_class_prompts import SCRIPT_JSON_RETRY_SUFFIX, build_topic_script_prompt
 from webapp.audio_merge import merge_voice_tracks, wav_duration_seconds
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ MAX_TTS_CHARS = 4096
 DEFAULT_CHARS_PER_SECOND_ESTIMATE = 13.0
 IMP_LEVELS_FOR_VOICE_SCRIPT = ("1", "2")
 EMPTY_TOPIC_LABEL = "(بدون مبحث)"
+VOICE_SCRIPT_PARSE_RETRIES = 3
 
 
 class StageVoiceProcessor(BaseStageProcessor):
@@ -208,22 +209,137 @@ class StageVoiceProcessor(BaseStageProcessor):
             total_topics,
             topics_context=topics_context,
         )
-        response = self.api_client.process_text(
-            text=full_prompt,
-            model_name=model_name,
-            temperature=0.7,
-            max_tokens=APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS,
-            cancel_check=cancel_check,
-        )
-        if not response:
-            self.logger.error("Empty response for topic %s", topic_name)
-            return None
+        last_error: Optional[str] = None
+        for attempt in range(1, VOICE_SCRIPT_PARSE_RETRIES + 1):
+            if cancel_check and cancel_check():
+                return None
 
-        topic_paragraphs = self._parse_script_paragraphs_from_response(response)
-        if not topic_paragraphs:
-            self.logger.error("No usable paragraphs for topic %s", topic_name)
-            return None
-        return topic_paragraphs
+            attempt_prompt = full_prompt
+            if attempt >= 2:
+                attempt_prompt = full_prompt + SCRIPT_JSON_RETRY_SUFFIX
+            last_attempt = attempt >= VOICE_SCRIPT_PARSE_RETRIES
+            use_content_only = not last_attempt
+            use_reasoning_none = not last_attempt
+
+            try:
+                response = self.api_client.process_text(
+                    text=attempt_prompt,
+                    model_name=model_name,
+                    temperature=0.7,
+                    max_tokens=APIConfig.DEFAULT_OPENROUTER_MAX_TOKENS,
+                    cancel_check=cancel_check,
+                    reasoning_effort_none=use_reasoning_none,
+                    content_only=use_content_only,
+                )
+            except Exception as e:
+                last_error = str(e)
+                self.logger.warning(
+                    "Voice script LLM error topic %s attempt %s/%s: %s",
+                    topic_name,
+                    attempt,
+                    VOICE_SCRIPT_PARSE_RETRIES,
+                    e,
+                )
+                continue
+
+            if not response:
+                last_error = "empty response"
+                self.logger.warning(
+                    "Empty response for topic %s attempt %s/%s",
+                    topic_name,
+                    attempt,
+                    VOICE_SCRIPT_PARSE_RETRIES,
+                )
+                continue
+
+            topic_paragraphs = self._parse_script_paragraphs_from_response(response)
+            if topic_paragraphs:
+                return topic_paragraphs
+
+            last_error = "JSON parse produced no paragraphs"
+            self.logger.warning(
+                "No usable paragraphs for topic %s attempt %s/%s",
+                topic_name,
+                attempt,
+                VOICE_SCRIPT_PARSE_RETRIES,
+            )
+
+        self.logger.error(
+            "Voice script failed for topic %s after %s attempts: %s",
+            topic_name,
+            VOICE_SCRIPT_PARSE_RETRIES,
+            last_error,
+        )
+        return None
+
+    def _paragraph_unit_key(self, paragraph: Dict[str, Any]) -> Tuple[str, str, str]:
+        return self._topic_key(
+            paragraph.get("chapter"),
+            paragraph.get("subchapter"),
+            paragraph.get("topic"),
+        )
+
+    def _remove_unit_paragraphs(
+        self,
+        paragraphs: List[Dict[str, Any]],
+        chapter_name: str,
+        subchapter_name: str,
+        topic_name: str,
+    ) -> List[Dict[str, Any]]:
+        target = self._topic_key(chapter_name, subchapter_name, topic_name)
+        return [p for p in paragraphs if self._paragraph_unit_key(p) != target]
+
+    def _insert_index_for_unit(
+        self,
+        paragraphs: List[Dict[str, Any]],
+        chapter_name: str,
+        subchapter_name: str,
+        topic_name: str,
+        units: List[Dict[str, Any]],
+        unit_index: int,
+    ) -> int:
+        ordered_keys = [
+            self._topic_key(u.get("chapter"), u.get("subchapter"), u.get("topic"))
+            for u in sorted(units, key=lambda u: int(u.get("unit_index") or 0))
+        ]
+        target = self._topic_key(chapter_name, subchapter_name, topic_name)
+        try:
+            target_pos = ordered_keys.index(target)
+        except ValueError:
+            return len(paragraphs)
+        prior_keys = set(ordered_keys[:target_pos])
+        insert_at = 0
+        for i, paragraph in enumerate(paragraphs):
+            if self._paragraph_unit_key(paragraph) in prior_keys:
+                insert_at = i + 1
+        return insert_at
+
+    def _renumber_all_paragraphs(
+        self,
+        paragraphs: List[Dict[str, Any]],
+        *,
+        chars_per_second: float,
+    ) -> List[Dict[str, Any]]:
+        next_id = 1
+        for paragraph in paragraphs:
+            text = (paragraph.get("text") or "").strip()
+            paragraph["paragraph_id"] = next_id
+            paragraph["char_count"] = len(text)
+            paragraph["estimated_seconds"] = (
+                round(len(text) / chars_per_second, 2) if chars_per_second and text else 0.0
+            )
+            next_id += 1
+        return paragraphs
+
+    def _filter_paragraphs_for_unit(
+        self,
+        paragraphs: List[Dict[str, Any]],
+        chapter_name: str,
+        subchapter_name: str,
+        topic_name: str,
+    ) -> List[Dict[str, Any]]:
+        target = self._topic_key(chapter_name, subchapter_name, topic_name)
+        return [p for p in paragraphs if self._paragraph_unit_key(p) == target]
 
     @staticmethod
     def _renumber_topic_paragraphs(
@@ -345,6 +461,7 @@ class StageVoiceProcessor(BaseStageProcessor):
         delay_seconds: float = 0.0,
         progress_callback: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        unit_hooks: Optional[Any] = None,
     ) -> Optional[str]:
         def report_progress(message: str) -> None:
             if progress_callback:
@@ -387,6 +504,8 @@ class StageVoiceProcessor(BaseStageProcessor):
         all_paragraphs: List[Dict[str, Any]] = []
         next_paragraph_id = 1
         total_topics = len(topic_groups)
+        prompt_seq = 0
+        failed_topics = 0
 
         for topic_index, (chapter_name, subchapter_name, topic_name, topic_rows) in enumerate(
             topic_groups, start=1
@@ -395,6 +514,10 @@ class StageVoiceProcessor(BaseStageProcessor):
                 return None
 
             topic_label = f"«{topic_name}» ({len(topic_rows)} row(s))"
+            if unit_hooks is not None:
+                unit_hooks.before_unit(
+                    topic_index, chapter_name, subchapter_name, topic_name, prompt_seq + 1
+                )
             report_progress(
                 f"Topic {topic_index}/{total_topics}: {topic_label} — "
                 f"calling OpenRouter ({model_name})..."
@@ -412,10 +535,25 @@ class StageVoiceProcessor(BaseStageProcessor):
                 model_name=model_name,
                 cancel_check=cancel_check,
             )
+            prompt_seq += 1
             if topic_paragraphs is None:
                 report_progress(
                     f"ERROR: Topic {topic_index}/{total_topics} {topic_label} returned no paragraphs"
                 )
+                if unit_hooks is not None:
+                    unit_hooks.after_unit(
+                        topic_index,
+                        chapter_name,
+                        subchapter_name,
+                        topic_name,
+                        [],
+                        prompt_seq,
+                        status="failed",
+                    )
+                    failed_topics += 1
+                    if topic_index < total_topics and delay_seconds > 0:
+                        time.sleep(delay_seconds)
+                    continue
                 return None
 
             renumbered, next_paragraph_id = self._renumber_topic_paragraphs(
@@ -427,6 +565,16 @@ class StageVoiceProcessor(BaseStageProcessor):
                 chars_per_second=chars_per_second,
             )
             all_paragraphs.extend(renumbered)
+            if unit_hooks is not None:
+                unit_hooks.after_unit(
+                    topic_index,
+                    chapter_name,
+                    subchapter_name,
+                    topic_name,
+                    list(renumbered),
+                    prompt_seq,
+                    status="succeeded",
+                )
             report_progress(
                 f"Topic {topic_index}/{total_topics} {topic_label}: "
                 f"{len(renumbered)} paragraph(s)"
@@ -438,6 +586,12 @@ class StageVoiceProcessor(BaseStageProcessor):
         if not all_paragraphs:
             self.logger.error("LLM returned no usable paragraphs")
             return None
+
+        if failed_topics:
+            report_progress(
+                f"WARNING: {failed_topics} topic(s) failed — partial script saved; "
+                f"regenerate failed units from the job page."
+            )
 
         segments = self.pack_segments(
             all_paragraphs,
@@ -467,6 +621,11 @@ class StageVoiceProcessor(BaseStageProcessor):
             max_segment_seconds=max_segment_seconds,
             chars_per_second=chars_per_second,
         )
+        if unit_hooks and hasattr(unit_hooks, "set_output_relpath") and hasattr(unit_hooks, "job_id"):
+            from webapp.job_files import job_root
+
+            rel_out = os.path.relpath(output_path, job_root(unit_hooks.job_id)).replace("\\", "/")
+            unit_hooks.set_output_relpath(rel_out)
         report_progress(f"Saved voice script: {os.path.basename(output_path)}")
         return output_path
 

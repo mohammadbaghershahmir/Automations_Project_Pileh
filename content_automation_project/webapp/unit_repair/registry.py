@@ -12,6 +12,8 @@ MULTI_UNIT_JOB_TYPES: FrozenSet[str] = frozenset(
         "image_notes",
         "table_notes",
         "ocr_extraction",
+        "flashcard",
+        "voice_class",
     }
 )
 
