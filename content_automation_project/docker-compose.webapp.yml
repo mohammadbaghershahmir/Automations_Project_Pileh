@@ -26,6 +26,7 @@ services:
       dockerfile: Dockerfile.webapp
       args:
         PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-public.ecr.aws/docker/library/python:3.11-slim-bookworm}
+    restart: unless-stopped
     ports:
       - "8000:8000"
     env_file:

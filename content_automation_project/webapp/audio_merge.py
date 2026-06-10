@@ -170,6 +170,53 @@ def _encode_concat_to_mp3(normalized_paths: List[str], output_mp3: str) -> bool:
                 pass
 
 
+def _merge_inputs_single_pass(inputs: List[str], output_mp3: str, *, timeout: int = 7200) -> bool:
+    """
+    Resample each input to stereo 44.1 kHz and concat in one ffmpeg pass.
+    Avoids writing a full-length normalized PCM WAV (~1 GB for long voice jobs), which OOMs small VPS hosts.
+    """
+    if not inputs:
+        return False
+    n = len(inputs)
+    labels = []
+    parts: List[str] = []
+    for i in range(n):
+        label = f"a{i}"
+        labels.append(f"[{label}]")
+        parts.append(
+            f"[{i}:a]aresample=44100,aformat=sample_fmts=s16:channel_layouts=stereo[{label}]"
+        )
+    parts.append(f"{''.join(labels)}concat=n={n}:v=0:a=1[out]")
+    filter_complex = ";".join(parts)
+    cmd: List[str] = [
+        "ffmpeg",
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+    ]
+    for path in inputs:
+        cmd.extend(["-i", path])
+    cmd.extend(
+        [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[out]",
+            "-threads",
+            "1",
+            "-c:a",
+            "libmp3lame",
+            "-q:a",
+            "4",
+            output_mp3,
+        ]
+    )
+    os.makedirs(os.path.dirname(output_mp3) or ".", exist_ok=True)
+    return _run_ffmpeg(cmd, timeout=timeout, label=f"single_pass_merge → {os.path.basename(output_mp3)}")
+
+
 def _merge_with_ffmpeg_batch(
     intro_mp3: Optional[str],
     segment_wav_paths: List[str],
@@ -180,7 +227,7 @@ def _merge_with_ffmpeg_batch(
     cancel_check: Optional[Callable[[], bool]] = None,
     progress_callback: Optional[Callable[[str], None]] = None,
 ) -> bool:
-    """Fast path: concat TTS WAVs with stream copy, normalize only 3 blocks, then encode."""
+    """Fast path: concat TTS WAVs with stream copy, then single-pass resample+concat+MP3 encode."""
     from webapp.debug_session_log import debug_log
 
     for path in segment_wav_paths:
@@ -207,55 +254,59 @@ def _merge_with_ffmpeg_batch(
     if cancel_check and cancel_check():
         return False
 
-    if progress_callback:
-        progress_callback("Normalizing intro, merged segments, and outro…")
-
-    normalized: List[str] = []
-    blocks: List[tuple[str, str, int]] = []
+    merge_inputs: List[str] = []
     if intro_mp3 and os.path.isfile(intro_mp3):
-        blocks.append((intro_mp3, os.path.join(tmpdir, "intro_norm.wav"), 300))
-    blocks.append((segments_raw, os.path.join(tmpdir, "segments_norm.wav"), 3600))
+        merge_inputs.append(intro_mp3)
+    merge_inputs.append(segments_raw)
     if outro_mp3 and os.path.isfile(outro_mp3):
-        blocks.append((outro_mp3, os.path.join(tmpdir, "outro_norm.wav"), 300))
+        merge_inputs.append(outro_mp3)
 
-    for src, dst, timeout in blocks:
-        if cancel_check and cancel_check():
-            return False
-        if not _normalize_part_to_wav(src, dst, timeout=timeout):
-            debug_log(
-                "H8",
-                "audio_merge.py:_merge_with_ffmpeg_batch",
-                "normalize_block_failed",
-                {"src": os.path.basename(src), "timeout": timeout},
-            )
-            return False
-        normalized.append(dst)
-
-    if not normalized:
+    if not merge_inputs:
         logger.error("No audio content to merge")
         return False
 
-    if progress_callback:
-        progress_callback(f"Encoding final MP3 from {len(normalized)} block(s)…")
+    try:
+        segments_bytes = os.path.getsize(segments_raw)
+    except OSError:
+        segments_bytes = 0
 
-    if not _encode_concat_to_mp3(normalized, output_mp3):
+    # #region agent log
+    debug_log(
+        "H9",
+        "audio_merge.py:_merge_with_ffmpeg_batch",
+        "single_pass_merge_start",
+        {
+            "segment_count": len(segment_wav_paths),
+            "merge_input_count": len(merge_inputs),
+            "segments_raw_bytes": segments_bytes,
+        },
+    )
+    # #endregion
+
+    if progress_callback:
+        progress_callback(
+            f"Encoding final MP3 (single pass: intro + {len(segment_wav_paths)} segments + outro)… "
+            "This may take several minutes on a small server."
+        )
+
+    if not _merge_inputs_single_pass(merge_inputs, output_mp3):
         debug_log(
-            "H8",
+            "H9",
             "audio_merge.py:_merge_with_ffmpeg_batch",
-            "final_encode_failed",
-            {"block_count": len(normalized), "segment_count": len(segment_wav_paths)},
+            "single_pass_merge_failed",
+            {"segment_count": len(segment_wav_paths), "segments_raw_bytes": segments_bytes},
         )
         return False
 
     logger.info(
-        "Merged voice MP3 via ffmpeg (batch): %s — %d segment(s)",
+        "Merged voice MP3 via ffmpeg (batch single-pass): %s — %d segment(s)",
         output_mp3,
         len(segment_wav_paths),
     )
     debug_log(
-        "H8",
+        "H9",
         "audio_merge.py:_merge_with_ffmpeg_batch",
-        "ffmpeg_batch_merge_succeeded",
+        "single_pass_merge_succeeded",
         {"output_mp3": output_mp3, "segment_count": len(segment_wav_paths)},
     )
     return True
