@@ -382,11 +382,11 @@ def run_voice_class_step2_job(job_id: str, pair_indices: Optional[List[int]] = N
                 "job_id": job_id,
                 "job_status": job.status,
                 "any_failed": any_failed,
-                "notify_arg_count": 3,
+                "notify_arg_count": 2,
             },
         )
         # #endregion
-        notify_step2_finished(db, job, pairs)
+        notify_step2_finished(db, job)
     except Exception as e:
         # #region agent log
         debug_log(

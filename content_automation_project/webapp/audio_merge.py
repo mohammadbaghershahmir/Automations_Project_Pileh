@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 from typing import List, Optional
@@ -41,13 +42,45 @@ def _escape_concat_path(path: str) -> str:
     return path.replace("'", "'\\''")
 
 
+def _normalize_part_to_wav(src: str, dst: str) -> bool:
+    """Decode any supported input to stereo 44.1 kHz PCM WAV (one file at a time)."""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        src,
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        "-c:a",
+        "pcm_s16le",
+        dst,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "")[-500:]
+        logger.error("ffmpeg normalize failed for %s (exit %s): %s", src, proc.returncode, tail)
+        return False
+    try:
+        return os.path.isfile(dst) and os.path.getsize(dst) > 44
+    except OSError:
+        return False
+
+
 def _merge_with_ffmpeg(
     intro_mp3: Optional[str],
     segment_wav_paths: List[str],
     outro_mp3: Optional[str],
     output_mp3: str,
 ) -> bool:
-    """Stream-merge via ffmpeg concat demuxer (low memory)."""
+    """Normalize each part to PCM WAV, concat, then encode MP3 (low memory, mixed formats safe)."""
+    from webapp.debug_session_log import debug_log
+
     paths: List[str] = []
     if intro_mp3 and os.path.isfile(intro_mp3):
         paths.append(intro_mp3)
@@ -63,29 +96,52 @@ def _merge_with_ffmpeg(
         logger.error("No audio content to merge")
         return False
 
+    tmpdir = tempfile.mkdtemp(prefix="voice_merge_")
     list_path = ""
     try:
+        normalized: List[str] = []
+        for i, path in enumerate(paths):
+            norm = os.path.join(tmpdir, f"part_{i:04d}.wav")
+            if not _normalize_part_to_wav(path, norm):
+                # #region agent log
+                debug_log(
+                    "H4",
+                    "audio_merge.py:_merge_with_ffmpeg:normalize_fail",
+                    "normalize_part_failed",
+                    {
+                        "index": i,
+                        "basename": os.path.basename(path),
+                        "size_bytes": os.path.getsize(path) if os.path.isfile(path) else 0,
+                    },
+                )
+                # #endregion
+                return False
+            normalized.append(norm)
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
             list_path = f.name
-            for path in paths:
+            for path in normalized:
                 f.write(f"file '{_escape_concat_path(path)}'\n")
 
         os.makedirs(os.path.dirname(output_mp3) or ".", exist_ok=True)
+        # VBR avoids libmp3lame CBR assertion on very long concatenated speech (exit -6 at 64k CBR).
         cmd = [
             "ffmpeg",
             "-y",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
             "-f",
             "concat",
             "-safe",
             "0",
             "-i",
             list_path,
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-b:a",
-            "64k",
+            "-c:a",
+            "libmp3lame",
+            "-q:a",
+            "4",
             output_mp3,
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=7200, check=False)
@@ -93,8 +149,6 @@ def _merge_with_ffmpeg(
             tail = (proc.stderr or proc.stdout or "")[-2000:]
             logger.error("ffmpeg merge failed (exit %s): %s", proc.returncode, tail)
             # #region agent log
-            from webapp.debug_session_log import debug_log
-
             debug_log(
                 "H4",
                 "audio_merge.py:_merge_with_ffmpeg:fail",
@@ -110,8 +164,6 @@ def _merge_with_ffmpeg(
             len(paths),
         )
         # #region agent log
-        from webapp.debug_session_log import debug_log
-
         debug_log(
             "H4",
             "audio_merge.py:_merge_with_ffmpeg:ok",
@@ -132,6 +184,10 @@ def _merge_with_ffmpeg(
                 os.unlink(list_path)
             except OSError:
                 pass
+        try:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        except OSError:
+            pass
 
 
 def _merge_with_pydub(
