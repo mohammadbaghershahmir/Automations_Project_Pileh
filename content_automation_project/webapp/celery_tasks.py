@@ -32,3 +32,10 @@ def regenerate_unit_task(job_id: str, pair_index: int, unit_index: int) -> None:
 @celery_app.task(name="webapp.run_renumber_pair")
 def renumber_pair_task(job_id: str, pair_index: int) -> None:
     run_renumber_pair_task(job_id, pair_index)
+
+
+@celery_app.task(name="webapp.run_voice_class_merge_only")
+def run_voice_class_merge_only_task(job_id: str, pair_index: int) -> None:
+    from webapp.tasks_voice_class import run_voice_class_merge_only
+
+    run_voice_class_merge_only(job_id, pair_index, source="celery_worker")

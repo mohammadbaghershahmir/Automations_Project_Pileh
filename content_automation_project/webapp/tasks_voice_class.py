@@ -454,7 +454,12 @@ def run_voice_class_regenerate_segment(
         db.close()
 
 
-def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
+def run_voice_class_merge_only(
+    job_id: str,
+    pair_index: int,
+    *,
+    source: str = "direct",
+) -> None:
     from stage_voice_processor import StageVoiceProcessor
     from webapp.debug_session_log import debug_log
 
@@ -479,12 +484,13 @@ def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
             )
         # #region agent log
         debug_log(
-            "H5",
+            "H6",
             "tasks_voice_class.py:run_voice_class_merge_only:entry",
             "merge_only_started",
             {
                 "job_id": job_id,
                 "pair_index": pair_index,
+                "source": source,
                 "job_status": job.status,
                 "step2_status": pair.step2_status,
                 "script_found": bool(script_path),

@@ -18,7 +18,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from pydantic import BaseModel
 from fastapi.templating import Jinja2Templates
 try:
-    from webapp.celery_tasks import run_full_pipeline_task, run_step1_task, run_step2_task
+    from webapp.celery_tasks import (
+        run_full_pipeline_task,
+        run_step1_task,
+        run_step2_task,
+        run_voice_class_merge_only_task,
+    )
 
     HAS_CELERY = True
 except ImportError:
@@ -3388,15 +3393,36 @@ def create_app() -> FastAPI:
                 f"Recovering pair {pair_index} from interrupted Step 2 — re-merging only.",
                 pair_index,
             )
+
+        job.status = "queued"
+        job.cancel_requested = False
+        append_log(
+            db,
+            job_id,
+            f"Queued re-merge for pair {pair_index}." + queued_task_log_suffix(),
+            pair_index,
+        )
+        db.commit()
+
+        try:
+            if tasks_use_celery_queue():
+                run_voice_class_merge_only_task.delay(job_id, pair_index)
+            else:
+                import threading
+
+                threading.Thread(
+                    target=lambda: run_voice_class_merge_only(
+                        job_id, pair_index, source="api_thread"
+                    ),
+                    daemon=True,
+                ).start()
+        except Exception as e:
+            job = db.query(Job).filter(Job.id == job_id).one()
+            job.status = "failed"
+            job.error_summary = str(e)
             db.commit()
+            raise HTTPException(503, f"Queue unavailable: {e}") from e
 
-        import threading
-
-        threading.Thread(
-            target=run_voice_class_merge_only,
-            args=(job_id, pair_index),
-            daemon=True,
-        ).start()
         return {"ok": True, "job_id": job_id, "pair_index": pair_index, "queued": True}
 
     @app.post("/jobs/{job_id}/pairs/{pair_index}/units/{unit_index}/regenerate")
