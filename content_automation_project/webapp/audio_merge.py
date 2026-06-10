@@ -92,6 +92,16 @@ def _merge_with_ffmpeg(
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "")[-2000:]
             logger.error("ffmpeg merge failed (exit %s): %s", proc.returncode, tail)
+            # #region agent log
+            from webapp.debug_session_log import debug_log
+
+            debug_log(
+                "H4",
+                "audio_merge.py:_merge_with_ffmpeg:fail",
+                "ffmpeg_merge_failed",
+                {"exit_code": proc.returncode, "part_count": len(paths), "stderr_tail": tail[-400:]},
+            )
+            # #endregion
             return False
 
         logger.info(
@@ -99,6 +109,16 @@ def _merge_with_ffmpeg(
             output_mp3,
             len(paths),
         )
+        # #region agent log
+        from webapp.debug_session_log import debug_log
+
+        debug_log(
+            "H4",
+            "audio_merge.py:_merge_with_ffmpeg:ok",
+            "ffmpeg_merge_succeeded",
+            {"output_mp3": output_mp3, "part_count": len(paths)},
+        )
+        # #endregion
         return True
     except subprocess.TimeoutExpired:
         logger.error("ffmpeg merge timed out for %s", output_mp3)
@@ -186,15 +206,41 @@ def merge_voice_tracks(
             logger.error("Outro MP3 not found: %s", outro_mp3)
             return False
 
-    use_ffmpeg = len(segment_wav_paths) >= _FFMPEG_MERGE_MIN_SEGMENTS and _ffmpeg_available()
+    ffmpeg_ok = _ffmpeg_available()
+    use_ffmpeg = len(segment_wav_paths) >= _FFMPEG_MERGE_MIN_SEGMENTS and ffmpeg_ok
+    # #region agent log
+    from webapp.debug_session_log import debug_log
+
+    debug_log(
+        "H2",
+        "audio_merge.py:merge_voice_tracks:branch",
+        "merge_branch_selected",
+        {
+            "segment_count": len(segment_wav_paths),
+            "ffmpeg_available": ffmpeg_ok,
+            "use_ffmpeg": use_ffmpeg,
+            "min_for_ffmpeg": _FFMPEG_MERGE_MIN_SEGMENTS,
+            "output_mp3": output_mp3,
+        },
+    )
+    # #endregion
     if use_ffmpeg:
         return _merge_with_ffmpeg(intro_mp3, segment_wav_paths, outro_mp3, output_mp3)
-    if len(segment_wav_paths) >= _FFMPEG_MERGE_MIN_SEGMENTS and not _ffmpeg_available():
+    if len(segment_wav_paths) >= _FFMPEG_MERGE_MIN_SEGMENTS and not ffmpeg_ok:
         logger.warning(
             "ffmpeg not found; falling back to pydub for %d segments (may use a lot of RAM)",
             len(segment_wav_paths),
         )
-    return _merge_with_pydub(intro_mp3, segment_wav_paths, outro_mp3, output_mp3)
+    pydub_ok = _merge_with_pydub(intro_mp3, segment_wav_paths, outro_mp3, output_mp3)
+    # #region agent log
+    debug_log(
+        "H2",
+        "audio_merge.py:merge_voice_tracks:pydub_result",
+        "pydub_merge_finished",
+        {"ok": pydub_ok, "segment_count": len(segment_wav_paths)},
+    )
+    # #endregion
+    return pydub_ok
 
 
 def wav_duration_seconds(wav_path: str) -> Optional[float]:

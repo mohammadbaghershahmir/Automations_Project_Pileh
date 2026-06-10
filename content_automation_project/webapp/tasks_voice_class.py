@@ -335,11 +335,22 @@ def _run_voice_class_step2_pairs(
 
 
 def run_voice_class_step2_job(job_id: str, pair_indices: Optional[List[int]] = None) -> None:
+    from webapp.debug_session_log import debug_log
+
     db = SessionLocal()
     try:
         job = db.query(Job).filter(Job.id == job_id).one_or_none()
         if not job:
             return
+
+        # #region agent log
+        debug_log(
+            "H3",
+            "tasks_voice_class.py:run_voice_class_step2_job:entry",
+            "full_step2_started",
+            {"job_id": job_id, "pair_indices": pair_indices, "prior_status": job.status},
+        )
+        # #endregion
 
         job.status = "running"
         if not job.started_at:
@@ -362,8 +373,29 @@ def run_voice_class_step2_job(job_id: str, pair_indices: Optional[List[int]] = N
         job.finished_at = datetime.utcnow()
         db.commit()
         append_log(db, job_id, "--- Voice Class Step 2 finished ---", None)
+        # #region agent log
+        debug_log(
+            "H1",
+            "tasks_voice_class.py:run_voice_class_step2_job:before_notify",
+            "about_to_call_notify_step2_finished",
+            {
+                "job_id": job_id,
+                "job_status": job.status,
+                "any_failed": any_failed,
+                "notify_arg_count": 3,
+            },
+        )
+        # #endregion
         notify_step2_finished(db, job, pairs)
     except Exception as e:
+        # #region agent log
+        debug_log(
+            "H1",
+            "tasks_voice_class.py:run_voice_class_step2_job:except",
+            "step2_job_exception",
+            {"job_id": job_id, "exc_type": type(e).__name__, "exc_msg": str(e)[:500]},
+        )
+        # #endregion
         logger.exception("run_voice_class_step2_job")
         try:
             job = db.query(Job).filter(Job.id == job_id).one_or_none()
@@ -424,6 +456,7 @@ def run_voice_class_regenerate_segment(
 
 def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
     from stage_voice_processor import StageVoiceProcessor
+    from webapp.debug_session_log import debug_log
 
     db = SessionLocal()
     try:
@@ -438,6 +471,27 @@ def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
 
         base = job_root(job_id)
         script_path = _find_voice_script(base, pair_index)
+        tts_dir = os.path.join(pair_output(job_id, pair_index), "tts_segments")
+        wav_count = 0
+        if os.path.isdir(tts_dir):
+            wav_count = sum(
+                1 for name in os.listdir(tts_dir) if name.lower().endswith(".wav")
+            )
+        # #region agent log
+        debug_log(
+            "H5",
+            "tasks_voice_class.py:run_voice_class_merge_only:entry",
+            "merge_only_started",
+            {
+                "job_id": job_id,
+                "pair_index": pair_index,
+                "job_status": job.status,
+                "step2_status": pair.step2_status,
+                "script_found": bool(script_path),
+                "wav_count_on_disk": wav_count,
+            },
+        )
+        # #endregion
         if not script_path:
             pair.step2_status = "failed"
             pair.step2_error = "Voice script JSON not found"
@@ -457,6 +511,19 @@ def run_voice_class_merge_only(job_id: str, pair_index: int) -> None:
 
         processor = StageVoiceProcessor(None)
         result = processor.merge_existing_segments(script_path, out_dir, intro, outro)
+        # #region agent log
+        debug_log(
+            "H4",
+            "tasks_voice_class.py:run_voice_class_merge_only:after_merge",
+            "merge_only_finished",
+            {
+                "job_id": job_id,
+                "pair_index": pair_index,
+                "merge_ok": bool(result),
+                "result_path": result,
+            },
+        )
+        # #endregion
         if result:
             _register_voice_artifacts(db, job_id, pair_index, base, out_dir)
             pair.step2_status = "succeeded"

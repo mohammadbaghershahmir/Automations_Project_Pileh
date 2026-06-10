@@ -716,6 +716,29 @@ class StageVoiceProcessor(BaseStageProcessor):
 
         wanted = set(segment_indices) if segment_indices is not None else None
 
+        # #region agent log
+        from webapp.debug_session_log import debug_log
+
+        existing_wavs = sum(
+            1
+            for seg in segments
+            if os.path.isfile(
+                os.path.join(tts_dir, f"segment_{int(seg.get('segment_id') or 0):03d}.wav")
+            )
+        )
+        debug_log(
+            "H3",
+            "stage_voice_processor.py:process_voice_class_step2:entry",
+            "step2_tts_loop_start",
+            {
+                "total_segments": len(segments),
+                "existing_wavs": existing_wavs,
+                "skip_merge": skip_merge,
+                "segment_indices_filter": segment_indices,
+            },
+        )
+        # #endregion
+
         for seg in segments:
             sid = int(seg.get("segment_id") or 0)
             if wanted is not None and sid not in wanted:

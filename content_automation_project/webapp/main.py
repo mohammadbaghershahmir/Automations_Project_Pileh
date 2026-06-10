@@ -3362,6 +3362,16 @@ def create_app() -> FastAPI:
             raise HTTPException(400, "Not a voice class job")
 
         from webapp.tasks_voice_class import run_voice_class_merge_only
+        from webapp.debug_session_log import debug_log
+
+        # #region agent log
+        debug_log(
+            "H5",
+            "main.py:post_merge_voice",
+            "merge_voice_api_called",
+            {"job_id": job_id, "pair_index": pair_index, "job_status": job.status},
+        )
+        # #endregion
 
         # Recover jobs stuck "running" after a worker crash during merge (TTS WAVs already on disk).
         if job.status in ("running", "queued"):
