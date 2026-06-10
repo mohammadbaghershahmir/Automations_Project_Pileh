@@ -503,6 +503,10 @@ def create_app() -> FastAPI:
         finally:
             db.close()
 
+    @app.get("/health")
+    def health() -> dict:
+        return {"ok": True}
+
     @app.get("/", response_class=HTMLResponse)
     def root() -> RedirectResponse:
         return RedirectResponse("/login", status_code=302)
