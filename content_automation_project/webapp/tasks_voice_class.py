@@ -506,6 +506,11 @@ def run_voice_class_merge_only(
             db.commit()
             return
 
+        if _scalar_cancel_requested(db, job_id):
+            pairs = _load_pairs(db, job_id, [pair_index])
+            _finalize_step2_cancelled(db, job_id, pairs)
+            return
+
         out_dir = pair_output(job_id, pair_index)
         intro, outro = get_voice_class_song_paths()
         pair.step2_status = "running"
@@ -515,8 +520,33 @@ def run_voice_class_merge_only(
         db.commit()
         append_log(db, job_id, f"Re-merging voice tracks for pair {pair_index}…", pair_index)
 
+        cancel_check = _cancel_check_session(job_id)
+
+        def progress(msg: str) -> None:
+            s = SessionLocal()
+            try:
+                append_log(s, job_id, msg, pair_index)
+            finally:
+                s.close()
+
         processor = StageVoiceProcessor(None)
-        result = processor.merge_existing_segments(script_path, out_dir, intro, outro)
+        try:
+            result = processor.merge_existing_segments(
+                script_path,
+                out_dir,
+                intro,
+                outro,
+                progress_callback=progress,
+                cancel_check=cancel_check,
+            )
+        except JobCancelled:
+            pairs = _load_pairs(db, job_id, [pair_index])
+            _finalize_step2_cancelled(db, job_id, pairs)
+            return
+        if result is None and cancel_check():
+            pairs = _load_pairs(db, job_id, [pair_index])
+            _finalize_step2_cancelled(db, job_id, pairs)
+            return
         # #region agent log
         debug_log(
             "H4",

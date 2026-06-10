@@ -7,7 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,9 @@ def _merge_with_ffmpeg(
     segment_wav_paths: List[str],
     outro_mp3: Optional[str],
     output_mp3: str,
+    *,
+    cancel_check: Optional[Callable[[], bool]] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """Normalize each part to PCM WAV, concat, then encode MP3 (low memory, mixed formats safe)."""
     from webapp.debug_session_log import debug_log
@@ -100,7 +103,11 @@ def _merge_with_ffmpeg(
     list_path = ""
     try:
         normalized: List[str] = []
+        total = len(paths)
         for i, path in enumerate(paths):
+            if cancel_check and cancel_check():
+                logger.info("Merge cancelled by user at part %s/%s", i, total)
+                return False
             norm = os.path.join(tmpdir, f"part_{i:04d}.wav")
             if not _normalize_part_to_wav(path, norm):
                 # #region agent log
@@ -117,6 +124,11 @@ def _merge_with_ffmpeg(
                 # #endregion
                 return False
             normalized.append(norm)
+            if progress_callback and ((i + 1) % 20 == 0 or i + 1 == total):
+                progress_callback(f"Normalized {i + 1}/{total} audio parts…")
+
+        if progress_callback:
+            progress_callback(f"Encoding final MP3 from {total} parts…")
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
             list_path = f.name
@@ -249,6 +261,8 @@ def merge_voice_tracks(
     output_mp3: str,
     *,
     require_intro_outro: bool = True,
+    cancel_check: Optional[Callable[[], bool]] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """
     Concatenate intro MP3 + segment WAVs + outro MP3 into one MP3 file.
@@ -281,7 +295,14 @@ def merge_voice_tracks(
     )
     # #endregion
     if use_ffmpeg:
-        return _merge_with_ffmpeg(intro_mp3, segment_wav_paths, outro_mp3, output_mp3)
+        return _merge_with_ffmpeg(
+            intro_mp3,
+            segment_wav_paths,
+            outro_mp3,
+            output_mp3,
+            cancel_check=cancel_check,
+            progress_callback=progress_callback,
+        )
     if len(segment_wav_paths) >= _FFMPEG_MERGE_MIN_SEGMENTS and not ffmpeg_ok:
         logger.warning(
             "ffmpeg not found; falling back to pydub for %d segments (may use a lot of RAM)",

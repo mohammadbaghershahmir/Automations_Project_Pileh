@@ -69,7 +69,7 @@ from webapp.job_files import (
     pair_inputs,
     register_input_artifact,
 )
-from webapp.job_runner_common import SINGLE_STAGE_JOB_TYPES
+from webapp.job_runner_common import SINGLE_STAGE_JOB_TYPES, _finalize_step2_cancelled
 from webapp.job_prompts import (
     apply_submitted_prompts_to_cfg,
     build_prompt_editor_rows,
@@ -3109,6 +3109,31 @@ def create_app() -> FastAPI:
                 "Nothing to stop: job is not queued or running.",
             )
         job.cancel_requested = True
+        pairs = (
+            db.query(JobPair)
+            .filter(JobPair.job_id == job_id)
+            .order_by(JobPair.pair_index)
+            .all()
+        )
+        jt = (job.type or "").strip()
+        # Voice-class re-merge does not cooperatively poll cancel; finalize immediately so UI unlocks.
+        if jt == "voice_class":
+            from webapp.debug_session_log import debug_log
+
+            # #region agent log
+            debug_log(
+                "H7",
+                "main.py:cancel_job_run",
+                "voice_class_cancel_finalize",
+                {
+                    "job_id": job_id,
+                    "job_status": job.status,
+                    "step2_statuses": [p.step2_status for p in pairs],
+                },
+            )
+            # #endregion
+            _finalize_step2_cancelled(db, job_id, pairs)
+            return {"ok": True, "job_id": job_id, "finalized": True}
         append_log(
             db,
             job_id,

@@ -807,6 +807,7 @@ class StageVoiceProcessor(BaseStageProcessor):
         intro_mp3: str,
         outro_mp3: str,
         progress_callback: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Optional[str]:
         script_data = self.load_json_file(script_json_path)
         if not script_data:
@@ -840,6 +841,13 @@ class StageVoiceProcessor(BaseStageProcessor):
             progress_callback(
                 f"Re-merging intro ({os.path.basename(intro_mp3)}) + {len(segment_wavs)} segment(s) + outro ({os.path.basename(outro_mp3)})…"
             )
-        if not merge_voice_tracks(intro_mp3, segment_wavs, outro_mp3, final_path):
+        if not merge_voice_tracks(
+            intro_mp3,
+            segment_wavs,
+            outro_mp3,
+            final_path,
+            cancel_check=cancel_check,
+            progress_callback=progress_callback,
+        ):
             return None
         return final_path
