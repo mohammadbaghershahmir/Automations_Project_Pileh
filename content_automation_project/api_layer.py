@@ -242,6 +242,7 @@ class GeminiAPIClient:
         self._rate_limit_error_count = 0
         self._max_rate_limit_errors = 5  # Hard stop after 5 consecutive 429s
         self._last_rate_limit_time = None
+        self.last_tts_error: Optional[str] = None
         
         # Track worker/thread info for concurrency detection
         self._worker_id = threading.current_thread().ident
@@ -366,6 +367,88 @@ class GeminiAPIClient:
             self.logger.error(f"Error initializing text client: {str(e)}")
             return False
     
+    @staticmethod
+    def _extract_tts_audio_bytes(response: Any) -> bytes:
+        """Pull raw audio bytes from a Gemini TTS response or raise a clear error."""
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            raise ValueError("Gemini TTS returned no candidates (empty or blocked response)")
+        content = getattr(candidates[0], "content", None)
+        parts = getattr(content, "parts", None) if content is not None else None
+        if not parts:
+            raise ValueError("Gemini TTS returned no audio parts (empty or blocked response)")
+        for part in parts:
+            inline = getattr(part, "inline_data", None)
+            data = getattr(inline, "data", None) if inline is not None else None
+            if data:
+                return data
+        raise ValueError("Gemini TTS response had no inline audio data")
+
+    async def _generate_tts_with_client(
+        self,
+        client: Any,
+        *,
+        text: str,
+        output_file: str,
+        voice: str,
+        model: str,
+        instruction: Optional[str],
+        multi_speaker_config: Optional[Dict],
+    ) -> None:
+        if not output_file.lower().endswith(".wav"):
+            output_file = output_file.rsplit(".", 1)[0] + ".wav"
+
+        if instruction and instruction.strip():
+            combined_content = f"{instruction}\n\n{text}"
+        else:
+            combined_content = text
+
+        if multi_speaker_config:
+            speech_config = genai_new.types.SpeechConfig(
+                multi_speaker_voice_config=genai_new.types.MultiSpeakerVoiceConfig(
+                    speaker_voice_configs=[
+                        genai_new.types.SpeakerVoiceConfig(
+                            speaker="Speaker1",
+                            voice_config=genai_new.types.VoiceConfig(
+                                prebuilt_voice_config=genai_new.types.PrebuiltVoiceConfig(
+                                    voice_name=multi_speaker_config.get("speaker1_voice", voice)
+                                )
+                            ),
+                        ),
+                        genai_new.types.SpeakerVoiceConfig(
+                            speaker="Speaker2",
+                            voice_config=genai_new.types.VoiceConfig(
+                                prebuilt_voice_config=genai_new.types.PrebuiltVoiceConfig(
+                                    voice_name=multi_speaker_config.get("speaker2_voice", "Puck")
+                                )
+                            ),
+                        ),
+                    ]
+                )
+            )
+        else:
+            speech_config = genai_new.types.SpeechConfig(
+                voice_config=genai_new.types.VoiceConfig(
+                    prebuilt_voice_config=genai_new.types.PrebuiltVoiceConfig(voice_name=voice)
+                )
+            )
+
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=combined_content,
+            config=genai_new.types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=speech_config,
+            ),
+        )
+        audio_data = self._extract_tts_audio_bytes(response)
+
+        with wave.open(output_file, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(audio_data)
+
     async def generate_tts_async(self, 
                                 text: str,
                                 output_file: str,
@@ -389,93 +472,40 @@ class GeminiAPIClient:
         Returns:
             True if successful, False otherwise
         """
+        self.last_tts_error = None
         if not GENAI_AVAILABLE:
-            self.logger.error("google.genai library not available")
+            self.last_tts_error = "google.genai library not available"
+            self.logger.error(self.last_tts_error)
             return False
-            
+
+        key = api_key or self.key_manager.get_next_key()
+        if not key:
+            self.last_tts_error = "No API key available"
+            self.logger.error(self.last_tts_error)
+            return False
+
+        client = genai_new.Client(api_key=key)
         try:
-            # Initialize client if needed
-            if not self.tts_client:
-                key = api_key or self.key_manager.get_next_key()
-                if not key:
-                    self.logger.error("No API key available")
-                    return False
-                self.tts_client = genai_new.Client(api_key=key)
-            elif api_key:
-                # Reinitialize with provided key
-                self.tts_client = genai_new.Client(api_key=api_key)
-            
-            # Ensure output file has .wav extension
-            if not output_file.lower().endswith('.wav'):
-                output_file = output_file.rsplit('.', 1)[0] + '.wav'
-            
-            # Combine instruction and text
-            if instruction and instruction.strip():
-                combined_content = f"{instruction}\n\n{text}"
-            else:
-                combined_content = text
-            
-            # Configure speech settings
-            if multi_speaker_config:
-                # Multi-speaker configuration
-                speech_config = genai_new.types.SpeechConfig(
-                    multi_speaker_voice_config=genai_new.types.MultiSpeakerVoiceConfig(
-                        speaker_voice_configs=[
-                            genai_new.types.SpeakerVoiceConfig(
-                                speaker='Speaker1',
-                                voice_config=genai_new.types.VoiceConfig(
-                                    prebuilt_voice_config=genai_new.types.PrebuiltVoiceConfig(
-                                        voice_name=multi_speaker_config.get('speaker1_voice', voice)
-                                    )
-                                )
-                            ),
-                            genai_new.types.SpeakerVoiceConfig(
-                                speaker='Speaker2',
-                                voice_config=genai_new.types.VoiceConfig(
-                                    prebuilt_voice_config=genai_new.types.PrebuiltVoiceConfig(
-                                        voice_name=multi_speaker_config.get('speaker2_voice', 'Puck')
-                                    )
-                                )
-                            )
-                        ]
-                    )
-                )
-            else:
-                # Single speaker configuration
-                speech_config = genai_new.types.SpeechConfig(
-                    voice_config=genai_new.types.VoiceConfig(
-                        prebuilt_voice_config=genai_new.types.PrebuiltVoiceConfig(
-                            voice_name=voice
-                        )
-                    )
-                )
-            
-            # Generate TTS
-            response = await self.tts_client.aio.models.generate_content(
+            await self._generate_tts_with_client(
+                client,
+                text=text,
+                output_file=output_file,
+                voice=voice,
                 model=model,
-                contents=combined_content,
-                config=genai_new.types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=speech_config
-                )
+                instruction=instruction,
+                multi_speaker_config=multi_speaker_config,
             )
-            
-            # Extract audio data
-            audio_data = response.candidates[0].content.parts[0].inline_data.data
-            
-            # Write WAV file
-            with wave.open(output_file, 'wb') as wf:
-                wf.setnchannels(1)  # Mono
-                wf.setsampwidth(2)  # 16-bit
-                wf.setframerate(24000)  # 24kHz
-                wf.writeframes(audio_data)
-            
             self.logger.info(f"TTS generated successfully: {output_file}")
             return True
-            
         except Exception as e:
-            self.logger.error(f"TTS generation failed: {str(e)}")
+            self.last_tts_error = str(e)
+            self.logger.error(f"TTS generation failed: {self.last_tts_error}")
             return False
+        finally:
+            try:
+                await client.aio.aclose()
+            except Exception:
+                pass
     
     def generate_tts(self, 
                     text: str,
@@ -500,17 +530,43 @@ class GeminiAPIClient:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        self.last_tts_error = None
+        if not GENAI_AVAILABLE:
+            self.last_tts_error = "google.genai library not available"
+            self.logger.error(self.last_tts_error)
+            return False
+
+        key = api_key or self.key_manager.get_next_key()
+        if not key:
+            self.last_tts_error = "No API key available"
+            self.logger.error(self.last_tts_error)
+            return False
+
+        async def _run() -> bool:
+            client = genai_new.Client(api_key=key)
             try:
-                return loop.run_until_complete(
-                    self.generate_tts_async(text, output_file, voice, model, api_key, instruction, multi_speaker_config)
+                await self._generate_tts_with_client(
+                    client,
+                    text=text,
+                    output_file=output_file,
+                    voice=voice,
+                    model=model,
+                    instruction=instruction,
+                    multi_speaker_config=multi_speaker_config,
                 )
+                self.logger.info(f"TTS generated successfully: {output_file}")
+                return True
             finally:
-                loop.close()
+                try:
+                    await client.aio.aclose()
+                except Exception:
+                    pass
+
+        try:
+            return asyncio.run(_run())
         except Exception as e:
-            self.logger.error(f"TTS generation error: {str(e)}")
+            self.last_tts_error = str(e)
+            self.logger.error(f"TTS generation error: {self.last_tts_error}")
             return False
     
     def process_text(self,

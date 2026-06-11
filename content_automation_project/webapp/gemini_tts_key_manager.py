@@ -18,6 +18,10 @@ _QUOTA_RE = re.compile(
     r"429|quota|rate.?limit|resource.?exhausted|exceeded",
     re.IGNORECASE,
 )
+_INVALID_KEY_RE = re.compile(
+    r"API_KEY_INVALID|API key expired|API key not valid|API Key not found|invalid.*api.?key",
+    re.IGNORECASE,
+)
 
 
 def mask_api_key(key: str) -> str:
@@ -70,7 +74,14 @@ class GeminiTtsKeyManager:
     def mark_failure(self, row: GeminiTtsApiKey, error: str) -> None:
         sanitized = APIKeyManager.sanitize_error_message(error, row.api_key)
         row.last_error = sanitized[:500] if sanitized else None
-        if _QUOTA_RE.search(error or ""):
+        err = error or ""
+        if _INVALID_KEY_RE.search(err):
+            row.is_active = False
+            logger.warning(
+                "Gemini TTS key %s deactivated (invalid/expired) — update keys in Admin",
+                row.account_name,
+            )
+        elif _QUOTA_RE.search(err):
             row.exhausted_until = datetime.utcnow() + timedelta(hours=1)
             logger.warning("Gemini TTS key %s marked exhausted for 1h", row.account_name)
         self.db.commit()

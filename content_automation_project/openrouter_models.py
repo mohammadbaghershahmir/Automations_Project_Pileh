@@ -1,8 +1,8 @@
 """
 OpenRouter model registry — single source of truth for job model dropdowns and API routing.
 
-DeepSeek V4 Pro supports OpenRouter reasoning.effort "high" and "xhigh" (xhigh = max reasoning).
-See: https://openrouter.ai/deepseek/deepseek-v4-pro/api
+DeepSeek V4 Pro and V4 Flash support OpenRouter reasoning.effort "high" and "xhigh" (xhigh = max reasoning).
+See: https://openrouter.ai/deepseek/deepseek-v4-pro/api and https://openrouter.ai/deepseek/deepseek-v4-flash/api
 """
 
 from __future__ import annotations
@@ -13,6 +13,10 @@ from typing import Any, Dict, Optional, Tuple
 DEEPSEEK_V4_PRO = "deepseek/deepseek-v4-pro"
 DEEPSEEK_V4_PRO_REASONING_HIGH = f"{DEEPSEEK_V4_PRO} (reasoning high)"
 DEEPSEEK_V4_PRO_REASONING_XHIGH = f"{DEEPSEEK_V4_PRO} (reasoning xhigh)"
+
+DEEPSEEK_V4_FLASH = "deepseek/deepseek-v4-flash"
+DEEPSEEK_V4_FLASH_REASONING_HIGH = f"{DEEPSEEK_V4_FLASH} (reasoning high)"
+DEEPSEEK_V4_FLASH_REASONING_XHIGH = f"{DEEPSEEK_V4_FLASH} (reasoning xhigh)"
 
 GEMINI_35_FLASH = "google/gemini-3.5-flash"
 GLM_5 = "z-ai/glm-5"
@@ -41,6 +45,17 @@ OPENROUTER_MODEL_OPTIONS: tuple[OpenRouterModelOption, ...] = (
     OpenRouterModelOption(
         DEEPSEEK_V4_PRO_REASONING_XHIGH,
         DEEPSEEK_V4_PRO,
+        reasoning={"effort": "xhigh"},
+    ),
+    OpenRouterModelOption(DEEPSEEK_V4_FLASH, DEEPSEEK_V4_FLASH),
+    OpenRouterModelOption(
+        DEEPSEEK_V4_FLASH_REASONING_HIGH,
+        DEEPSEEK_V4_FLASH,
+        reasoning={"effort": "high"},
+    ),
+    OpenRouterModelOption(
+        DEEPSEEK_V4_FLASH_REASONING_XHIGH,
+        DEEPSEEK_V4_FLASH,
         reasoning={"effort": "xhigh"},
     ),
     OpenRouterModelOption("qwen/qwen3.6-plus", "qwen/qwen3.6-plus"),

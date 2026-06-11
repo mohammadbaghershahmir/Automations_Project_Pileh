@@ -36,6 +36,7 @@ class StageVoiceProcessor(BaseStageProcessor):
         super().__init__(api_client)
         self.logger = logging.getLogger(__name__)
         self._gemini_keys = gemini_tts_key_manager
+        self._last_tts_failure: Optional[str] = None
 
     @staticmethod
     def pack_segments(
@@ -639,23 +640,32 @@ class StageVoiceProcessor(BaseStageProcessor):
         instruction: Optional[str],
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> bool:
+        self._last_tts_failure = None
         if not self._gemini_keys:
-            self.logger.error("No Gemini TTS key manager configured")
+            self._last_tts_failure = "No Gemini TTS key manager configured"
+            self.logger.error(self._last_tts_failure)
             return False
 
+        from api_layer import GENAI_AVAILABLE, APIKeyManager, GeminiAPIClient
         from webapp.gemini_tts_key_manager import GeminiTtsKeyManager
+
+        if not GENAI_AVAILABLE:
+            self._last_tts_failure = "google.genai not installed in worker — rebuild Docker image"
+            if progress_callback:
+                progress_callback(self._last_tts_failure)
+            return False
 
         mgr: GeminiTtsKeyManager = self._gemini_keys
         attempts = mgr.max_attempts()
-        from api_layer import APIKeyManager
-
         client = GeminiAPIClient(api_key_manager=APIKeyManager(load_env=False))
+        last_err = ""
 
         for attempt in range(attempts):
             key_row = mgr.get_next_available_key()
             if key_row is None:
+                self._last_tts_failure = last_err or "No Gemini TTS API keys available (add or renew keys in Admin)"
                 if progress_callback:
-                    progress_callback("No Gemini TTS API keys available")
+                    progress_callback(self._last_tts_failure)
                 return False
 
             try:
@@ -670,13 +680,19 @@ class StageVoiceProcessor(BaseStageProcessor):
                 if ok:
                     mgr.mark_success(key_row)
                     return True
-                mgr.mark_failure(key_row, "TTS returned false")
+                err = (client.last_tts_error or "TTS returned false").strip()
+                last_err = err
+                if progress_callback:
+                    progress_callback(f"TTS key {key_row.account_name} failed: {err[:200]}")
+                mgr.mark_failure(key_row, err)
             except Exception as e:
                 err = str(e)
+                last_err = err
                 if progress_callback:
-                    progress_callback(f"TTS key {key_row.account_name} failed: {err[:120]}")
+                    progress_callback(f"TTS key {key_row.account_name} failed: {err[:200]}")
                 mgr.mark_failure(key_row, err)
 
+        self._last_tts_failure = last_err or "All Gemini TTS keys failed"
         return False
 
     def process_voice_class_step2(
@@ -752,6 +768,15 @@ class StageVoiceProcessor(BaseStageProcessor):
 
             wav_name = f"segment_{sid:03d}.wav"
             wav_path = os.path.join(tts_dir, wav_name)
+            if wanted is None and os.path.isfile(wav_path):
+                dur_existing = wav_duration_seconds(wav_path)
+                if dur_existing is not None and dur_existing > 0.1:
+                    est = float(seg.get("estimated_seconds") or 0)
+                    _progress(
+                        f"Segment {sid} skipped (existing audio: {dur_existing:.1f}s, estimated {est:.1f}s)"
+                    )
+                    continue
+
             _progress(f"TTS segment {sid}/{len(segments)} ({seg.get('paragraph_count', '?')} paragraphs)...")
 
             ok = self._generate_tts_with_rotation(
@@ -763,7 +788,9 @@ class StageVoiceProcessor(BaseStageProcessor):
                 progress_callback=progress_callback,
             )
             if not ok:
-                self.logger.error("TTS failed for segment %s", sid)
+                detail = self._last_tts_failure or "unknown error"
+                self.logger.error("TTS failed for segment %s: %s", sid, detail)
+                _progress(f"TTS failed for segment {sid}: {detail[:300]}")
                 return None
 
             dur = wav_duration_seconds(wav_path)

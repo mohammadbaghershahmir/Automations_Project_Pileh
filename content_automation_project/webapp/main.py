@@ -3055,6 +3055,16 @@ def create_app() -> FastAPI:
                     "Step 1 must succeed for all selected pairs before Step 2. "
                     f"Not ready (pair index): {sorted(not_ready)}",
                 )
+        if job.type == "voice_class":
+            not_ready = [p.pair_index for p in scope if p.step1_status != "succeeded"]
+            if not_ready:
+                raise HTTPException(
+                    400,
+                    "Step 1 must succeed before Step 2. "
+                    f"Not ready (pair index): {sorted(not_ready)}",
+                )
+        if job.status in ("running", "queued"):
+            raise HTTPException(409, "Job is already running or queued — wait for it to finish")
         job.status = "queued"
         job.cancel_requested = False
         append_log(db, job_id, "Queued Step 2." + queued_task_log_suffix(), None)

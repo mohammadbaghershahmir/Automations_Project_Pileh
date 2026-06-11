@@ -264,6 +264,36 @@ def _run_voice_class_step2_pairs(
     key_mgr = GeminiTtsKeyManager(db)
     processor = StageVoiceProcessor(None, gemini_tts_key_manager=key_mgr)
 
+    from api_layer import GENAI_AVAILABLE
+
+    if not GENAI_AVAILABLE:
+        msg = "Step 2 requires google.genai in the worker image — run: docker compose build worker"
+        append_log(db, job_id, f"ERROR: {msg}", None)
+        for pair in pairs:
+            if pair.step1_status == "succeeded":
+                pair.step2_status = "failed"
+                pair.step2_error = msg
+        db.commit()
+        return
+
+    available_keys = key_mgr._active_rows()
+    if not available_keys:
+        msg = "No active Gemini TTS API keys — add or renew keys under Admin → Gemini TTS keys"
+        append_log(db, job_id, f"ERROR: {msg}", None)
+        for pair in pairs:
+            if pair.step1_status == "succeeded":
+                pair.step2_status = "failed"
+                pair.step2_error = msg
+        db.commit()
+        return
+
+    append_log(
+        db,
+        job_id,
+        f"Gemini TTS: {len(available_keys)} active key(s) in rotation pool.",
+        None,
+    )
+
     for i, pair in enumerate(pairs):
         if _scalar_cancel_requested(db, job_id):
             _finalize_step2_cancelled(db, job_id, pairs)
@@ -316,7 +346,7 @@ def _run_voice_class_step2_pairs(
                 _register_voice_artifacts(db, job_id, pair.pair_index, base, out_dir)
             else:
                 pair.step2_status = "failed"
-                pair.step2_error = "TTS or merge failed"
+                pair.step2_error = (processor._last_tts_failure or "TTS or merge failed")[:500]
         except JobCancelled:
             _finalize_step2_cancelled(db, job_id, pairs)
             return
