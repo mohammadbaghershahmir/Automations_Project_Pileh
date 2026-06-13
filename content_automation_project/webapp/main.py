@@ -1029,11 +1029,14 @@ def create_app() -> FastAPI:
         db: Session = Depends(get_db),
     ) -> Any:
         require_admin(user)
-        from webapp.gemini_tts_keys_service import list_keys_for_admin
+        from webapp.gemini_tts_keys_service import account_name_groups, list_keys_for_admin
 
         imported = request.query_params.get("imported")
         added = request.query_params.get("added")
         skipped = request.query_params.get("skipped")
+        deleted_all = request.query_params.get("deleted_all")
+        deleted_account = request.query_params.get("deleted_account")
+        deleted_count = request.query_params.get("deleted_count")
         err = request.query_params.get("error")
         return templates.TemplateResponse(
             request,
@@ -1041,9 +1044,13 @@ def create_app() -> FastAPI:
             {
                 "user": user,
                 "keys": list_keys_for_admin(db),
+                "account_groups": account_name_groups(db),
                 "imported": imported,
                 "added": added,
                 "skipped": skipped,
+                "deleted_all": deleted_all,
+                "deleted_account": deleted_account,
+                "deleted_count": deleted_count,
                 "error": err,
             },
         )
@@ -1128,6 +1135,42 @@ def create_app() -> FastAPI:
 
         delete_key(db, key_id)
         return RedirectResponse("/admin/gemini-tts-keys", status_code=302)
+
+    @app.post("/admin/gemini-tts-keys/delete-all")
+    def admin_gemini_tts_keys_delete_all(
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> RedirectResponse:
+        require_admin(user)
+        from webapp.gemini_tts_keys_service import delete_all_keys
+
+        n = delete_all_keys(db)
+        return RedirectResponse(f"/admin/gemini-tts-keys?deleted_all={n}", status_code=302)
+
+    @app.post("/admin/gemini-tts-keys/delete-by-account")
+    async def admin_gemini_tts_keys_delete_by_account(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> RedirectResponse:
+        require_admin(user)
+        form = await request.form()
+        account_name = str(form.get("account_name") or "").strip()
+        if not account_name:
+            return RedirectResponse("/admin/gemini-tts-keys?error=Account+name+is+required", status_code=302)
+        from webapp.gemini_tts_keys_service import delete_keys_by_account_name
+        from urllib.parse import quote
+
+        n = delete_keys_by_account_name(db, account_name)
+        if n == 0:
+            return RedirectResponse(
+                f"/admin/gemini-tts-keys?error={quote(f'No keys found for account {account_name!r}')}",
+                status_code=302,
+            )
+        return RedirectResponse(
+            f"/admin/gemini-tts-keys?deleted_account={quote(account_name)}&deleted_count={n}",
+            status_code=302,
+        )
 
     @app.get("/image-file-catalog/new", response_class=HTMLResponse)
     def image_file_catalog_new(request: Request, user: CurrentUser) -> Any:

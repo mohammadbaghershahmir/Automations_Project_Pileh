@@ -7,6 +7,7 @@ import io
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from webapp.gemini_tts_key_manager import mask_api_key
@@ -15,7 +16,22 @@ from webapp.models import GeminiTtsApiKey
 logger = logging.getLogger(__name__)
 
 
+def account_name_groups(db: Session) -> List[Dict[str, Any]]:
+    """Distinct account names with key counts, highest count first."""
+    rows = (
+        db.query(GeminiTtsApiKey.account_name, func.count(GeminiTtsApiKey.id))
+        .group_by(GeminiTtsApiKey.account_name)
+        .order_by(func.count(GeminiTtsApiKey.id).desc(), GeminiTtsApiKey.account_name)
+        .all()
+    )
+    return [{"account_name": name, "count": int(count)} for name, count in rows]
+
+
 def list_keys_for_admin(db: Session) -> List[Dict[str, Any]]:
+    counts = {
+        g["account_name"]: g["count"]
+        for g in account_name_groups(db)
+    }
     rows = db.query(GeminiTtsApiKey).order_by(GeminiTtsApiKey.account_name, GeminiTtsApiKey.id).all()
     out: List[Dict[str, Any]] = []
     for r in rows:
@@ -23,6 +39,7 @@ def list_keys_for_admin(db: Session) -> List[Dict[str, Any]]:
             {
                 "id": r.id,
                 "account_name": r.account_name,
+                "account_count": counts.get(r.account_name, 1),
                 "project_name": r.project_name or "",
                 "masked_key": mask_api_key(r.api_key),
                 "is_active": bool(r.is_active),
@@ -81,6 +98,29 @@ def delete_key(db: Session, key_id: int) -> bool:
     db.delete(row)
     db.commit()
     return True
+
+
+def delete_all_keys(db: Session) -> int:
+    """Remove every Gemini TTS key. Returns number of rows deleted."""
+    n = db.query(GeminiTtsApiKey).count()
+    if n == 0:
+        return 0
+    db.query(GeminiTtsApiKey).delete()
+    db.commit()
+    return n
+
+
+def delete_keys_by_account_name(db: Session, account_name: str) -> int:
+    """Remove all keys sharing the same account name. Returns number deleted."""
+    name = (account_name or "").strip()
+    if not name:
+        return 0
+    n = db.query(GeminiTtsApiKey).filter(GeminiTtsApiKey.account_name == name).count()
+    if n == 0:
+        return 0
+    db.query(GeminiTtsApiKey).filter(GeminiTtsApiKey.account_name == name).delete()
+    db.commit()
+    return n
 
 
 def _detect_delimiter(sample: str) -> str:

@@ -8,6 +8,12 @@
 {% if imported %}
 <p style="color:var(--accent);font-size:14px;">Import complete — added {{ added or 0 }}{% if skipped %}, skipped {{ skipped }} duplicate(s){% endif %}.</p>
 {% endif %}
+{% if deleted_all is not none and deleted_all != "" %}
+<p style="color:var(--accent);font-size:14px;">Deleted {{ deleted_all }} key(s) from the pool.</p>
+{% endif %}
+{% if deleted_account and deleted_count %}
+<p style="color:var(--accent);font-size:14px;">Deleted {{ deleted_count }} key(s) for account «{{ deleted_account }}».</p>
+{% endif %}
 {% if error %}
 <p style="color:#f87171;font-size:14px;">{{ error }}</p>
 {% endif %}
@@ -33,8 +39,41 @@
   </form>
 </div>
 
+{% if account_groups|length > 1 or (account_groups|length == 1 and account_groups[0].count > 1) %}
 <div class="card">
-  <h2 style="margin-top:0;font-size:1rem;">Keys ({{ keys|length }})</h2>
+  <h2 style="margin-top:0;font-size:1rem;">Delete by account name</h2>
+  <p class="muted" style="margin-top:0;font-size:13px;">Bulk imports often add many keys under one account label. Remove every key with that name in one step.</p>
+  <table>
+    <thead>
+      <tr><th>Account</th><th>Keys</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for g in account_groups %}
+      <tr>
+        <td><strong>{{ g.account_name }}</strong></td>
+        <td>{{ g.count }}</td>
+        <td>
+          <form method="post" action="/admin/gemini-tts-keys/delete-by-account" style="display:inline;" onsubmit="return confirm('Delete all {{ g.count }} key(s) for account «{{ g.account_name }}»? This cannot be undone.');">
+            <input type="hidden" name="account_name" value="{{ g.account_name }}"/>
+            <button type="submit" class="btn-danger" style="font-size:11px;padding:4px 10px;background:#7f1d1d;color:#fecaca;border:1px solid #991b1b;border-radius:6px;cursor:pointer;">Delete all «{{ g.account_name }}»</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
+    <h2 style="margin:0;font-size:1rem;">Keys ({{ keys|length }})</h2>
+    {% if keys|length %}
+    <form method="post" action="/admin/gemini-tts-keys/delete-all" onsubmit="return confirm('Delete ALL {{ keys|length }} Gemini TTS API key(s)? This cannot be undone.');">
+      <button type="submit" class="btn-danger" style="font-size:13px;padding:8px 14px;background:#7f1d1d;color:#fecaca;border:1px solid #991b1b;border-radius:6px;cursor:pointer;">Delete all keys</button>
+    </form>
+    {% endif %}
+  </div>
   <table>
     <thead>
       <tr><th>Account</th><th>Project</th><th>Key</th><th>Active</th><th>Exhausted until</th><th>Last used</th><th>Last error</th><th></th></tr>
@@ -57,6 +96,12 @@
           <form method="post" action="/admin/gemini-tts-keys/{{ k.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this key?');">
             <button type="submit" class="btn-danger" style="font-size:11px;padding:4px 8px;background:#7f1d1d;color:#fecaca;border:1px solid #991b1b;border-radius:6px;cursor:pointer;">Delete</button>
           </form>
+          {% if k.account_count > 1 %}
+          <form method="post" action="/admin/gemini-tts-keys/delete-by-account" style="display:inline;" onsubmit="return confirm('Delete all {{ k.account_count }} keys named «{{ k.account_name }}»?');">
+            <input type="hidden" name="account_name" value="{{ k.account_name }}"/>
+            <button type="submit" class="btn-danger" style="font-size:11px;padding:4px 8px;background:#5c1a1a;color:#fecaca;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;" title="Delete every key with this account name">All «{{ k.account_name }}»</button>
+          </form>
+          {% endif %}
         </td>
       </tr>
       {% else %}
