@@ -49,6 +49,10 @@ GEMINI_TTS_KEYS_SEED_DIR = os.environ.get(
     "GEMINI_TTS_KEYS_SEED_DIR",
     str(PROJECT_ROOT / "data" / "seed" / "gemini_tts_keys"),
 )
+GEMINI_TTS_DEFAULT_RPM = int(os.environ.get("GEMINI_TTS_DEFAULT_RPM", "3"))
+GEMINI_TTS_DEFAULT_RPD = int(os.environ.get("GEMINI_TTS_DEFAULT_RPD", "10"))
+GEMINI_TTS_DAILY_RESET_TZ = os.environ.get("GEMINI_TTS_DAILY_RESET_TZ", "America/Los_Angeles")
+GEMINI_TTS_MAX_ROTATION_ATTEMPTS = int(os.environ.get("GEMINI_TTS_MAX_ROTATION_ATTEMPTS", "5"))
 
 DEFAULT_VOICE_CLASS_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 DEFAULT_VOICE_CLASS_TTS_VOICE = "Enceladus"

@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from webapp.gemini_tts_key_manager import mask_api_key
+from webapp.config import GEMINI_TTS_DEFAULT_RPM, GEMINI_TTS_DEFAULT_RPD
+from webapp.gemini_tts_key_manager import GeminiTtsKeyManager, mask_api_key
 from webapp.models import GeminiTtsApiKey
 
 logger = logging.getLogger(__name__)
@@ -28,13 +29,19 @@ def account_name_groups(db: Session) -> List[Dict[str, Any]]:
 
 
 def list_keys_for_admin(db: Session) -> List[Dict[str, Any]]:
+    from datetime import datetime
+
     counts = {
         g["account_name"]: g["count"]
         for g in account_name_groups(db)
     }
     rows = db.query(GeminiTtsApiKey).order_by(GeminiTtsApiKey.account_name, GeminiTtsApiKey.id).all()
+    now = datetime.utcnow()
     out: List[Dict[str, Any]] = []
     for r in rows:
+        GeminiTtsKeyManager._refresh_row_counters(r, now)
+        rpm = int(r.rpm_limit or GEMINI_TTS_DEFAULT_RPM)
+        rpd = int(r.rpd_limit or GEMINI_TTS_DEFAULT_RPD)
         out.append(
             {
                 "id": r.id,
@@ -43,12 +50,17 @@ def list_keys_for_admin(db: Session) -> List[Dict[str, Any]]:
                 "project_name": r.project_name or "",
                 "masked_key": mask_api_key(r.api_key),
                 "is_active": bool(r.is_active),
+                "rpm_limit": rpm,
+                "rpd_limit": rpd,
+                "requests_today": int(r.requests_today or 0),
+                "requests_in_minute": int(r.requests_in_minute or 0),
                 "exhausted_until": r.exhausted_until,
                 "last_error": r.last_error or "",
                 "last_used_at": r.last_used_at,
                 "created_at": r.created_at,
             }
         )
+    db.commit()
     return out
 
 
@@ -75,6 +87,8 @@ def add_key_manual(
             project_name=(project_name or "").strip(),
             api_key=key,
             is_active=True,
+            rpm_limit=GEMINI_TTS_DEFAULT_RPM,
+            rpd_limit=GEMINI_TTS_DEFAULT_RPD,
             updated_by_id=admin_user_id,
         )
     )
@@ -270,6 +284,8 @@ def _import_parsed_keys(
                     project_name=item["project_name"],
                     api_key=key,
                     is_active=True,
+                    rpm_limit=GEMINI_TTS_DEFAULT_RPM,
+                    rpd_limit=GEMINI_TTS_DEFAULT_RPD,
                     updated_by_id=admin_user_id,
                 )
             )

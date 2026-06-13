@@ -3,7 +3,7 @@
 {% block content %}
 <p class="muted" style="margin:0 0 8px;"><a href="/jobs">← Jobs</a></p>
 <h1 style="margin-top:0;">Gemini TTS API Keys</h1>
-<p class="muted">Manage the shared key pool for Voice Class Step&nbsp;2. Keys rotate automatically on quota errors.</p>
+<p class="muted">Manage the shared key pool for Voice Class Step&nbsp;2. Keys rotate automatically; usage is throttled to <strong>RPM={{ default_rpm }}</strong> and <strong>RPD={{ default_rpd }}</strong> per key (resets midnight Pacific).</p>
 
 {% if imported %}
 <p style="color:var(--accent);font-size:14px;">Import complete — added {{ added or 0 }}{% if skipped %}, skipped {{ skipped }} duplicate(s){% endif %}.</p>
@@ -76,7 +76,7 @@
   </div>
   <table>
     <thead>
-      <tr><th>Account</th><th>Project</th><th>Key</th><th>Active</th><th>Exhausted until</th><th>Last used</th><th>Last error</th><th></th></tr>
+      <tr><th>Account</th><th>Project</th><th>Key</th><th>Active</th><th>Today</th><th>Minute</th><th>Exhausted until</th><th>Last used</th><th>Last error</th><th></th></tr>
     </thead>
     <tbody>
       {% for k in keys %}
@@ -85,6 +85,8 @@
         <td style="font-size:12px;">{{ k.project_name or "—" }}</td>
         <td><code style="font-size:11px;">{{ k.masked_key }}</code></td>
         <td>{% if k.is_active %}yes{% else %}no{% endif %}</td>
+        <td style="font-size:12px;">{{ k.requests_today }}/{{ k.rpd_limit }}</td>
+        <td style="font-size:12px;">{{ k.requests_in_minute }}/{{ k.rpm_limit }}</td>
         <td style="font-size:12px;">{% if k.exhausted_until %}{{ k.exhausted_until }}{% else %}—{% endif %}</td>
         <td style="font-size:12px;">{% if k.last_used_at %}{{ k.last_used_at }}{% else %}—{% endif %}</td>
         <td style="font-size:11px;max-width:200px;word-break:break-word;">{{ k.last_error or "—" }}</td>
@@ -105,7 +107,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="muted">No keys yet — import a CSV/XLSX file or add manually.</td></tr>
+      <tr><td colspan="10" class="muted">No keys yet — import a CSV/XLSX file or add manually.</td></tr>
       {% endfor %}
     </tbody>
   </table>

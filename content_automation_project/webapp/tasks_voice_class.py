@@ -276,8 +276,8 @@ def _run_voice_class_step2_pairs(
         db.commit()
         return
 
-    available_keys = key_mgr._active_rows()
-    if not available_keys:
+    pool = key_mgr.pool_stats()
+    if pool["active_keys"] == 0:
         msg = "No active Gemini TTS API keys — add or renew keys under Admin → Gemini TTS keys"
         append_log(db, job_id, f"ERROR: {msg}", None)
         for pair in pairs:
@@ -290,7 +290,11 @@ def _run_voice_class_step2_pairs(
     append_log(
         db,
         job_id,
-        f"Gemini TTS: {len(available_keys)} active key(s) in rotation pool.",
+        (
+            f"Gemini TTS: {pool['active_keys']} active key(s); "
+            f"daily budget {pool['daily_budget_remaining']} request(s) remaining "
+            f"(RPM={pool['default_rpm']}, RPD={pool['default_rpd']} per key)."
+        ),
         None,
     )
 

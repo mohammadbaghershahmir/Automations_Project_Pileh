@@ -45,6 +45,8 @@ from webapp.config import (
     DEFAULT_VOICE_CLASS_TTS_MODEL,
     DEFAULT_VOICE_CLASS_TTS_VOICE,
     GEMINI_TTS_KEYS_SEED_DIR,
+    GEMINI_TTS_DEFAULT_RPM,
+    GEMINI_TTS_DEFAULT_RPD,
     JOBS_ROOT,
     PROJECT_ROOT,
     RUN_TASKS_INLINE,
@@ -1052,6 +1054,8 @@ def create_app() -> FastAPI:
                 "deleted_account": deleted_account,
                 "deleted_count": deleted_count,
                 "error": err,
+                "default_rpm": GEMINI_TTS_DEFAULT_RPM,
+                "default_rpd": GEMINI_TTS_DEFAULT_RPD,
             },
         )
 

@@ -20,6 +20,8 @@ def apply_schema_migrations(engine: Engine) -> None:
             )
             conn.commit()
 
+    _ensure_gemini_tts_rate_columns(engine)
+
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -36,3 +38,26 @@ def apply_schema_migrations(engine: Engine) -> None:
                 """
             )
         )
+
+
+def _ensure_gemini_tts_rate_columns(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    additions = [
+        ("rpm_limit", "INTEGER NOT NULL DEFAULT 3"),
+        ("rpd_limit", "INTEGER NOT NULL DEFAULT 10"),
+        ("requests_today", "INTEGER NOT NULL DEFAULT 0"),
+        ("requests_in_minute", "INTEGER NOT NULL DEFAULT 0"),
+        ("rpm_window_start", "DATETIME"),
+        ("daily_quota_date", "VARCHAR(10)"),
+    ]
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(gemini_tts_api_keys)")).fetchall()
+        if not rows:
+            return
+        colnames = {r[1] for r in rows}
+        for col, typedef in additions:
+            if col not in colnames:
+                conn.execute(
+                    text(f"ALTER TABLE gemini_tts_api_keys ADD COLUMN {col} {typedef}")
+                )

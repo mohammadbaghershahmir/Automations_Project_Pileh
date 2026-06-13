@@ -639,6 +639,7 @@ class StageVoiceProcessor(BaseStageProcessor):
         model: str,
         instruction: Optional[str],
         progress_callback: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> bool:
         self._last_tts_failure = None
         if not self._gemini_keys:
@@ -661,9 +662,15 @@ class StageVoiceProcessor(BaseStageProcessor):
         last_err = ""
 
         for attempt in range(attempts):
-            key_row = mgr.get_next_available_key()
+            key_row = mgr.wait_for_available_key(
+                progress_callback=progress_callback,
+                cancel_check=cancel_check,
+            )
             if key_row is None:
-                self._last_tts_failure = last_err or "No Gemini TTS API keys available (add or renew keys in Admin)"
+                if cancel_check and cancel_check():
+                    self._last_tts_failure = "TTS cancelled"
+                else:
+                    self._last_tts_failure = last_err or "No Gemini TTS API keys available (add or renew keys in Admin)"
                 if progress_callback:
                     progress_callback(self._last_tts_failure)
                 return False
@@ -786,6 +793,7 @@ class StageVoiceProcessor(BaseStageProcessor):
                 model=tts_model,
                 instruction=tts_instruction,
                 progress_callback=progress_callback,
+                cancel_check=cancel_check,
             )
             if not ok:
                 detail = self._last_tts_failure or "unknown error"
