@@ -535,7 +535,127 @@ def merge_voice_tracks(
     return pydub_ok
 
 
+def probe_audio_duration_seconds(audio_path: str) -> Optional[float]:
+    """Read duration via ffprobe without decoding audio into RAM."""
+    if not os.path.isfile(audio_path):
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                audio_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        raw = (proc.stdout or "").strip()
+        if not raw:
+            return None
+        return float(raw)
+    except (ValueError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def _compute_waveform_peaks_streaming(
+    audio_path: str,
+    *,
+    bar_count: int = 80,
+    sample_rate: int = 8000,
+    duration_seconds: Optional[float] = None,
+    timeout: int = 900,
+) -> Optional[tuple[List[float], float, float]]:
+    """
+    Decode audio through an ffmpeg pipe in small chunks (constant RAM).
+    Returns (normalized_peaks, normalized_max, normalized_rms).
+    """
+    if not _ffmpeg_available() or not os.path.isfile(audio_path):
+        return None
+
+    duration = duration_seconds if duration_seconds and duration_seconds > 0 else probe_audio_duration_seconds(audio_path)
+    if duration is None or duration <= 0:
+        return None
+
+    expected_samples = max(1, int(duration * sample_rate))
+    samples_per_bar = max(1, expected_samples // bar_count)
+    bar_max = [0] * bar_count
+    sample_count = 0
+    sum_sq = 0.0
+    max_possible = 32768.0
+
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-i",
+        audio_path,
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        "-f",
+        "s16le",
+        "-acodec",
+        "pcm_s16le",
+        "pipe:1",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        assert proc.stdout is not None
+        while True:
+            chunk = proc.stdout.read(65536)
+            if not chunk:
+                break
+            n_samples = len(chunk) // 2
+            for i in range(n_samples):
+                lo = chunk[i * 2]
+                hi = chunk[i * 2 + 1]
+                val = lo | (hi << 8)
+                if val >= 0x8000:
+                    val -= 0x10000
+                abs_val = abs(val)
+                bar_idx = min(bar_count - 1, sample_count // samples_per_bar)
+                if abs_val > bar_max[bar_idx]:
+                    bar_max[bar_idx] = abs_val
+                sum_sq += float(val * val)
+                sample_count += 1
+        proc.wait(timeout=timeout)
+        if proc.returncode != 0:
+            logger.warning("ffmpeg waveform stream failed for %s (exit %s)", audio_path, proc.returncode)
+            return None
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        logger.warning("ffmpeg waveform stream timed out for %s", audio_path)
+        return None
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+
+    if sample_count <= 0:
+        peaks = [0.0] * bar_count
+        return peaks, 0.0, 0.0
+
+    raw_peaks = [(bar_max[i] / max_possible) for i in range(bar_count)]
+    normalized_max = max(raw_peaks)
+    normalized_rms = (sum_sq / sample_count) ** 0.5 / max_possible
+    visual_max = max(raw_peaks) or 1.0
+    peaks = [round(p / visual_max, 4) for p in raw_peaks]
+    return peaks, normalized_max, normalized_rms
+
+
 def wav_duration_seconds(wav_path: str) -> Optional[float]:
+    duration = probe_audio_duration_seconds(wav_path)
+    if duration is not None:
+        return duration
     try:
         from pydub import AudioSegment
 
@@ -550,14 +670,35 @@ def wav_duration_seconds(wav_path: str) -> Optional[float]:
 def analyze_audio_for_preview(audio_path: str, *, bar_count: int = 80) -> Optional[dict]:
     """
     Lightweight audio analysis for admin preview: duration, silence hint, downsampled peaks.
-    Supports WAV, MP3, and other formats pydub/ffmpeg can read.
+    Uses ffprobe + streaming ffmpeg decode so large MP3s do not OOM the API process.
     """
+    if not os.path.isfile(audio_path):
+        return None
+
+    duration = probe_audio_duration_seconds(audio_path)
+    streamed = _compute_waveform_peaks_streaming(
+        audio_path,
+        bar_count=bar_count,
+        duration_seconds=duration,
+    )
+    if streamed is not None:
+        peaks, normalized_max, normalized_rms = streamed
+        duration_val = duration or 0.0
+        is_silent = (
+            duration_val < 0.05
+            or normalized_max < 0.005
+            or normalized_rms < 0.002
+        )
+        return {
+            "duration_seconds": round(duration_val, 2),
+            "max_amplitude": round(normalized_max, 4),
+            "is_silent": is_silent,
+            "waveform_peaks": peaks,
+        }
+
     try:
         from pydub import AudioSegment
     except ImportError:
-        return None
-
-    if not os.path.isfile(audio_path):
         return None
 
     try:
@@ -593,8 +734,8 @@ def analyze_audio_for_preview(audio_path: str, *, bar_count: int = 80) -> Option
         normalized_max = max_amp / max_possible if max_possible else 0.0
         rms = (sum(v * v for v in mono) / len(mono)) ** 0.5
         normalized_rms = rms / max_possible if max_possible else 0.0
-        duration = len(audio) / 1000.0
-        is_silent = duration < 0.05 or normalized_max < 0.005 or normalized_rms < 0.002
+        duration_val = len(audio) / 1000.0
+        is_silent = duration_val < 0.05 or normalized_max < 0.005 or normalized_rms < 0.002
 
         chunk = max(1, len(mono) // bar_count)
         peaks: List[float] = []
@@ -609,7 +750,7 @@ def analyze_audio_for_preview(audio_path: str, *, bar_count: int = 80) -> Option
         peaks = [round(p / visual_max, 4) for p in peaks]
 
         return {
-            "duration_seconds": round(duration, 2),
+            "duration_seconds": round(duration_val, 2),
             "max_amplitude": round(normalized_max, 4),
             "is_silent": is_silent,
             "waveform_peaks": peaks,

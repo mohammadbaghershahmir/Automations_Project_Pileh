@@ -1112,6 +1112,10 @@
     var btnMergeVoice = document.getElementById("btn-merge-voice");
 
     var voiceSegmentsCacheKey = "";
+    var voicePreviewQueue = [];
+    var voicePreviewInflight = 0;
+    var VOICE_PREVIEW_CONCURRENCY = 2;
+    var voicePreviewLoaded = {};
 
     function voiceFormatTime(sec) {
       if (!isFinite(sec) || sec < 0) return "0:00";
@@ -1256,7 +1260,7 @@
       var durTime = s.duration_seconds != null ? voiceFormatTime(Number(s.duration_seconds)) : "—";
       var peaksAttr = encodeURIComponent(JSON.stringify(s.waveform_peaks || []));
       return (
-        "<div class=\"voice-wave-wrap\" data-artifact=\"" + s.artifact_id + "\" data-duration-label=\"" + durTime + "\">" +
+        "<div class=\"voice-wave-wrap\" data-artifact=\"" + s.artifact_id + "\" data-seg-id=\"" + s.segment_id + "\" data-preview-pending=\"1\" data-duration-label=\"" + durTime + "\">" +
         "<div class=\"voice-player-row\">" +
         "<button type=\"button\" class=\"voice-play-btn secondary\" aria-label=\"Play\">▶</button>" +
         "<div class=\"voice-player-main\">" +
@@ -1317,6 +1321,95 @@
       wireVoicePreviewWrap(finalWrap);
     }
 
+    function applyVoicePreviewToWrap(wrap, preview) {
+      if (!wrap || !preview) return;
+      var canvas = wrap.querySelector(".voice-wave-canvas");
+      if (!canvas) return;
+      var peaks = preview.waveform_peaks || [];
+      var isSilent = !!preview.is_silent;
+      canvas.setAttribute("data-peaks", encodeURIComponent(JSON.stringify(peaks)));
+      canvas.setAttribute("data-silent", isSilent ? "1" : "0");
+      canvas.classList.toggle("is-silent", isSilent);
+      wrap.removeAttribute("data-preview-pending");
+      var audio = wrap.querySelector(".voice-audio-el");
+      var prog = audio && isFinite(audio.duration) && audio.duration > 0
+        ? audio.currentTime / audio.duration
+        : 0;
+      drawVoiceWaveform(canvas, peaks.length ? peaks : [0], isSilent, prog);
+      var meta = wrap.querySelector(".voice-wave-meta");
+      if (meta && preview.duration_seconds != null) {
+        var durLabel = preview.duration_seconds + (wrap.getAttribute("data-final-preview") === "1" ? "s total" : "s actual");
+        var silentBadge = isSilent ? "<span class=\"voice-wave-badge\">Silent / empty</span>" : "";
+        var parts = [durLabel];
+        if (silentBadge) parts.push(silentBadge);
+        if (wrap.getAttribute("data-final-preview") === "1") {
+          var dl = wrap.getAttribute("data-artifact");
+          var fname = meta.textContent.split("·")[0].trim();
+          meta.innerHTML = escapeHtml(fname) + " · " + parts.join(" · ") +
+            " · <a href=\"/artifacts/" + dl + "/download\">Download</a>";
+        } else if (silentBadge) {
+          meta.innerHTML = parts.join(" · ");
+        }
+      }
+      voiceSyncPlayerUi(wrap);
+    }
+
+    function drainVoicePreviewQueue() {
+      while (voicePreviewInflight < VOICE_PREVIEW_CONCURRENCY && voicePreviewQueue.length) {
+        var job = voicePreviewQueue.shift();
+        if (!job || voicePreviewLoaded[job.key]) continue;
+        voicePreviewInflight += 1;
+        fetch(job.url, { credentials: "same-origin" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("preview " + r.status);
+            return r.json();
+          })
+          .then(function (preview) {
+            voicePreviewLoaded[job.key] = true;
+            var wrap = document.querySelector(job.selector);
+            if (wrap && wrap.getAttribute("data-preview-pending") === "1") {
+              applyVoicePreviewToWrap(wrap, preview);
+            }
+          })
+          .catch(function (e) {
+            console.warn("voice preview failed", job.url, e);
+          })
+          .finally(function () {
+            voicePreviewInflight -= 1;
+            drainVoicePreviewQueue();
+          });
+      }
+    }
+
+    function enqueueVoicePreview(pi, wrap, opts) {
+      if (!wrap || wrap.getAttribute("data-preview-pending") !== "1") return;
+      var artifactId = wrap.getAttribute("data-artifact");
+      if (!artifactId) return;
+      var key = opts.isFinal ? "final:" + artifactId : "seg:" + artifactId;
+      if (voicePreviewLoaded[key]) return;
+      var url = opts.isFinal
+        ? "/jobs/" + jobId + "/pairs/" + pi + "/voice-segments/final/preview"
+        : "/jobs/" + jobId + "/pairs/" + pi + "/voice-segments/" + opts.segmentId + "/preview";
+      var selector = '.voice-wave-wrap[data-artifact="' + artifactId + '"]';
+      if (voicePreviewQueue.some(function (j) { return j.key === key; })) return;
+      voicePreviewQueue.push({ key: key, url: url, selector: selector });
+      drainVoicePreviewQueue();
+    }
+
+    function lazyLoadVoicePreviews(pi, data) {
+      if (!data) return;
+      (data.segments || []).forEach(function (s) {
+        if (!s.has_wav || !s.artifact_id) return;
+        var wrap = document.querySelector('.voice-wave-wrap[data-artifact="' + s.artifact_id + '"]');
+        enqueueVoicePreview(pi, wrap, { segmentId: s.segment_id, isFinal: false });
+      });
+      var fin = data.final_mp3;
+      if (fin && fin.has_mp3 && fin.artifact_id) {
+        var finalWrap = document.querySelector("#voice-final-player .voice-wave-wrap[data-artifact=\"" + fin.artifact_id + "\"]");
+        enqueueVoicePreview(pi, finalWrap, { isFinal: true });
+      }
+    }
+
     function updateVoiceSongsWarning(data) {
       var el = document.getElementById("voice-songs-warning");
       if (!el) return;
@@ -1350,7 +1443,7 @@
       var durTime = fin.duration_seconds != null ? voiceFormatTime(Number(fin.duration_seconds)) : "—";
       var peaksAttr = encodeURIComponent(JSON.stringify(fin.waveform_peaks || []));
       host.innerHTML =
-        "<div class=\"voice-wave-wrap voice-final-wrap\" data-artifact=\"" + fin.artifact_id + "\" data-duration-label=\"" + durTime + "\">" +
+        "<div class=\"voice-wave-wrap voice-final-wrap\" data-artifact=\"" + fin.artifact_id + "\" data-final-preview=\"1\" data-preview-pending=\"1\" data-duration-label=\"" + durTime + "\">" +
         "<div class=\"voice-player-row\">" +
         "<button type=\"button\" class=\"voice-play-btn secondary\" aria-label=\"Play\">▶</button>" +
         "<div class=\"voice-player-main\">" +
@@ -1399,6 +1492,8 @@
       updateVoiceSongsWarning(data);
       renderVoiceFinal(data);
       restoreVoicePlaybackState(playbackStates);
+      var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;
+      lazyLoadVoicePreviews(pi, data);
       voiceTbody.querySelectorAll(".btn-voice-regen").forEach(function (btn) {
         btn.onclick = async function () {
           var pi = voicePairSel ? parseInt(voicePairSel.value, 10) : 0;

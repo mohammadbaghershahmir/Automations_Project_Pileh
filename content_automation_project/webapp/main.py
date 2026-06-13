@@ -3457,7 +3457,7 @@ def create_app() -> FastAPI:
             return {"supported": False, "segments": []}
 
         from webapp.tasks_voice_class import _find_final_voice_mp3, _find_voice_script
-        from webapp.audio_merge import analyze_audio_for_preview
+        from webapp.audio_merge import probe_audio_duration_seconds
 
         base = job_root(job_id)
         script_path = _find_voice_script(base, pair_index)
@@ -3485,9 +3485,9 @@ def create_app() -> FastAPI:
                 .one_or_none()
             )
             has_wav = os.path.isfile(abs_wav)
-            preview = None
+            duration_seconds = None
             if has_wav:
-                preview = analyze_audio_for_preview(abs_wav)
+                duration_seconds = probe_audio_duration_seconds(abs_wav)
             out.append(
                 {
                     "segment_id": sid,
@@ -3497,9 +3497,9 @@ def create_app() -> FastAPI:
                     "has_wav": has_wav,
                     "artifact_id": art.id if art else None,
                     "rel_path": rel_wav if has_wav else None,
-                    "duration_seconds": preview.get("duration_seconds") if preview else None,
-                    "is_silent": preview.get("is_silent") if preview else None,
-                    "waveform_peaks": preview.get("waveform_peaks") if preview else None,
+                    "duration_seconds": round(duration_seconds, 2) if duration_seconds is not None else None,
+                    "is_silent": None,
+                    "waveform_peaks": None,
                 }
             )
 
@@ -3512,15 +3512,15 @@ def create_app() -> FastAPI:
                 .filter(Artifact.job_id == job_id, Artifact.rel_path == rel_mp3)
                 .one_or_none()
             )
-            mp3_preview = analyze_audio_for_preview(final_abs, bar_count=120)
+            mp3_duration = probe_audio_duration_seconds(final_abs)
             final_mp3 = {
                 "artifact_id": art_mp3.id if art_mp3 else None,
                 "rel_path": rel_mp3,
                 "filename": os.path.basename(final_abs),
                 "has_mp3": True,
-                "duration_seconds": mp3_preview.get("duration_seconds") if mp3_preview else None,
-                "is_silent": mp3_preview.get("is_silent") if mp3_preview else None,
-                "waveform_peaks": mp3_preview.get("waveform_peaks") if mp3_preview else None,
+                "duration_seconds": round(mp3_duration, 2) if mp3_duration is not None else None,
+                "is_silent": None,
+                "waveform_peaks": None,
             }
 
         return {
@@ -3529,6 +3529,72 @@ def create_app() -> FastAPI:
             "metadata": meta,
             "songs": voice_class_songs_status(),
             "final_mp3": final_mp3,
+        }
+
+    @app.get("/jobs/{job_id}/pairs/{pair_index}/voice-segments/{segment_id}/preview")
+    def get_voice_segment_preview(
+        job_id: str,
+        pair_index: int,
+        segment_id: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if (job.type or "").strip() != "voice_class":
+            raise HTTPException(400, "Not a voice class job")
+
+        from webapp.audio_merge import analyze_audio_for_preview
+
+        base = job_root(job_id)
+        rel_wav = f"pair_{pair_index}/output/tts_segments/segment_{segment_id:03d}.wav"
+        abs_wav = os.path.join(base, rel_wav.replace("/", os.sep))
+        if not os.path.isfile(abs_wav):
+            raise HTTPException(404, "Segment WAV not found")
+
+        preview = analyze_audio_for_preview(abs_wav)
+        if not preview:
+            raise HTTPException(500, "Audio preview analysis failed")
+
+        return {
+            "segment_id": segment_id,
+            "duration_seconds": preview.get("duration_seconds"),
+            "is_silent": preview.get("is_silent"),
+            "waveform_peaks": preview.get("waveform_peaks"),
+        }
+
+    @app.get("/jobs/{job_id}/pairs/{pair_index}/voice-segments/final/preview")
+    def get_voice_final_preview(
+        job_id: str,
+        pair_index: int,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        job = db.query(Job).filter(Job.id == job_id).one_or_none()
+        if not job:
+            raise HTTPException(404)
+        require_job_owner(job, user)
+        if (job.type or "").strip() != "voice_class":
+            raise HTTPException(400, "Not a voice class job")
+
+        from webapp.tasks_voice_class import _find_final_voice_mp3
+        from webapp.audio_merge import analyze_audio_for_preview
+
+        base = job_root(job_id)
+        final_abs = _find_final_voice_mp3(base, pair_index)
+        if not final_abs or not os.path.isfile(final_abs):
+            raise HTTPException(404, "Final MP3 not found")
+
+        preview = analyze_audio_for_preview(final_abs, bar_count=120)
+        if not preview:
+            raise HTTPException(500, "Audio preview analysis failed")
+
+        return {
+            "duration_seconds": preview.get("duration_seconds"),
+            "is_silent": preview.get("is_silent"),
+            "waveform_peaks": preview.get("waveform_peaks"),
         }
 
     @app.post("/jobs/{job_id}/pairs/{pair_index}/voice-segments/{segment_id}/regenerate")
