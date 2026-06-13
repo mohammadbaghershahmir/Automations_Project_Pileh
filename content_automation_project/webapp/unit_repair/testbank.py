@@ -246,6 +246,12 @@ def regenerate_unit(
     else:
         processor.api_client = client
 
+    if hasattr(processor.api_client, "set_stage"):
+        processor.api_client.set_stage("stage_v")
+    if ssm:
+        ssm.set_stage_provider("stage_v", provider)
+        ssm.set_stage_model("stage_v", model_name)
+
     out_dir = pair_output(job_id, pair_index)
     os.makedirs(out_dir, exist_ok=True)
     ctx = processor._build_stage_v_processing_context(stage_j_path, word_path, out_dir, progress_callback)

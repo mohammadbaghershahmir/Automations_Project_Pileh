@@ -1199,13 +1199,19 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
         except Exception as e:
             self.logger.warning(f"Failed to save Step 2 prompt input TXT file: {e}")
         
-        # Call model once and collect raw response
+        # Call model with retries; require parseable JSON (ignore reasoning-only traces).
         all_raw_responses = []
         max_retries = 3
-        
+        part_response: Optional[str] = None
+        all_refined_questions: List[Dict[str, Any]] = []
+
+        if hasattr(self.api_client, "set_stage"):
+            self.api_client.set_stage("stage_v")
+
         _progress(f"Processing Stage V - Step 2 for Topic {topic_idx}/{total_topics} (topic-scoped inputs)...")
-        part_response = None
         for attempt in range(max_retries):
+            use_reasoning_none = attempt >= 1
+            use_content_only = attempt < max_retries - 1
             try:
                 part_response = self.api_client.process_text(
                     text=full_prompt,
@@ -1214,10 +1220,9 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
                     temperature=APIConfig.DEFAULT_TEMPERATURE,
                     max_tokens=self._STAGE_V_OUTPUT_MAX_TOKENS,
                     cancel_check=cancel_check,
+                    reasoning_effort_none=use_reasoning_none,
+                    content_only=use_content_only,
                 )
-                if part_response:
-                    _progress(f"Step 2 response received for Topic {topic_idx} ({len(part_response)} characters)")
-                    break
             except OpenRouterRequestAborted:
                 raise
             except OpenRouterAPIError as e:
@@ -1225,21 +1230,42 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
                 raise
             except Exception as e:
                 self.logger.warning(f"Step 2 attempt {attempt + 1} failed: {e}")
+                part_response = None
+
+            if not part_response:
                 if attempt < max_retries - 1:
-                    _progress(f"Retrying Step 2... (attempt {attempt + 2}/{max_retries})")
-                else:
-                    self.logger.error("All Step 2 attempts failed")
-        
+                    _progress(
+                        f"Step 2 attempt {attempt + 1}/{max_retries}: empty response "
+                        f"(reasoning_none={use_reasoning_none}, content_only={use_content_only}), retrying..."
+                    )
+                continue
+
+            _progress(f"Step 2 response received for Topic {topic_idx} ({len(part_response)} characters)")
+            part_refined = self._extract_stage_v_question_rows_from_model_text(part_response)
+            if part_refined:
+                all_raw_responses.append(part_response)
+                all_refined_questions = part_refined
+                _progress(f"Extracted {len(part_refined)} refined questions from Part 1")
+                break
+
+            if attempt < max_retries - 1:
+                _progress(
+                    f"Step 2 attempt {attempt + 1}/{max_retries}: no parseable JSON in response "
+                    f"(reasoning_none={use_reasoning_none}, content_only={use_content_only}), retrying..."
+                )
+            else:
+                all_raw_responses.append(part_response)
+
         if not part_response:
             self.logger.error("No response from model in Step 2")
-            return None
-        
-        # Store raw response as single part
-        all_raw_responses.append(part_response)
+            return None, 0
+
+        if not all_raw_responses:
+            all_raw_responses.append(part_response)
         
         if not all_raw_responses:
             self.logger.error("No responses received in Step 2")
-            return None
+            return None, 0
         
         # Save all raw responses to TXT file
         txt_path = os.path.join(base_dir, f"{base_name}_stage_v_step2_topic_{topic_idx}_{safe_topic_name}.txt")
@@ -1254,14 +1280,14 @@ IMPORTANT: Focus on refining test questions for the topic: "{current_topic_name}
         except Exception as e:
             self.logger.warning(f"Failed to save TXT file: {e}")
         
-        # Extract JSON from all responses
-        all_refined_questions = []
-        for part_idx, part_response in enumerate(all_raw_responses, 1):
-            _progress(f"Extracting JSON from Part {part_idx} response...")
-            part_refined = self._extract_stage_v_question_rows_from_model_text(part_response)
-            if part_refined:
-                all_refined_questions.extend(part_refined)
-                _progress(f"Extracted {len(part_refined)} refined questions from Part {part_idx}")
+        # Extract JSON from saved responses when not already parsed in the retry loop
+        if not all_refined_questions:
+            for part_idx, resp in enumerate(all_raw_responses, 1):
+                _progress(f"Extracting JSON from Part {part_idx} response...")
+                part_refined = self._extract_stage_v_question_rows_from_model_text(resp)
+                if part_refined:
+                    all_refined_questions.extend(part_refined)
+                    _progress(f"Extracted {len(part_refined)} refined questions from Part {part_idx}")
         
         if not all_refined_questions:
             self.logger.error("Failed to extract JSON from model responses")
