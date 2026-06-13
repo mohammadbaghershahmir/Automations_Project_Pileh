@@ -1,0 +1,44 @@
+{# LLM model(s) chosen at job creation. Requires job and cfg in context. #}
+{% set _no_llm_types = [
+  'chapter_summary_json_to_csv',
+  'image_catalog_json_to_csv',
+  'test_bank_2_json_to_csv',
+  'flashcard_json_to_csv',
+  'table_notes_json_to_word',
+  'document_processing_json_to_word',
+] %}
+{% if job.type not in _no_llm_types %}
+  {% set _m1 = cfg.get('model_1') or cfg.get('model') %}
+  {% set _p1 = cfg.get('provider_1') or cfg.get('provider') or 'openrouter' %}
+  {% set _m2 = cfg.get('model_2') %}
+  {% set _p2 = cfg.get('provider_2') or cfg.get('provider') or 'openrouter' %}
+  {% set _tts_model = cfg.get('tts_model') %}
+  {% set _tts_voice = cfg.get('tts_voice') %}
+  {% if _m1 or _m2 or (job.type == 'voice_class' and (_tts_model or _tts_voice)) %}
+  <div class="card" style="margin-bottom:14px;border:1px solid var(--accent);">
+    <h2 style="margin:0 0 10px;font-size:1rem;">LLM model</h2>
+    {% if job.type == 'voice_class' %}
+    <p style="margin:0;font-size:14px;line-height:1.5;">Step 1 script — Provider <strong>{{ _p1 }}</strong></p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ _m1 or '—' }}</code></p>
+    <p style="margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--muted);">Step 2 TTS: <code>{{ _tts_model or '—' }}</code> / voice <code>{{ _tts_voice or '—' }}</code> (Gemini keys from admin pool)</p>
+    {% elif job.type == 'test_bank_2' %}
+    <p style="margin:0;font-size:14px;line-height:1.5;">Step 2 — Provider <strong>{{ _p2 }}</strong></p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ _m2 or '—' }}</code></p>
+    {% if _m1 %}
+    <p style="margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--muted);">Step 1 reference <code style="font-size:12px;word-break:break-all;">{{ _m1 }}</code></p>
+    {% endif %}
+    {% elif job.type == 'test_bank' %}
+    <p style="margin:0;font-size:14px;line-height:1.5;">Step 1 — Provider <strong>{{ _p1 }}</strong></p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ _m1 or '—' }}</code></p>
+    {% if _m2 %}
+    <p style="margin:12px 0 0;font-size:14px;line-height:1.5;">Step 2 — Provider <strong>{{ _p2 }}</strong></p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ _m2 }}</code></p>
+    {% endif %}
+    {% else %}
+    <p style="margin:0;font-size:14px;line-height:1.5;">Provider <strong>{{ _p1 }}</strong></p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.5;">Model <code style="font-size:13px;word-break:break-all;">{{ _m1 or '—' }}</code></p>
+    {% endif %}
+    <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.45;">This job uses the model above for OpenRouter calls (billed to your API key). Create a new job if you need a different model.</p>
+  </div>
+  {% endif %}
+{% endif %}
