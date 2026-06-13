@@ -9,6 +9,18 @@
   .jobs-filters .tb-row label.tb-field--status,
   .jobs-filters .tb-row label.tb-field--creator { flex: 1 1 160px; min-width: 140px; }
   .jobs-filters-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .jobs-filters .tb-row input[type="text"],
+  .jobs-filters .tb-row select {
+    width: 100%;
+    padding: 8px 12px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--fg);
+    font-size: 14px;
+    font-family: inherit;
+  }
   button.btn-danger {
     background: #7f1d1d;
     color: #fecaca;
@@ -30,7 +42,7 @@
   <form id="jobs-filter-form" method="get" action="/jobs">
     <div class="tb-row">
       <label class="tb-field--search" for="jobs-filter-q">Search
-        <input type="search" id="jobs-filter-q" name="q" value="{{ jobs_filters.q }}" placeholder="Name, job ID, or creator email" autocomplete="off"/>
+        <input type="text" id="jobs-filter-q" name="q" value="{{ jobs_filters.q }}" placeholder="Name, job ID, or creator email" autocomplete="off"/>
       </label>
       <label class="tb-field--stage" for="jobs-filter-stage">Stage
         <select id="jobs-filter-stage" name="stage">
@@ -156,6 +168,12 @@
   function updateFilterSummary() {
     if (!filterSummary) return;
     filterSummary.hidden = !filtersActive();
+  }
+
+  function applyFiltersFromForm() {
+    var params = currentFilterParams();
+    var qs = params.toString();
+    window.location = "/jobs" + (qs ? "?" + qs : "");
   }
 
   function escapeHtml(value) {
@@ -361,15 +379,17 @@
     });
   }
   if (filterForm) {
+    filterForm.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      applyFiltersFromForm();
+    });
     filterForm.addEventListener("change", updateFilterSummary);
     var searchInput = filterForm.querySelector("#jobs-filter-q");
     if (searchInput) {
       searchInput.addEventListener("input", function () {
         updateFilterSummary();
         if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = setTimeout(function () {
-          filterForm.requestSubmit();
-        }, 450);
+        searchDebounceTimer = setTimeout(applyFiltersFromForm, 450);
       });
     }
   }

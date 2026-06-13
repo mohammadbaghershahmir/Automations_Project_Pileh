@@ -343,6 +343,16 @@ class JobsListFilters:
         return out
 
 
+def _optional_query_int(raw: Optional[str]) -> Optional[int]:
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
 def jobs_list_stage_options() -> list[dict[str, str]]:
     return [{"value": label, "label": label} for label in sorted(JOB_STAGE_LABEL_TO_TYPES)]
 
@@ -708,13 +718,13 @@ def create_app() -> FastAPI:
         q: str = Query(""),
         stage: str = Query(""),
         status: str = Query(""),
-        creator_id: Optional[int] = Query(None),
+        creator_id: str = Query(""),
     ) -> dict:
         filters = JobsListFilters(
             q=q.strip(),
             stage=stage.strip(),
             status=status.strip(),
-            creator_id=creator_id,
+            creator_id=_optional_query_int(creator_id),
         )
         jobs, has_more = _query_jobs_page(db, offset, limit, filters)
         return {
@@ -734,13 +744,13 @@ def create_app() -> FastAPI:
         q: str = Query(""),
         stage: str = Query(""),
         status: str = Query(""),
-        creator_id: Optional[int] = Query(None),
+        creator_id: str = Query(""),
     ) -> Any:
         filters = JobsListFilters(
             q=q.strip(),
             stage=stage.strip(),
             status=status.strip(),
-            creator_id=creator_id,
+            creator_id=_optional_query_int(creator_id),
         )
         jobs, has_more = _query_jobs_page(db, 0, JOBS_LIST_PAGE_SIZE, filters)
         job_rows = [_job_row_for_template(j, user) for j in jobs]
