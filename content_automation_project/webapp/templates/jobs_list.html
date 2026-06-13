@@ -3,6 +3,12 @@
 {% block head %}
 <style>
   .jobs-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .jobs-filters { margin-bottom: 18px; }
+  .jobs-filters .tb-row label.tb-field--search { flex: 2 1 220px; min-width: 200px; }
+  .jobs-filters .tb-row label.tb-field--stage,
+  .jobs-filters .tb-row label.tb-field--status,
+  .jobs-filters .tb-row label.tb-field--creator { flex: 1 1 160px; min-width: 140px; }
+  .jobs-filters-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
   button.btn-danger {
     background: #7f1d1d;
     color: #fecaca;
@@ -19,6 +25,46 @@
 {% block content %}
 <h1>Jobs</h1>
 <p class="muted">Recent jobs (all users). Times are <strong>Asia/Tehran</strong> (شمسی). Status reflects pair outcomes when available.</p>
+
+<div class="card jobs-filters">
+  <form id="jobs-filter-form" method="get" action="/jobs">
+    <div class="tb-row">
+      <label class="tb-field--search" for="jobs-filter-q">Search
+        <input type="search" id="jobs-filter-q" name="q" value="{{ jobs_filters.q }}" placeholder="Name, job ID, or creator email" autocomplete="off"/>
+      </label>
+      <label class="tb-field--stage" for="jobs-filter-stage">Stage
+        <select id="jobs-filter-stage" name="stage">
+          <option value="">All stages</option>
+          {% for opt in jobs_stage_options %}
+          <option value="{{ opt.value }}"{% if jobs_filters.stage == opt.value %} selected{% endif %}>{{ opt.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="tb-field--status" for="jobs-filter-status">Status
+        <select id="jobs-filter-status" name="status">
+          <option value="">All statuses</option>
+          {% for st in jobs_status_options %}
+          <option value="{{ st }}"{% if jobs_filters.status == st %} selected{% endif %}>{{ st }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="tb-field--creator" for="jobs-filter-creator">Creator
+        <select id="jobs-filter-creator" name="creator_id">
+          <option value="">All creators</option>
+          {% for c in jobs_creator_options %}
+          <option value="{{ c.id }}"{% if jobs_filters.creator_id == c.id %} selected{% endif %}>{{ c.email }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="jobs-filters-actions">
+      <button type="submit">Apply filters</button>
+      <a href="/jobs" class="secondary" style="display:inline-block;padding:8px 14px;border-radius:6px;background:var(--btn-secondary-bg);color:var(--btn-secondary-fg);text-decoration:none;font-size:0.95rem;">Clear</a>
+      <span id="jobs-filter-summary" class="muted" style="font-size:13px;"{% if not jobs_filters.active() %} hidden{% endif %}>Filters active</span>
+    </div>
+  </form>
+</div>
+
 <table>
   <thead>
     <tr><th>Name</th><th>Creator</th><th>Stage</th><th>Status</th><th>Created</th><th></th></tr>
@@ -50,7 +96,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="6" class="muted">No jobs yet. <a href="/test-bank-1/new">Test Bank 1</a> / <a href="/test-bank-2/new">Test Bank 2</a> or <a href="/image-notes/new">Image Notes</a> / <a href="/table-notes/new">Table Notes</a> / <a href="/importance-type/new">Importance &amp; Type</a> / <a href="/image-file-catalog/new">Image File Catalog</a> / <a href="/flashcard/new">Flashcards</a> / <a href="/chapter-summary/new">Chapter Summary</a> / <a href="/voice-class/new">Voice Class</a> / <a href="/json-to-csv/new">JSON to CSV</a> / <a href="/table-notes/json-to-word/new">Table Notes → Word</a>.</td></tr>
+    <tr id="jobs-empty-row"><td colspan="6" class="muted">{% if jobs_filters.active() %}No jobs match your filters. <a href="/jobs">Clear filters</a>{% else %}No jobs yet. <a href="/test-bank-1/new">Test Bank 1</a> / <a href="/test-bank-2/new">Test Bank 2</a> or <a href="/image-notes/new">Image Notes</a> / <a href="/table-notes/new">Table Notes</a> / <a href="/importance-type/new">Importance &amp; Type</a> / <a href="/image-file-catalog/new">Image File Catalog</a> / <a href="/flashcard/new">Flashcards</a> / <a href="/chapter-summary/new">Chapter Summary</a> / <a href="/voice-class/new">Voice Class</a> / <a href="/json-to-csv/new">JSON to CSV</a> / <a href="/table-notes/json-to-word/new">Table Notes → Word</a>.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -84,6 +130,33 @@
   var jobsOffset = {{ jobs_loaded }};
   var jobsPageSize = {{ jobs_page_size }};
   var pending = null;
+  var filterForm = document.getElementById("jobs-filter-form");
+  var filterSummary = document.getElementById("jobs-filter-summary");
+  var searchDebounceTimer = null;
+
+  function currentFilterParams() {
+    var params = new URLSearchParams();
+    if (!filterForm) return params;
+    var q = (filterForm.querySelector("#jobs-filter-q") || {}).value || "";
+    var stage = (filterForm.querySelector("#jobs-filter-stage") || {}).value || "";
+    var status = (filterForm.querySelector("#jobs-filter-status") || {}).value || "";
+    var creator = (filterForm.querySelector("#jobs-filter-creator") || {}).value || "";
+    if (q.trim()) params.set("q", q.trim());
+    if (stage) params.set("stage", stage);
+    if (status) params.set("status", status);
+    if (creator) params.set("creator_id", creator);
+    return params;
+  }
+
+  function filtersActive() {
+    var p = currentFilterParams();
+    return p.has("q") || p.has("stage") || p.has("status") || p.has("creator_id");
+  }
+
+  function updateFilterSummary() {
+    if (!filterSummary) return;
+    filterSummary.hidden = !filtersActive();
+  }
 
   function escapeHtml(value) {
     return String(value)
@@ -138,8 +211,10 @@
     btnShowMore.disabled = true;
     btnShowMore.textContent = "Loading…";
     try {
-      var url = "/api/jobs?offset=" + encodeURIComponent(jobsOffset) +
-        "&limit=" + encodeURIComponent(jobsPageSize);
+      var params = currentFilterParams();
+      params.set("offset", String(jobsOffset));
+      params.set("limit", String(jobsPageSize));
+      var url = "/api/jobs?" + params.toString();
       var r = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
       if (!r.ok) throw new Error(parseError(await r.text()));
       var data = await r.json();
@@ -284,6 +359,19 @@
       var btn = ev.target.closest(".btn-delete-job");
       if (btn) openModal(btn);
     });
+  }
+  if (filterForm) {
+    filterForm.addEventListener("change", updateFilterSummary);
+    var searchInput = filterForm.querySelector("#jobs-filter-q");
+    if (searchInput) {
+      searchInput.addEventListener("input", function () {
+        updateFilterSummary();
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(function () {
+          filterForm.requestSubmit();
+        }, 450);
+      });
+    }
   }
   if (btnShowMore) btnShowMore.addEventListener("click", loadMoreJobs);
   if (btnCancel) btnCancel.addEventListener("click", closeModal);

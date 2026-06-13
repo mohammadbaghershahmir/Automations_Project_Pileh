@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime
 import shutil
 import tempfile
@@ -28,7 +29,7 @@ try:
     HAS_CELERY = True
 except ImportError:
     HAS_CELERY = False
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from webapp.auth_utils import COOKIE_NAME, create_access_token, verify_password
 from webapp.bootstrap import (
@@ -303,6 +304,58 @@ JOB_STAGE_LABELS = {
 
 
 JOBS_LIST_PAGE_SIZE = 50
+JOBS_LIST_SCAN_BATCH = 100
+JOBS_LIST_STATUS_OPTIONS = (
+    "succeeded",
+    "failed",
+    "running",
+    "queued",
+    "cancelled",
+    "pending",
+    "draft",
+)
+
+JOB_STAGE_LABEL_TO_TYPES: dict[str, list[str]] = {}
+for _job_type, _stage_label in JOB_STAGE_LABELS.items():
+    JOB_STAGE_LABEL_TO_TYPES.setdefault(_stage_label, []).append(_job_type)
+
+
+@dataclass(frozen=True)
+class JobsListFilters:
+    q: str = ""
+    stage: str = ""
+    status: str = ""
+    creator_id: Optional[int] = None
+
+    def active(self) -> bool:
+        return bool(self.q or self.stage or self.status or self.creator_id)
+
+    def to_query_dict(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if self.q:
+            out["q"] = self.q
+        if self.stage:
+            out["stage"] = self.stage
+        if self.status:
+            out["status"] = self.status
+        if self.creator_id is not None:
+            out["creator_id"] = str(self.creator_id)
+        return out
+
+
+def jobs_list_stage_options() -> list[dict[str, str]]:
+    return [{"value": label, "label": label} for label in sorted(JOB_STAGE_LABEL_TO_TYPES)]
+
+
+def jobs_list_creator_options(db: Session) -> list[dict[str, Any]]:
+    rows = (
+        db.query(User.id, User.email)
+        .join(Job, Job.created_by_id == User.id)
+        .distinct()
+        .order_by(User.email)
+        .all()
+    )
+    return [{"id": uid, "email": email} for uid, email in rows]
 
 
 def job_stage_label(job: Job) -> str:
@@ -310,17 +363,57 @@ def job_stage_label(job: Job) -> str:
     return JOB_STAGE_LABELS.get(t, t.replace("_", " ").title())
 
 
-def _query_jobs_page(db: Session, offset: int, limit: int) -> tuple[List[Job], bool]:
-    rows = (
-        db.query(Job)
-        .options(joinedload(Job.pairs), joinedload(Job.created_by_user))
-        .order_by(Job.created_at.desc())
-        .offset(max(0, offset))
-        .limit(limit + 1)
-        .all()
-    )
-    has_more = len(rows) > limit
-    return rows[:limit], has_more
+def _jobs_list_base_query(db: Session, filters: JobsListFilters):
+    q = db.query(Job).options(joinedload(Job.pairs), joinedload(Job.created_by_user))
+    if filters.q:
+        term = f"%{filters.q.strip().lower()}%"
+        q = q.join(User, Job.created_by_id == User.id).filter(
+            or_(
+                func.lower(Job.id).like(term),
+                func.lower(Job.config_json).like(term),
+                func.lower(User.email).like(term),
+            )
+        )
+    if filters.stage:
+        types = JOB_STAGE_LABEL_TO_TYPES.get(filters.stage, [])
+        if types:
+            q = q.filter(Job.type.in_(types))
+    if filters.creator_id is not None:
+        q = q.filter(Job.created_by_id == filters.creator_id)
+    return q.order_by(Job.created_at.desc())
+
+
+def _query_jobs_page(
+    db: Session,
+    offset: int,
+    limit: int,
+    filters: Optional[JobsListFilters] = None,
+) -> tuple[List[Job], bool]:
+    filters = filters or JobsListFilters()
+    base_q = _jobs_list_base_query(db, filters)
+    offset = max(0, offset)
+
+    if not filters.status:
+        rows = base_q.offset(offset).limit(limit + 1).all()
+        has_more = len(rows) > limit
+        return rows[:limit], has_more
+
+    matched: list[Job] = []
+    scan_offset = 0
+    need = offset + limit + 1
+    while len(matched) < need:
+        batch = base_q.offset(scan_offset).limit(JOBS_LIST_SCAN_BATCH).all()
+        if not batch:
+            break
+        for job in batch:
+            if effective_job_list_status(job, list(job.pairs)) == filters.status:
+                matched.append(job)
+        scan_offset += JOBS_LIST_SCAN_BATCH
+        if scan_offset > 5000:
+            break
+    page = matched[offset : offset + limit]
+    has_more = len(matched) > offset + limit
+    return page, has_more
 
 
 def _job_row_for_template(job: Job, user: CurrentUser) -> dict:
@@ -612,19 +705,44 @@ def create_app() -> FastAPI:
         db: Session = Depends(get_db),
         offset: int = Query(0, ge=0),
         limit: int = Query(JOBS_LIST_PAGE_SIZE, ge=1, le=200),
+        q: str = Query(""),
+        stage: str = Query(""),
+        status: str = Query(""),
+        creator_id: Optional[int] = Query(None),
     ) -> dict:
-        jobs, has_more = _query_jobs_page(db, offset, limit)
+        filters = JobsListFilters(
+            q=q.strip(),
+            stage=stage.strip(),
+            status=status.strip(),
+            creator_id=creator_id,
+        )
+        jobs, has_more = _query_jobs_page(db, offset, limit, filters)
         return {
             "items": [_job_row_for_api(j, user) for j in jobs],
             "offset": offset,
             "limit": limit,
             "has_more": has_more,
             "next_offset": offset + len(jobs),
+            "filters": filters.to_query_dict(),
         }
 
     @app.get("/jobs", response_class=HTMLResponse)
-    def jobs_list(request: Request, user: CurrentUser, db: Session = Depends(get_db)) -> Any:
-        jobs, has_more = _query_jobs_page(db, 0, JOBS_LIST_PAGE_SIZE)
+    def jobs_list(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+        q: str = Query(""),
+        stage: str = Query(""),
+        status: str = Query(""),
+        creator_id: Optional[int] = Query(None),
+    ) -> Any:
+        filters = JobsListFilters(
+            q=q.strip(),
+            stage=stage.strip(),
+            status=status.strip(),
+            creator_id=creator_id,
+        )
+        jobs, has_more = _query_jobs_page(db, 0, JOBS_LIST_PAGE_SIZE, filters)
         job_rows = [_job_row_for_template(j, user) for j in jobs]
         return templates.TemplateResponse(
             request,
@@ -636,6 +754,10 @@ def create_app() -> FastAPI:
                 "jobs_loaded": len(job_rows),
                 "jobs_page_size": JOBS_LIST_PAGE_SIZE,
                 "jobs_has_more": has_more,
+                "jobs_filters": filters,
+                "jobs_stage_options": jobs_list_stage_options(),
+                "jobs_creator_options": jobs_list_creator_options(db),
+                "jobs_status_options": JOBS_LIST_STATUS_OPTIONS,
             },
         )
 
