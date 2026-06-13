@@ -22,6 +22,13 @@ from webapp.unit_repair.manifest import (
 from webapp.unit_repair.renumber import mark_renumber_applied, renumber_qids_in_rows
 
 
+def _safe_topic_artifact_suffix(topic_name: str) -> str:
+    """Match stage_v_processor topic filenames — keep Persian letters, strip unsafe path chars."""
+    safe = (topic_name or "").replace("/", "_").replace(" ", "_").replace("\\", "_")
+    safe = "".join(c for c in safe if c.isalnum() or c in ("_", "-", "."))
+    return safe or "topic"
+
+
 class TestBankStep2UnitHooks:
     """Track Step 2 topics and copy artifacts into pair_N/units/."""
 
@@ -59,7 +66,7 @@ class TestBankStep2UnitHooks:
         status: str = "succeeded",
     ) -> None:
         m = self._ensure()
-        safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", topic_name[:60])
+        safe = _safe_topic_artifact_suffix(topic_name[:60])
         rel = unit_artifact_relpath(self.job_id, self.pair_index, topic_idx, f"step2_{safe}.json")
         abs_dest = abs_from_relpath(self.job_id, rel)
         os.makedirs(os.path.dirname(abs_dest), exist_ok=True)
@@ -109,6 +116,19 @@ class TestBankStep2UnitHooks:
                 },
             )
         save_manifest(self.job_id, self.pair_index, m)
+
+    def finalize_stale_units(self, final_status: str = "failed") -> int:
+        """Mark units still pending/running after Step 2 ends (failed topics, cancel, crash)."""
+        m = self._ensure()
+        updated = 0
+        for u in m.get("units") or []:
+            st = (u.get("status") or "").strip().lower()
+            if st in ("pending", "running"):
+                u["status"] = final_status
+                updated += 1
+        if updated:
+            save_manifest(self.job_id, self.pair_index, m)
+        return updated
 
 
 def build_manifest_from_step2_topics(
@@ -292,6 +312,7 @@ def regenerate_unit(
 
     hooks = TestBankStep2UnitHooks(job_id, pair_index, job_type, book_id, chapter_id)
     hooks.on_topic_done(topic_idx, chapter_name, subchapter_name, topic_name, path, 1)
+    manifest = load_manifest(job_id, pair_index) or manifest
     combine_and_save_final(
         db, job_id, pair_index, processor, ctx, out_dir, manifest, job_type, apply_qid_renumber=False
     )
@@ -312,21 +333,33 @@ def combine_and_save_final(
     apply_qid_renumber: bool = True,
 ) -> str:
     """Rebuild final b*.json from unit artifacts without deleting them."""
+    manifest = load_manifest(job_id, pair_index) or manifest
     book_id = ctx.book_id
     chapter_id = ctx.chapter_id
     combined: List[Dict[str, Any]] = []
     units = sorted(manifest.get("units") or [], key=lambda u: int(u.get("unit_index", 0)))
     for u in units:
-        rel = u.get("artifact_relpath")
-        if not rel:
+        if (u.get("status") or "").strip().lower() not in ("", "succeeded"):
             continue
-        path = abs_from_relpath(job_id, rel)
-        if not os.path.isfile(path):
-            alt = os.path.join(output_dir, os.path.basename(path))
-            if os.path.isfile(alt):
-                path = alt
-            else:
-                continue
+        rel = u.get("artifact_relpath")
+        path = None
+        if rel:
+            path = abs_from_relpath(job_id, rel)
+            if not os.path.isfile(path):
+                alt = os.path.join(output_dir, os.path.basename(path))
+                if os.path.isfile(alt):
+                    path = alt
+                else:
+                    path = None
+        if path is None:
+            unit_idx = int(u.get("unit_index", 0))
+            prefix = f"_stage_v_step2_topic_{unit_idx}_"
+            for fn in sorted(os.listdir(output_dir) if os.path.isdir(output_dir) else []):
+                if fn.endswith(".json") and prefix in fn and "_prompt_input" not in fn:
+                    path = os.path.join(output_dir, fn)
+                    break
+        if not path or not os.path.isfile(path):
+            continue
         data = processor.load_json_file(path)
         rows = processor.get_data_from_json(data) if data else []
         combined.extend(rows)
@@ -354,8 +387,9 @@ def combine_and_save_final(
     final_path = os.path.join(output_dir, base_filename)
     processor.save_json_file(combined, final_path, {"step": "2_combined", "book_id": book_id, "chapter_id": chapter_id}, "V-Final")
     rel = os.path.relpath(final_path, job_root(job_id)).replace("\\", "/")
-    manifest["output_relpath"] = rel
-    save_manifest(job_id, pair_index, manifest)
+    m_out = load_manifest(job_id, pair_index) or manifest
+    m_out["output_relpath"] = rel
+    save_manifest(job_id, pair_index, m_out)
     register_artifacts_under(db, job_id, pair_index, job_root(job_id), f"pair_{pair_index}/output")
     return final_path
 
@@ -373,16 +407,17 @@ def renumber_pair(
     from webapp.processor_context import build_stage_v_processor
 
     _client, ssm, processor = build_stage_v_processor()
+    out_dir = pair_output(job_id, pair_index)
     ctx = processor._build_stage_v_processing_context(stage_j_path, word_path, out_dir, None)
     if not ctx:
         raise RuntimeError("Failed to build Stage V context")
-    out_dir = pair_output(job_id, pair_index)
     manifest = ensure_manifest(
         job_id, pair_index, job_type, ctx.book_id, ctx.chapter_id, out_dir
     )
     combine_and_save_final(
         db, job_id, pair_index, processor, ctx, out_dir, manifest, job_type, apply_qid_renumber=True
     )
+    manifest = load_manifest(job_id, pair_index) or manifest
     mark_renumber_applied(manifest)
     save_manifest(job_id, pair_index, manifest)
     m = load_manifest(job_id, pair_index) or manifest

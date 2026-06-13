@@ -539,6 +539,14 @@ class StageVProcessor(BaseStageProcessor):
             self.logger.error("Failed to combine Step 2 outputs")
             return None
 
+        if unit_hooks and hasattr(unit_hooks, "finalize_stale_units"):
+            try:
+                n_stale = unit_hooks.finalize_stale_units("failed")
+                if n_stale:
+                    _progress(f"Marked {n_stale} topic unit(s) as failed in manifest")
+            except Exception as e:
+                self.logger.warning("Failed to finalize stale unit manifest rows: %s", e)
+
         chapter_name_out = ""
         if stage_j_records:
             first_record = stage_j_records[0] if isinstance(stage_j_records[0], dict) else {}
